@@ -5,8 +5,11 @@ HashiCorp Vault 1.21 running in Docker with file storage and the web UI.
 ## Start
 
 ```bash
+cp .env.example .env   # set VAULT_ROOT_TOKEN to the root token you want
 ./init.sh
 ```
+
+If `VAULT_ROOT_TOKEN` is set when Vault is initialized for the first time, `init.sh` creates a root token with that ID and revokes the generated one. Leave it unset to keep Vault's random token. `.env` is gitignored.
 
 On first run this initializes Vault with a single unseal key and writes the key and root token to `.vault-keys.json` (gitignored). On later runs it just starts and unseals. It prints the `VAULT_ADDR` / `VAULT_TOKEN` exports when done.
 
