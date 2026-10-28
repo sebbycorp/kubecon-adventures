@@ -26,4 +26,5 @@ Add a row here when you add a new component.
 ## Environment notes
 
 - The host user is in the `docker` group, but a shell started before the group was added needs `newgrp docker <<< "<cmd>"` to reach the Docker socket.
+- The host firewall is ufw with ufw-docker, so published container ports are blocked from other machines until opened with `sudo ufw route allow proto tcp from any to any port <port>`. Agents can't sudo; ask the user to run it.
 - Vault: `VAULT_ADDR=http://localhost:8200`. A container restart leaves Vault sealed; rerun `vault/init.sh` to unseal.

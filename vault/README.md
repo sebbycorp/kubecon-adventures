@@ -13,6 +13,16 @@ On first run this initializes Vault with a single unseal key and writes the key 
 - UI: http://localhost:8200
 - Data: Docker volume `vault_vault-data` (survives `docker compose down`; removed by `down -v`)
 
+## Access from other machines
+
+Vault listens on all interfaces (`0.0.0.0:8200`). On hosts running ufw with ufw-docker (Omarchy's default), container ports are firewalled, so open the port once:
+
+```bash
+sudo ufw route allow proto tcp from any to any port 8200
+```
+
+Use `from <your-lan>/24` instead of `from any` to limit access to your LAN. Then browse to `http://<machine-ip>:8200`.
+
 ## Files
 
 - `docker-compose.yml`: the Vault service
