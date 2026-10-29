@@ -280,8 +280,8 @@ func (g *Game) Revive(playerID, duckID string) error {
 			g.record("resume", ms)
 			g.update(d.ID, func(d *Duck) { d.State, d.LastRevMs = Flying, ms; d.Revives++ })
 			// The revive prompt is what restores the actor; show Substrate's own restore time.
-			err = g.prompt(ctx, d.ID, d.SessionID, revivePrompt)
 			g.emit(Event{Type: "revive", DuckID: d.ID, Nick: d.Nick, Ms: g.typical("restore")})
+			err = g.prompt(ctx, d.ID, d.SessionID, revivePrompt)
 		}
 		g.update(d.ID, func(d *Duck) {
 			d.Busy, d.LastActive = false, time.Now()

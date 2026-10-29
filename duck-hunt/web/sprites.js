@@ -173,6 +173,10 @@ const Sfx = {
   fall() { for (let i = 0; i < 8; i++) this.tone(900 - i * 90, 0.07, "triangle", i * 0.07, 0.06); },
   revive() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.1, "square", i * 0.08, 0.06)); },
   hatch() { [392, 523].forEach((f, i) => this.tone(f, 0.08, "square", i * 0.08, 0.06)); },
+  bark() { [0, 0.18].forEach((w) => { this.tone(330, 0.06, "square", w, 0.08); this.tone(220, 0.08, "square", w + 0.05, 0.08); }); },
+  laugh() { for (let i = 0; i < 6; i++) this.tone(i % 2 ? 392 : 523, 0.09, "square", i * 0.12, 0.06); },
+  gotcha() { [523, 659, 784, 659, 1047].forEach((f, i) => this.tone(f, 0.09, "square", i * 0.09, 0.06)); },
+  walk() { this.tone(110, 0.03, "triangle", 0, 0.05); },
 };
 
 function fmtMs(ms) {
