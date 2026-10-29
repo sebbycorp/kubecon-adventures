@@ -10,7 +10,7 @@ A collection of KubeCon demo/lab builds. Each top-level folder is a self-contain
 |--------|------------|----------|
 | `vault/` | HashiCorp Vault 1.21 in Docker, file storage, UI on | `cd vault && ./init.sh` |
 | `kagent/` | kind cluster with kagent 1.0 alpha, Agent Substrate, agentgateway | `cd kagent && ./setup.sh` |
-| `duck-hunt/` | Duck Hunt game: each duck is a kagent agent on Agent Substrate (port 8090) | `cd duck-hunt && ./deploy.sh` |
+| `arcade/` | Agent arcade (Duck Hunt + more): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
 | `homepage/` | Homepage dashboard for the host, cluster, and containers (port 3000) | `cd homepage && ./start.sh` |
 
 Add a row here when you add a new component.

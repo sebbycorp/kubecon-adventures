@@ -1,4 +1,4 @@
-package main
+package platform
 
 import (
 	"bufio"
@@ -18,7 +18,7 @@ type AteletScraper struct {
 	// Target is "dns:<host>:<port>" (every A record of a headless Service) or a
 	// comma-separated list of base URLs such as "http://localhost:19091".
 	Target         string
-	TemplatePrefix string
+	TemplatePrefix string // e.g. "duck-"; empty counts every agent
 	last           map[string][2]float64 // "<endpoint> <metric>" -> {sum, count}
 }
 
@@ -132,8 +132,8 @@ func (s *AteletScraper) scrapeOne(ctx context.Context, base string) (map[string]
 	return out, sc.Err()
 }
 
-// RunAteletScraper feeds Substrate's snapshot/restore timings into the game stats.
-func (g *Game) RunAteletScraper(ctx context.Context, s *AteletScraper) {
+// RunAteletScraper feeds Substrate's own snapshot/restore timings into the arcade stats.
+func (p *Platform) RunAteletScraper(ctx context.Context, s *AteletScraper) {
 	if s.Target == "" {
 		return
 	}
@@ -147,10 +147,10 @@ func (g *Game) RunAteletScraper(ctx context.Context, s *AteletScraper) {
 		// Each scrape yields an average over its new observations; record it once per
 		// observation (capped) so percentiles stay roughly weighted.
 		for i := 0; i < min(snapN, 50); i++ {
-			g.record("snapshot", int64(snapMs+0.5))
+			p.Timings.Record("snapshot", int64(snapMs+0.5))
 		}
 		for i := 0; i < min(restN, 50); i++ {
-			g.record("restore", int64(restMs+0.5))
+			p.Timings.Record("restore", int64(restMs+0.5))
 		}
 		select {
 		case <-ctx.Done():

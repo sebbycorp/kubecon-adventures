@@ -2,4 +2,6 @@
 !go.mod
 !go.sum
 !*.go
+!internal/
+!games/
 !web/

@@ -1,4 +1,4 @@
-module github.com/sebbycorp/kubecon-adventures/duck-hunt
+module github.com/sebbycorp/kubecon-adventures/arcade
 
 go 1.27.3
 

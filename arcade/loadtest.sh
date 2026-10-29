@@ -11,7 +11,7 @@ export PATH=$HOME/.local/bin:$PATH
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-state() { curl -s "$B/admin/api/state"; }
+state() { curl -s "$B/admin/duck-hunt/api/state"; }
 count() { state | jq "[.ducks[] | select($1)] | length"; }
 wait_for() { # wait_for <jq filter for done ducks> <timeout s>
   local t0=$SECONDS
@@ -29,11 +29,11 @@ summary() {
 }
 
 echo "==> New round, Hunter off"
-curl -s -X POST "$B/admin/api/reset" >/dev/null
-curl -s -X POST "$B/admin/api/settings" -d '{"hunterOn":false,"idleSeconds":20}' >/dev/null
+curl -s -X POST "$B/admin/duck-hunt/api/reset" >/dev/null
+curl -s -X POST "$B/admin/duck-hunt/api/settings" -d '{"hunterOn":false,"idleSeconds":20}' >/dev/null
 
 echo "==> $N players join"
-seq "$N" | xargs -P 32 -I{} curl -s -c "$WORK/{}" -X POST "$A/join" -d '{"nick":"bot{}"}' -o /dev/null
+seq "$N" | xargs -P 32 -I{} curl -s -c "$WORK/{}" -X POST "$B/api/join" -d '{"nick":"bot{}"}' -o /dev/null
 
 echo "==> $N ducks hatch at once"
 kinds=(fast zigzag showoff)
@@ -42,9 +42,9 @@ echo "  all flying/failed after $(wait_for '.state == "flying" or .state == "fai
 summary
 
 echo "==> Hunter shoots the whole flock (idle 5s)"
-curl -s -X POST "$B/admin/api/settings" -d '{"hunterOn":true,"idleSeconds":5}' >/dev/null
+curl -s -X POST "$B/admin/duck-hunt/api/settings" -d '{"hunterOn":true,"idleSeconds":5}' >/dev/null
 echo "  all shot after $(wait_for '.state == "shot" or .state == "failed"' 120)"
-curl -s -X POST "$B/admin/api/settings" -d '{"hunterOn":false,"idleSeconds":20}' >/dev/null
+curl -s -X POST "$B/admin/duck-hunt/api/settings" -d '{"hunterOn":false,"idleSeconds":20}' >/dev/null
 
 echo "==> Every owner revives at once"
 state | jq -r '.ducks[] | select(.state == "shot") | "\(.nick | ltrimstr("bot")) \(.id)"' |

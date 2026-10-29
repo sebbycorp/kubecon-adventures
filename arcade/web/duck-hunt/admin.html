@@ -6,7 +6,7 @@
 <title>Duck Hunt Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/duck-hunt/static/nes.css">
+<link rel="stylesheet" href="/static/nes.css">
 <style>
   body { padding: 8px 16px 32px; font-size: 10px; }
   h1 { font-size: 16px; color: var(--sky); margin: 16px 8px; font-weight: normal; }
@@ -67,14 +67,14 @@
   </table>
 </div>
 
-<script src="/duck-hunt/static/sprites.js"></script>
+<script src="/static/sprites.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 let settingsLoaded = false, clockSkew = 0;
 
 async function admin(path, body) {
-  const r = await fetch("/admin/api/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const r = await fetch("/admin/duck-hunt/api/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) { $("err").textContent = (data.error || r.statusText).toUpperCase(); setTimeout(() => $("err").textContent = "", 4000); }
   return data;

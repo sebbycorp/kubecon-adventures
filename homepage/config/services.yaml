@@ -8,7 +8,7 @@
         namespace: duck-hunt
         app: duck-hunt
         podSelector: app=duck-hunt
-        siteMonitor: http://localhost:8090/duck-hunt
+        siteMonitor: http://localhost:8090/
         widget:
           type: customapi
           url: http://localhost:8090/duck-hunt/api/stats
@@ -57,7 +57,7 @@
         description: All games · from the kagent control plane
         widget:
           type: customapi
-          url: http://localhost:8090/duck-hunt/api/stats
+          url: http://localhost:8090/api/stats
           refreshInterval: 3000
           display: list
           mappings:

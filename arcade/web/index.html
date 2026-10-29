@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Agent Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/nes.css">
+<style>
+  body { max-width: 520px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
+  .hidden { display: none !important; }
+  .game { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; text-decoration: none; color: inherit; }
+  .game .name { color: var(--orange); font-size: 13px; }
+  .game .what { grid-column: 1 / -1; font-size: 8px; color: var(--gray); line-height: 1.8; }
+  .game .tag { font-size: 8px; color: var(--sky); }
+  .game.soon { opacity: 0.5; pointer-events: none; }
+  a.game:hover .name, a.game:focus-visible .name { color: var(--white); }
+  #err { color: var(--red); text-align: center; min-height: 1.6em; }
+  footer { text-align: center; font-size: 8px; color: var(--gray); margin-top: 24px; line-height: 2; }
+</style>
+</head>
+<body>
+<div class="title">AGENT<br>ARCADE</div>
+<div class="sub" style="font-size:9px">POWERED BY KAGENT · AGENT SUBSTRATE · AGENTGATEWAY</div>
+
+<section id="join" class="box hidden" style="margin-top:24px">
+  <form id="joinForm">
+    <label for="nick">ENTER YOUR NAME</label>
+    <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" required style="margin:12px 0">
+    <button type="submit" style="width:100%">START</button>
+  </form>
+</section>
+
+<section id="games" class="hidden">
+  <div class="muted" style="margin:16px 8px 8px">P1 <span id="who"></span> · SELECT A GAME</div>
+  <a class="box game" href="/duck-hunt">
+    <span class="name">▶ DUCK HUNT</span><span class="tag">SNAPSHOTS</span>
+    <span class="what">HATCH AI DUCKS. IDLE DUCKS SLEEP AS SNAPSHOTS; THE HUNTER SUSPENDS THEM AND YOU REVIVE THEM.</span>
+  </a>
+  <div class="box game soon">
+    <span class="name">SANDBOX ESCAPE</span><span class="tag">SECURITY</span>
+    <span class="what">TALK YOUR AGENT INTO BREAKING OUT OF ITS GVISOR SANDBOX. SPOILER: IT CAN'T. COMING SOON.</span>
+  </div>
+  <div class="box game soon">
+    <span class="name">FORK FRENZY</span><span class="tag">FORKS</span>
+    <span class="what">CHECKPOINT YOUR AGENT AND FORK A FLOCK OF CLONES THAT SHARE ITS MEMORY. COMING SOON.</span>
+  </div>
+  <div class="box game soon">
+    <span class="name">AGENT INVADERS</span><span class="tag">SCALE</span>
+    <span class="what">HUNDREDS OF ALIEN AGENTS ON A HANDFUL OF WORKERS. COMING SOON.</span>
+  </div>
+  <div class="box game soon">
+    <span class="name">WHACK-A-MOLE</span><span class="tag">COLD START</span>
+    <span class="what">WHACK SLEEPING AGENTS AWAKE. HOW FAST DOES A SNAPSHOT RESTORE? COMING SOON.</span>
+  </div>
+</section>
+
+<div id="err" role="alert"></div>
+<footer>EVERY CHARACTER IN THIS ARCADE IS A REAL AI AGENT<br>RUNNING IN ITS OWN GVISOR SANDBOX ON KUBERNETES.</footer>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+function showGames(p) {
+  $("join").classList.add("hidden");
+  $("games").classList.remove("hidden");
+  $("who").textContent = p.nick.toUpperCase();
+}
+$("joinForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: $("nick").value }) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { $("err").textContent = (data.error || r.statusText).toUpperCase(); return; }
+  showGames(data);
+};
+fetch("/api/me").then((r) => r.ok ? r.json() : Promise.reject()).then(showGames)
+  .catch(() => { $("join").classList.remove("hidden"); $("nick").focus(); });
+</script>
+</body>
+</html>

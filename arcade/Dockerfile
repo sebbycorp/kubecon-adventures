@@ -3,11 +3,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
+COPY internal ./internal
+COPY games ./games
 COPY web ./web
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /duck-hunt .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /arcade .
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /duck-hunt /duck-hunt
+COPY --from=build /arcade /arcade
 USER nonroot
 EXPOSE 8080
-ENTRYPOINT ["/duck-hunt"]
+ENTRYPOINT ["/arcade"]

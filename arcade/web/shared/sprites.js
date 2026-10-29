@@ -227,11 +227,11 @@ function fmtMs(ms) {
   return ms >= 1000 ? (ms / 1000).toFixed(1) + "S" : ms + "MS";
 }
 
-// connectState subscribes to the game's SSE stream and reconnects on errors.
-function connectState(onState) {
+// connectState subscribes to a game's SSE stream and reconnects on errors.
+function connectState(onState, url = "/duck-hunt/api/events") {
   let es;
   const open = () => {
-    es = new EventSource("/duck-hunt/api/events");
+    es = new EventSource(url);
     es.onmessage = (m) => onState(JSON.parse(m.data));
     es.onerror = () => { es.close(); setTimeout(open, 2000); };
   };

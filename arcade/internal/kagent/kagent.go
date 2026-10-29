@@ -1,4 +1,5 @@
-package main
+// Package kagent wraps the kagent control-plane API (sessions, A2A, Substrate) for one agent.
+package kagent
 
 import (
 	"context"
@@ -17,13 +18,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
-
-// Flight is the duck agent's structured output (see manifests/duck-agent.yaml).
-type Flight struct {
-	Pattern string `json:"pattern"`
-	Speed   int    `json:"speed"`
-	Quack   string `json:"quack"`
-}
 
 // Usage is the token usage kagent reports for one task.
 type Usage struct {
@@ -88,13 +82,32 @@ func (k *Kagent) CreateSession(ctx context.Context, name string) (string, error)
 	return id, k.waitState(ctx, id, apiv1.RuntimeState_RUNTIME_STATE_READY)
 }
 
-// Prompt sends one message to a session and returns the duck's flight.
-func (k *Kagent) Prompt(ctx context.Context, sessionID, text string) (Flight, Usage, error) {
-	var flight Flight
-	var usage Usage
+// Reply is an agent's answer to one prompt.
+type Reply struct {
+	JSON  string // structured output (when the Agent declares an outputSchema)
+	Text  string // plain text parts
+	Usage Usage
+	Task  *a2atype.Task
+}
+
+// Decode unmarshals the structured output (or JSON-looking text) into v.
+func (r Reply) Decode(v any) error {
+	raw := r.JSON
+	if raw == "" && strings.HasPrefix(strings.TrimSpace(r.Text), "{") {
+		raw = strings.TrimSpace(r.Text)
+	}
+	if raw == "" {
+		return errors.New("no structured output in agent reply")
+	}
+	return json.Unmarshal([]byte(raw), v)
+}
+
+// Prompt sends one message to a session and waits for the agent's reply.
+func (k *Kagent) Prompt(ctx context.Context, sessionID, text string) (Reply, error) {
+	var reply Reply
 	client, err := k.gateway.A2A.ForSession(ctx, sessionID)
 	if err != nil {
-		return flight, usage, err
+		return reply, err
 	}
 	request := &a2atype.SendMessageRequest{Message: a2atype.NewMessage(a2atype.MessageRoleUser, a2atype.NewTextPart(text))}
 	var result a2atype.SendMessageResult
@@ -107,32 +120,30 @@ func (k *Kagent) Prompt(ctx context.Context, sessionID, text string) (Flight, Us
 		time.Sleep(200 * time.Millisecond)
 	}
 	if err != nil {
-		return flight, usage, err
+		return reply, err
 	}
 	task, ok := result.(*a2atype.Task)
 	if !ok {
-		return flight, usage, fmt.Errorf("unexpected A2A result %T", result)
+		return reply, fmt.Errorf("unexpected A2A result %T", result)
 	}
-	usage = taskUsage(task)
+	reply.Task, reply.Usage = task, taskUsage(task)
 	if task.Status.State != a2atype.TaskStateCompleted {
-		return flight, usage, fmt.Errorf("task ended in %s", task.Status.State)
+		return reply, fmt.Errorf("task ended in %s", task.Status.State)
 	}
+	var out strings.Builder
 	for _, artifact := range task.Artifacts {
 		for _, part := range artifact.Parts {
-			raw := ""
 			if kagenta2a.IsStructuredOutputPart(part) {
-				if raw, err = kagenta2a.StructuredOutputJSON(part); err != nil {
-					return flight, usage, err
+				if reply.JSON, err = kagenta2a.StructuredOutputJSON(part); err != nil {
+					return reply, err
 				}
-			} else if t := strings.TrimSpace(part.Text()); strings.HasPrefix(t, "{") {
-				raw = t
-			}
-			if raw != "" && json.Unmarshal([]byte(raw), &flight) == nil && flight.Pattern != "" {
-				return flight.clean(), usage, nil
+			} else if t := part.Text(); t != "" {
+				out.WriteString(t)
 			}
 		}
 	}
-	return flight, usage, errors.New("no flight in agent reply")
+	reply.Text = out.String()
+	return reply, nil
 }
 
 func taskUsage(task *a2atype.Task) Usage {
@@ -146,19 +157,6 @@ func taskUsage(task *a2atype.Task) Usage {
 		}
 	}
 	return u
-}
-
-func (f Flight) clean() Flight {
-	switch f.Pattern {
-	case "straight", "zigzag", "loop", "dive", "wobble":
-	default:
-		f.Pattern = "wobble"
-	}
-	f.Speed = min(max(f.Speed, 1), 10)
-	if r := []rune(f.Quack); len(r) > 60 {
-		f.Quack = string(r[:59]) + "…"
-	}
-	return f
 }
 
 // Suspend snapshots the session's actor and frees its sandbox.

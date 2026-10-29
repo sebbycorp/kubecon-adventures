@@ -7,7 +7,7 @@
 <title>Duck Hunt</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/duck-hunt/static/nes.css">
+<link rel="stylesheet" href="/static/nes.css">
 <style>
   body { max-width: 480px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
   #sky { display: block; width: calc(100% + 32px); margin: 0 -16px 8px; aspect-ratio: 16 / 9; background: var(--sky); }
@@ -65,17 +65,18 @@
 
 <div id="err" role="alert"></div>
 
-<script src="/duck-hunt/static/sprites.js"></script>
+<script src="/static/sprites.js"></script>
 <script src="/duck-hunt/static/sky.js"></script>
-<script src="/duck-hunt/static/substrate-view.js"></script>
+<script src="/static/substrate-view.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const KIND_NAMES = { fast: "FLY FAST", zigzag: "ZIG-ZAG", showoff: "SHOW OFF" };
-let lastState = {}, me = null, mine = [], idleSeconds = 20, serverNow = Date.now(), clockSkew = 0;
+let lastState = {}, me = null, hatched = {}, mine = [], idleSeconds = 20, serverNow = Date.now(), clockSkew = 0;
 
 async function api(path, body) {
-  const r = await fetch("/duck-hunt/api/" + path, {
+  const url = path === "join" || path === "me" ? "/api/" + path : "/duck-hunt/api/" + path;
+  const r = await fetch(url, {
     method: body === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -100,7 +101,7 @@ $("joinForm").onsubmit = async (ev) => {
 
 document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = async () => {
   b.disabled = true;
-  try { await api("hatch/" + b.dataset.kind, {}); me.ducks[b.dataset.kind] = "pending"; } catch (e) { showError(e); b.disabled = false; }
+  try { await api("hatch/" + b.dataset.kind, {}); hatched[b.dataset.kind] = true; } catch (e) { showError(e); b.disabled = false; }
 });
 
 function start() {
@@ -116,10 +117,10 @@ function onState(s) {
   idleSeconds = s.settings.idleSeconds;
   clockSkew = Date.now() - s.now;
   mine = (s.ducks || []).filter((d) => d.playerId === me.id);
-  if (!mine.length && Object.keys(me.ducks).length && !s.ducks?.length) me.ducks = {}; // round was reset
+  if (!mine.length && Object.keys(hatched).length && !s.ducks?.length) hatched = {}; // round was reset
   for (const [kind, label] of Object.entries(KIND_NAMES)) {
     const btn = document.querySelector(`[data-kind="${kind}"]`);
-    const used = mine.some((d) => d.kind === kind) || me.ducks[kind];
+    const used = mine.some((d) => d.kind === kind) || hatched[kind];
     btn.disabled = !!used;
     btn.textContent = used ? label + " ✓" : label;
   }
