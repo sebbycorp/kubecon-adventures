@@ -9,7 +9,8 @@ The first arcade game. Each duck is a real AI agent running on Agent Substrate. 
 | Prompts | 3 fixed buttons per player; each one hatches a duck (max 3 ducks per player) |
 | Hunter | Idle timer: a duck nobody has prompted for 20 s is shot (configurable) |
 | Revive | The owner taps Revive on their phone, which restores the duck from its snapshot |
-| Screens | The booth big screen shows the sky and stats; phones are controllers |
+| Screens | Phones and the booth big screen show the same live sky (shared `web/sky.js`). Phones mark your ducks with YOU and add your controls; the big screen adds the stats panel |
+| Duck = actor | Each duck is one kagent session, which is one Substrate actor (`session-<id>`). The backend polls actor states twice a second: a yellow glow means its sandbox is awake, Zs mean it is asleep as a snapshot. Phones and admin show the actor ID, state and node |
 | Domain | `kubecon.agentpwned.ai/duck-hunt` (Cloudflare Tunnel, later); LAN only for now |
 | Admin | `/admin` (API under `/admin/api/*`) on the LAN with no sign-in for now. Google sign-in for sebastian.maniak@solo.io goes in front of the `/admin` prefix later |
 | Art | NES Duck Hunt look (palette, sky/tree/grass/dirt, SHOT/HIT/SCORE bar, crosshair and flash, falling duck, pop-up Hunter, pixel font) with original sprites and synthesized sounds. No ripped Nintendo assets or logos |

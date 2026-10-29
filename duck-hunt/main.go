@@ -46,6 +46,7 @@ func main() {
 	go g.hub.Run(ctx, g.Snapshot)
 	go g.RunHunter(ctx)
 	go g.RunSubstratePoller(ctx)
+	go g.RunActorPoller(ctx)
 	go g.RunAteletScraper(ctx, &AteletScraper{Target: *atelet, TemplatePrefix: *agent + "-"})
 
 	srv := &http.Server{Addr: *addr, Handler: routes(g)}

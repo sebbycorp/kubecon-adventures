@@ -55,6 +55,7 @@ type Duck struct {
 	LastShotMs  int64     `json:"lastShotMs,omitempty"`
 	LastRevMs   int64     `json:"lastReviveMs,omitempty"`
 	LastReplyMs int64     `json:"lastReplyMs,omitempty"`
+	Actor       *Actor    `json:"actor,omitempty"` // the duck's Substrate actor (one per session)
 	Error       string    `json:"error,omitempty"`
 }
 
@@ -90,6 +91,7 @@ type Game struct {
 	tokens   Usage
 	llmCalls int64
 	sub      SubstrateStats
+	awake    Awake
 	events   []Event
 	hub      *Hub
 }
@@ -332,7 +334,7 @@ func (g *Game) Reset(ctx context.Context) (int, error) {
 	}
 	g.mu.Lock()
 	g.players, g.ducks, g.timings = map[string]*Player{}, map[string]*Duck{}, map[string][]int64{}
-	g.tokens, g.llmCalls, g.events = Usage{}, 0, nil
+	g.tokens, g.llmCalls, g.events, g.awake = Usage{}, 0, nil, Awake{}
 	g.changedLocked()
 	g.mu.Unlock()
 	return len(ids), nil
@@ -459,6 +461,69 @@ func (g *Game) RunSubstratePoller(ctx context.Context) {
 	}
 }
 
+// Awake tracks how many duck sandboxes are running versus asleep as snapshots.
+type Awake struct {
+	Now     int   `json:"now"`     // duck actors RUNNING, RESUMING or SUSPENDING
+	Asleep  int   `json:"asleep"`  // duck actors SUSPENDED (snapshot only)
+	Peak    int   `json:"peak"`    // most awake at once this round
+	WakeUps int64 `json:"wakeUps"` // SUSPENDED -> awake transitions seen this round
+	History []int `json:"history"` // awake count, one sample per second, last 60 s
+}
+
+func awakeState(s string) bool { return s == "RUNNING" || s == "RESUMING" || s == "SUSPENDING" }
+
+// RunActorPoller matches Substrate actors to ducks twice a second, so screens can show
+// which ducks have a running sandbox and which are asleep as snapshots.
+func (g *Game) RunActorPoller(ctx context.Context) {
+	tick := 0
+	for {
+		c, cancel := context.WithTimeout(ctx, 3*time.Second)
+		states, err := g.k.ActorStates(c)
+		cancel()
+		if err == nil {
+			g.mu.Lock()
+			now, asleep := 0, 0
+			for _, d := range g.ducks {
+				a, ok := states[d.SessionID]
+				if !ok || d.SessionID == "" {
+					continue
+				}
+				st := a.State
+				if d.Actor != nil && awakeState(st) && !awakeState(d.Actor.State) {
+					g.awake.WakeUps++
+				}
+				if d.Actor == nil || *d.Actor != a {
+					cp := a
+					d.Actor = &cp
+					g.changedLocked()
+				}
+				if awakeState(st) {
+					now++
+				} else if st == "SUSPENDED" {
+					asleep++
+				}
+			}
+			if now != g.awake.Now || asleep != g.awake.Asleep {
+				g.changedLocked()
+			}
+			g.awake.Now, g.awake.Asleep, g.awake.Peak = now, asleep, max(g.awake.Peak, now)
+			if tick%2 == 0 {
+				g.awake.History = append(g.awake.History, now)
+				if n := len(g.awake.History); n > 60 {
+					g.awake.History = g.awake.History[n-60:]
+				}
+			}
+			g.mu.Unlock()
+		}
+		tick++
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 // --- state snapshot -------------------------------------------------------
 
 type Percentiles struct {
@@ -476,6 +541,7 @@ type State struct {
 	Tokens    Usage                  `json:"tokens"`
 	LLMCalls  int64                  `json:"llmCalls"`
 	Substrate SubstrateStats         `json:"substrate"`
+	Awake     Awake                  `json:"awake"`
 	Events    []Event                `json:"events"`
 	Now       int64                  `json:"now"`
 }
@@ -484,7 +550,8 @@ func (g *Game) Snapshot() State {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	s := State{Players: len(g.players), Settings: g.settings, Tokens: g.tokens, LLMCalls: g.llmCalls,
-		Substrate: g.sub, Events: slices.Clone(g.events), Timings: map[string]Percentiles{}, Now: time.Now().UnixMilli()}
+		Substrate: g.sub, Awake: g.awake, Events: slices.Clone(g.events), Timings: map[string]Percentiles{}, Now: time.Now().UnixMilli()}
+	s.Awake.History = slices.Clone(g.awake.History)
 	for _, d := range g.ducks {
 		s.Ducks = append(s.Ducks, *d)
 	}

@@ -10,6 +10,10 @@
 <link rel="stylesheet" href="/duck-hunt/static/nes.css">
 <style>
   body { max-width: 480px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
+  #sky { display: block; width: calc(100% + 32px); margin: 0 -16px 8px; aspect-ratio: 16 / 9; background: var(--sky); }
+  #sound { position: absolute; right: 0; top: -2px; padding: 6px 8px; font-size: 8px; border-width: 2px; z-index: 1; }
+  .duck .actor { grid-column: 1 / -1; font-size: 8px; margin-top: 6px; color: var(--gray); word-break: break-all; }
+  .duck .actor b { font-weight: normal; }
   .hidden { display: none !important; }
   #err { color: var(--red); min-height: 1.6em; text-align: center; margin: 8px 0; }
   .duck { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
@@ -36,7 +40,9 @@
   </form>
 </section>
 
-<section id="game" class="hidden">
+<section id="game" class="hidden" style="position:relative">
+  <button id="sound" type="button">SOUND OFF</button>
+  <canvas id="sky" width="480" height="270" aria-label="The live Duck Hunt sky, same as the big screen"></canvas>
   <div class="hud"><span id="who"></span><span id="flyCount"></span></div>
   <div class="box">
     <div style="margin-bottom:8px">SELECT A DUCK TO HATCH</div>
@@ -53,6 +59,7 @@
 <div id="err" role="alert"></div>
 
 <script src="/duck-hunt/static/sprites.js"></script>
+<script src="/duck-hunt/static/sky.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -72,6 +79,12 @@ async function api(path, body) {
 
 function showError(e) { $("err").textContent = e ? String(e.message || e).toUpperCase() : ""; if (e) setTimeout(() => showError(null), 4000); }
 
+$("sound").onclick = () => {
+  const on = $("sound").textContent === "SOUND OFF";
+  if (on) Sfx.enable(); else Sfx.ctx?.suspend();
+  $("sound").textContent = on ? "SOUND ON" : "SOUND OFF";
+};
+
 $("joinForm").onsubmit = async (ev) => {
   ev.preventDefault();
   try { me = await api("join", { nick: $("nick").value }); start(); } catch (e) { showError(e); }
@@ -86,7 +99,7 @@ function start() {
   $("join").classList.add("hidden");
   $("game").classList.remove("hidden");
   $("who").textContent = "P1 " + me.nick.toUpperCase();
-  connectState(onState);
+  startSky($("sky"), { me: me.id, onState });
   requestAnimationFrame(animate);
 }
 
@@ -117,7 +130,8 @@ function renderDucks() {
         <div><div class="name"></div><div class="status"></div></div>
         <div class="quack hidden"></div>
         <div class="actions"><button class="q">QUACK!</button><button class="r">REVIVE</button></div>
-        <div class="times"></div>`;
+        <div class="times"></div>
+        <div class="actor"></div>`;
       el.querySelector(".q").onclick = () => act(d.id, "quack");
       el.querySelector(".r").onclick = () => act(d.id, "revive");
       root.append(el);
@@ -133,6 +147,12 @@ function renderDucks() {
     el.querySelector(".q").classList.toggle("hidden", d.state === "shot" || d.state === "reviving");
     el.querySelector(".times").textContent =
       `HATCHED IN ${fmtMs(d.hatchMs)}` + (d.shots ? ` · SHOT ×${d.shots}` : "") + (d.revives ? ` · REVIVED ×${d.revives}` : "");
+    const a = d.actor, awake = a && ["RUNNING", "RESUMING", "SUSPENDING"].includes(a.state);
+    el.querySelector(".actor").innerHTML = a
+      ? `SUBSTRATE ACTOR #${a.name.slice(-4).toUpperCase()}<br>${a.name}<br>` +
+        `<b class="${awake ? "yellow" : "muted"}">${awake ? "⚡ SANDBOX AWAKE" : "ZZ ASLEEP AS SNAPSHOT"}</b> · ${a.state}` +
+        (a.node ? `<br>NODE ${a.node}` : "")
+      : d.sessionId ? `SESSION ${d.sessionId}` : "";
   }
   for (const el of [...root.children]) if (!mine.some((d) => d.id === el.dataset.id)) el.remove();
 }

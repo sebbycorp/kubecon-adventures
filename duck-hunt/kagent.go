@@ -251,6 +251,41 @@ func (k *Kagent) waitState(ctx context.Context, sessionID string, want apiv1.Run
 	}
 }
 
+// Actor is a duck's Agent Substrate actor: every kagent session runs as exactly one.
+type Actor struct {
+	Name     string `json:"name"`     // "session-<session id>"
+	State    string `json:"state"`    // RUNNING, SUSPENDED, RESUMING, SUSPENDING, ...
+	Node     string `json:"node"`     // Kubernetes node holding its sandbox or local snapshot
+	Template string `json:"template"` // ActorTemplate (the duck Agent's prepared revision)
+}
+
+// ActorStates returns every session actor in the agent's namespace, keyed by session ID.
+func (k *Kagent) ActorStates(ctx context.Context) (map[string]Actor, error) {
+	out := map[string]Actor{}
+	page := &apiv1.PageRequest{}
+	for {
+		r, err := k.system.ListSubstrateActors(k.ctx(ctx), &apiv1.ListSubstrateActorsRequest{Atespace: k.agent.Namespace, Page: page})
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range r.GetActors() {
+			if id, ok := strings.CutPrefix(a.GetMetadata().GetName(), "session-"); ok {
+				out[id] = Actor{
+					Name:     a.GetMetadata().GetName(),
+					State:    strings.TrimPrefix(a.GetStatus().GetState().String(), "ACTOR_STATE_"),
+					Node:     a.GetStatus().GetAssignedNode(),
+					Template: a.GetActorTemplate().GetName(),
+				}
+			}
+		}
+		next := r.GetPage().GetNextPageToken()
+		if next == "" {
+			return out, nil
+		}
+		page = &apiv1.PageRequest{PageToken: next}
+	}
+}
+
 // SubstrateStats is the Substrate summary shown on the big screen.
 type SubstrateStats struct {
 	Actors      int64            `json:"actors"`

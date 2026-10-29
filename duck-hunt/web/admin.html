@@ -62,7 +62,7 @@
 
 <div class="box scroll">
   <table>
-    <thead><tr><th>PLAYER</th><th>DUCK</th><th>STATE</th><th>FLIGHT</th><th>IDLE</th><th>SHOT/REV/QK</th><th>HATCH</th><th>SUSPEND API</th><th>RESUME API</th><th>SESSION</th><th></th></tr></thead>
+    <thead><tr><th>PLAYER</th><th>DUCK</th><th>STATE</th><th>FLIGHT</th><th>IDLE</th><th>SHOT/REV/QK</th><th>HATCH</th><th>SUSPEND API</th><th>RESUME API</th><th>SUBSTRATE ACTOR</th><th>NODE</th><th></th></tr></thead>
     <tbody id="ducks"></tbody>
   </table>
 </div>
@@ -114,11 +114,12 @@ function render(s) {
       <td>${d.state === "flying" ? idle + "S" : "--"}</td>
       <td>${d.shots}/${d.revives}/${d.quacks}</td>
       <td>${fmtMs(d.hatchMs)}</td><td>${fmtMs(d.lastShotMs)}</td><td>${fmtMs(d.lastReviveMs)}</td>
-      <td class="mono">${esc((d.sessionId || "").slice(0, 13))}</td>
+      <td class="mono" title="${esc(d.actor?.name || d.sessionId)}">${d.actor ? `#${esc(d.actor.name.slice(-4).toUpperCase())} <span class="${["RUNNING", "RESUMING", "SUSPENDING"].includes(d.actor.state) ? "yellow" : "muted"}">${esc(d.actor.state)}</span>` : esc((d.sessionId || "").slice(0, 13))}</td>
+      <td class="mono">${esc(d.actor?.node || "--")}</td>
       <td><button data-a="shoot" data-id="${d.id}" ${d.state !== "flying" || d.busy ? "disabled" : ""}>SHOOT</button>
           <button data-a="revive" data-id="${d.id}" ${d.state !== "shot" || d.busy ? "disabled" : ""}>REVIVE</button>
           <button data-a="delete" data-id="${d.id}">DEL</button></td></tr>`;
-  }).join("") || `<tr><td colspan="11" class="muted">NO DUCKS YET</td></tr>`;
+  }).join("") || `<tr><td colspan="12" class="muted">NO DUCKS YET</td></tr>`;
 }
 
 $("ducks").onclick = (e) => {
