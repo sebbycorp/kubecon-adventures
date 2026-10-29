@@ -14,6 +14,7 @@ import (
 	kagenta2a "github.com/kagent-dev/kagent/go/api/a2a"
 	kclient "github.com/kagent-dev/kagent/go/api/client"
 	apiv1 "github.com/kagent-dev/kagent/go/api/gen/kagent/api/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -29,6 +30,7 @@ type Usage struct {
 type Kagent struct {
 	api      *kclient.APIClientSet
 	gateway  *kclient.GatewayClientSet
+	conn     grpc.ClientConnInterface
 	sessions apiv1.SessionServiceClient
 	system   apiv1.SystemServiceClient
 	agent    *apiv1.ResourceReference
@@ -51,6 +53,7 @@ func NewKagent(url, userID, namespace, agent string) (*Kagent, error) {
 	return &Kagent{
 		api:      api,
 		gateway:  gateway,
+		conn:     conn,
 		sessions: apiv1.NewSessionServiceClient(conn),
 		system:   apiv1.NewSystemServiceClient(conn),
 		agent:    &apiv1.ResourceReference{Namespace: namespace, Name: agent},
@@ -203,6 +206,52 @@ func taskUsage(task *a2atype.Task) Usage {
 		}
 	}
 	return u
+}
+
+// Checkpoint saves a session's latest finished turn (its Substrate snapshot, copied to a
+// tag) so it can be forked. kagent answers FailedPrecondition until the turn's snapshot is
+// durable, so this retries until the checkpoint is READY.
+func (k *Kagent) Checkpoint(ctx context.Context, sessionID, headTaskID string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	cps := apiv1.NewCheckpointServiceClient(k.conn)
+	req := &apiv1.CreateCheckpointRequest{SessionId: sessionID, RequestId: "cp-" + headTaskID, ExpectedHeadTaskId: headTaskID}
+	wait := 200 * time.Millisecond
+	for {
+		r, err := cps.CreateCheckpoint(k.ctx(ctx), req)
+		if err == nil {
+			cp := r.GetCheckpoint()
+			if cp.GetState() == apiv1.CheckpointState_CHECKPOINT_STATE_READY {
+				return cp.GetId(), nil
+			}
+			if cp.GetState() == apiv1.CheckpointState_CHECKPOINT_STATE_FAILED {
+				return "", fmt.Errorf("checkpoint failed: %s", cp.GetFailure().String())
+			}
+		} else if c := status.Code(err); c != codes.FailedPrecondition && c != codes.Unavailable && c != codes.Aborted {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("waiting for checkpoint: %w", ctx.Err())
+		case <-time.After(wait):
+		}
+		wait = min(2*wait, time.Second)
+	}
+}
+
+// Fork starts a new session (and Substrate actor) from a checkpoint. The fork shares the
+// conversation up to the checkpoint, then diverges.
+func (k *Kagent) Fork(ctx context.Context, checkpointID, requestID string) (string, error) {
+	var r *apiv1.ForkSessionResponse
+	err := retryBusy(ctx, func() (err error) {
+		r, err = apiv1.NewCheckpointServiceClient(k.conn).ForkSession(k.ctx(ctx), &apiv1.ForkSessionRequest{CheckpointId: checkpointID, RequestId: requestID})
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	id := r.GetSession().GetId()
+	return id, k.waitState(ctx, id, apiv1.RuntimeState_RUNTIME_STATE_READY)
 }
 
 // Suspend snapshots the session's actor and frees its sandbox.

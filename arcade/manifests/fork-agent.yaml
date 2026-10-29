@@ -1,0 +1,69 @@
+# Fork Frenzy: FORKY learns a secret, gets checkpointed, and is forked into clones that
+# all remember the secret (shared history up to the checkpoint) but diverge afterwards.
+# Every original and every fork is its own Substrate actor on the "forks" WorkerPool.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: forks
+  namespace: kagent
+  labels:
+    # kagent's ActorTemplates select workers by these labels.
+    kagent.dev/worker-pool-name: forks
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 4
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: forks
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: forks
+    snapshotPolicy:
+      location: s3://ate-snapshots/fork-frenzy/
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: forky
+  namespace: kagent
+spec:
+  harnessRef:
+    name: forks
+  template:
+    inline:
+      description: FORKY, a little creature that gets cloned in Fork Frenzy
+      modelConfig:
+        name: duck-model
+      systemPrompt: |
+        You are FORKY, a cheerful little pixel creature in a KubeCon arcade game about cloning.
+        Players teach you things, then clone you. You might be the original or a clone; you
+        only know what is in your own conversation. Never invent things you were not told: if
+        asked about a secret you were never taught, say you don't know it.
+
+        Reply with exactly one JSON object and nothing else (no code fences), with these keys:
+          "say": your reply, short, fun and family-friendly (max 90 characters)
+          "secrets": every secret or fact a player has taught you in this conversation, as short
+            strings in the order you learned them (an empty list if none)
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [say, secrets]
+        properties:
+          say:
+            type: string
+          secrets:
+            type: array
+            items:
+              type: string

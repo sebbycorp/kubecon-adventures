@@ -6,8 +6,8 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 |------|-----------|--------|--------|
 | Duck Hunt | Snapshots: idle agents sleep, suspend and resume | Playable | [docs/duck-hunt.md](docs/duck-hunt.md) |
 | Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
-| Fork Frenzy | Checkpoints and forks | Next | |
-| Agent Invaders | Scale and density | Planned | |
+| Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
+| Agent Invaders | Scale and density | Next | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
 ## Start
@@ -23,10 +23,11 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Arcade front page (players join once, then pick a game) | http://localhost:8090/ |
 | Duck Hunt phone / big screen (add `?autostart` for kiosk mode) | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
 | Sandbox Escape phone / big screen | http://localhost:8090/sandbox-escape, http://localhost:8090/sandbox-escape/screen |
+| Fork Frenzy phone / big screen | http://localhost:8090/fork-frenzy, http://localhost:8090/fork-frenzy/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
-`deploy.sh` can be rerun safely. It builds the image, pushes it to the local registry (`localhost:5001`) and rolls out a new version. `DUCK_WORKERS` sets the size of the duck worker pool (default 12). To reach the arcade from other machines, run `sudo ufw route allow proto tcp from any to any port 8090`. `./loadtest.sh [ducks]` runs a Duck Hunt load test.
+`deploy.sh` can be rerun safely. Game state (players, scores) lives in memory, so a redeploy starts a new round. Agent sessions stay in kagent until a round is reset from admin. It builds the image, pushes it to the local registry (`localhost:5001`) and rolls out a new version. `DUCK_WORKERS` sets the size of the duck worker pool (default 12). To reach the arcade from other machines, run `sudo ufw route allow proto tcp from any to any port 8090`. `./loadtest.sh [ducks]` runs a Duck Hunt load test.
 
 ## Layout
 
@@ -60,3 +61,14 @@ Each player gets BYTE, a prisoner agent (`manifests/escape-agent.yaml`, the `esc
 - `escaped`: never seen yet
 
 The screens show the real commands and output. Before anything is stored or shown, the backend redacts token-like strings and the values of key, token, secret and config variables, and trims output (`games/escape/game.go`, tested in `sanitize_test.go`). Each player can run one attempt at a time, with an 8-second cooldown between attempts.
+
+## Fork Frenzy
+
+Each player gets FORKY (`manifests/fork-agent.yaml`, the `forky` Agent on its own 4-worker `forks` pool). The player works through four steps:
+
+1. Teach FORKY one or more secrets (presets or up to 60 characters of their own).
+2. Checkpoint FORKY. This is kagent `CreateCheckpoint`: the latest finished turn's Substrate snapshot is copied to an immutable tag.
+3. Fork three clones from the checkpoint at once (kagent `ForkSession`). Each clone is a new session and its own Substrate actor, and takes a persona (pirate, chef, robot, ...).
+4. Teach one clone a new secret, then ask everyone.
+
+Every clone remembers the secrets from before the checkpoint, and only the taught clone knows the new one. On screen, each secret gets a colored dot, so shared memory shows as matching colors. Measured on this cluster: checkpoint about 50 ms, each fork 40 to 100 ms.

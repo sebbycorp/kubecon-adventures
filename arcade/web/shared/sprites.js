@@ -176,6 +176,26 @@ const BYTE = [
 const BYTE_COLORS = { green: "#00a800", blue: "#0078f8", red: "#f83800", purple: "#9878f8", gold: "#f8b800", pink: "#f878f8" };
 function byteSprite(color) { return sprite(BYTE, { B: BYTE_COLORS[color] || "#0078f8" }, "byte:" + color); }
 
+// FORKY, the Fork Frenzy blob (B = body in the player's color, L = belly).
+const FORKY = [
+  "....kkkkkk....",
+  "..kkBBBBBBkk..",
+  ".kBBBBBBBBBBk.",
+  ".kBwwBBBBwwBk.",
+  "kBBwkBBBBwkBBk",
+  "kBBBBBBBBBBBBk",
+  "kBBBBkkkkBBBBk",
+  "kBBBLLLLLLBBBk",
+  "kBBLLLLLLLLBBk",
+  ".kBBLLLLLLBBk.",
+  "..kkBBBBBBkk..",
+  "...kk.kk.kk...",
+];
+function forkySprite(color) {
+  const B = (typeof BYTE_COLORS !== "undefined" && BYTE_COLORS[color]) || "#00a800";
+  return sprite(FORKY, { B, L: "#fcfcfc" }, "forky:" + color);
+}
+
 const spriteCache = new Map();
 
 // sprite renders a character map into an offscreen canvas (cached).

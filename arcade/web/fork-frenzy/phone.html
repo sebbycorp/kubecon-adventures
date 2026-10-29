@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Fork Frenzy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/nes.css">
+<style>
+  body { max-width: 480px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
+  .hidden { display: none !important; }
+  #lab { display: block; width: calc(100% + 32px); margin: 0 -16px 8px; aspect-ratio: 16 / 9; background: #0c0418; }
+  .step { font-size: 9px; color: var(--orange); margin-bottom: 8px; }
+  .why { font-size: 8px; color: var(--gray); line-height: 1.8; margin-bottom: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .chips button { font-size: 8px; padding: 6px 8px; border-width: 2px; text-transform: none; }
+  .row { display: flex; gap: 8px; }
+  .row input { font-size: 9px; text-transform: none; }
+  .row button { font-size: 9px; padding: 8px; }
+  .big { width: 100%; margin-top: 4px; }
+  .creature { border-left: 4px solid #333; padding: 4px 8px; margin-bottom: 10px; font-size: 8px; line-height: 1.8; }
+  .creature .nm { color: var(--orange); }
+  .creature .say { color: var(--white); }
+  .dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; vertical-align: middle; }
+  .clonepick button.sel { color: var(--yellow); border-color: var(--yellow); }
+  #err { color: var(--red); min-height: 1.6em; text-align: center; margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="title" style="font-size:22px">FORK<br>FRENZY</div>
+<div class="sub" style="font-size:8px">CHECKPOINT AN AI AGENT. CLONE IT.</div>
+
+<section id="join" class="box hidden" style="margin-top:24px">
+  <form id="joinForm">
+    <label for="nick">ENTER YOUR NAME</label>
+    <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" required style="margin:12px 0">
+    <button type="submit" style="width:100%">START</button>
+  </form>
+</section>
+
+<section id="game" class="hidden">
+  <canvas id="lab" width="480" height="270" aria-label="Your cloning lab: FORKY, its checkpoint, and its clones"></canvas>
+  <div class="box" id="controls">
+    <div class="step" id="stepTitle"></div>
+    <div class="why" id="stepWhy"></div>
+    <div id="teachBox">
+      <div class="chips" id="presets">
+        <button>My favorite pizza is pineapple</button>
+        <button>My cat is named Kubelet</button>
+        <button>I came to KubeCon for the stickers</button>
+        <button>My lucky number is 42</button>
+      </div>
+      <div class="clonepick chips hidden" id="clonePick"></div>
+      <form class="row" id="teachForm">
+        <input id="secret" maxlength="60" placeholder="or type a secret..." aria-label="A secret to teach">
+        <button type="submit">TEACH</button>
+      </form>
+    </div>
+    <button class="big hidden" id="cpBtn">💾 CHECKPOINT FORKY</button>
+    <button class="big hidden" id="forkBtn">🧬 FORK ×3</button>
+    <button class="big hidden" id="askBtn">📣 ASK EVERYONE WHAT THEY KNOW</button>
+    <button class="big hidden" id="restartBtn" style="font-size:8px">START OVER</button>
+  </div>
+  <div class="box" id="familyBox"></div>
+</section>
+<div id="err" role="alert"></div>
+
+<script src="/static/sprites.js"></script>
+<script src="/fork-frenzy/static/lab.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let me = null, fam = null, pickedClone = null;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const STEPS = {
+  new: ["1. TEACH FORKY A SECRET", "THE SECRET LIVES IN FORKY'S CONVERSATION, INSIDE ITS OWN SUBSTRATE SANDBOX. TEACH ONE OR TWO."],
+  taught: ["2. CHECKPOINT FORKY", "A KAGENT CHECKPOINT SAVES FORKY'S SANDBOX SNAPSHOT AND CONVERSATION AS AN IMMUTABLE SUBSTRATE TAG. OR TEACH IT ANOTHER SECRET FIRST."],
+  checkpointed: ["3. FORK THREE CLONES", "EACH FORK IS A BRAND-NEW KAGENT SESSION AND ITS OWN SUBSTRATE ACTOR, STARTED FROM THE CHECKPOINT. ALL THREE AT ONCE."],
+  forked: ["4. SPLIT THEIR MEMORIES", "CLONES SHARE EVERYTHING UP TO THE CHECKPOINT AND NOTHING AFTER IT. TEACH ONE CLONE A NEW SECRET, THEN ASK EVERYONE."],
+};
+
+async function post(path, body = {}) {
+  const r = await fetch("/fork-frenzy/api/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+const act = (fn) => async () => { try { await fn(); } catch (e) { showError(e); } };
+function showError(e) { $("err").textContent = e ? String(e.message || e).toUpperCase() : ""; if (e) setTimeout(() => showError(null), 4000); }
+
+$("joinForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: $("nick").value }) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return showError(data.error || r.statusText);
+  me = data; start();
+};
+const teach = (secret) => act(() => post("teach", { secret, creature: pickedClone || "" }).then(() => { $("secret").value = ""; }))();
+document.querySelectorAll("#presets button").forEach((b) => b.onclick = () => teach(b.textContent));
+$("teachForm").onsubmit = (ev) => { ev.preventDefault(); teach($("secret").value); };
+$("cpBtn").onclick = act(() => post("checkpoint"));
+$("forkBtn").onclick = act(() => post("fork"));
+$("askBtn").onclick = act(() => post("ask"));
+$("restartBtn").onclick = act(() => post("restart").then(() => { pickedClone = null; }));
+
+function start() {
+  $("join").classList.add("hidden");
+  $("game").classList.remove("hidden");
+  startLab($("lab"), { me: me.id, rows: 1, onState });
+}
+
+function onState(s) {
+  fam = (s.families || []).find((f) => f.playerId === me.id) || null;
+  const phase = fam?.phase || "new", busy = !!fam?.busy;
+  $("stepTitle").textContent = busy ? "WORKING..." : STEPS[phase][0];
+  $("stepWhy").textContent = fam?.error ? "ERROR: " + fam.error.toUpperCase() : STEPS[phase][1];
+  $("teachBox").classList.toggle("hidden", phase === "checkpointed");
+  $("cpBtn").classList.toggle("hidden", phase !== "taught");
+  $("forkBtn").classList.toggle("hidden", phase !== "checkpointed");
+  $("askBtn").classList.toggle("hidden", phase !== "forked");
+  $("restartBtn").classList.toggle("hidden", phase === "new");
+  document.querySelectorAll("#controls button, #controls input").forEach((b) => b.disabled = busy);
+  // after forking, teaching goes to one picked clone
+  const clones = phase === "forked" ? fam.clones : [];
+  $("clonePick").classList.toggle("hidden", !clones.length);
+  $("presets").classList.toggle("hidden", phase === "forked");
+  if (clones.length && !clones.some((c) => c.id === pickedClone)) pickedClone = clones[1]?.id || clones[0].id;
+  $("clonePick").innerHTML = clones.map((c) => `<button data-id="${c.id}" class="${c.id === pickedClone ? "sel" : ""}">TEACH ${esc(c.name)} (${esc(c.persona.toUpperCase())})</button>`).join("");
+  $("clonePick").querySelectorAll("button").forEach((b) => b.onclick = () => { pickedClone = b.dataset.id; onState(s); });
+  if (phase !== "forked") pickedClone = null;
+  renderFamily(s);
+}
+
+function renderFamily() {
+  if (!fam) { $("familyBox").innerHTML = `<div class="why">NO CLONES YET.</div>`; return; }
+  const order = [];
+  for (const c of [fam.original, ...fam.clones]) for (const sec of c.secrets || []) if (!order.includes(sec.toLowerCase())) order.push(sec.toLowerCase());
+  const color = (sec) => SECRET_COLORS[order.indexOf(sec.toLowerCase()) % SECRET_COLORS.length];
+  const card = (c, extra) => `<div class="creature" style="border-color:${c.persona ? "#80d010" : "#f8b800"}">
+      <div class="nm">${esc(c.name)}${c.persona ? " · " + esc(c.persona.toUpperCase()) : ""}${extra || ""}</div>
+      ${c.say ? `<div class="say">“${esc(c.say.toUpperCase())}”</div>` : ""}
+      <div>${(c.secrets || []).map((sec) => `<span class="dot" style="background:${color(sec)}"></span>${esc(sec.toUpperCase())}`).join("<br>") || '<span class="muted">KNOWS NO SECRETS</span>'}</div>
+      ${c.actor ? `<div class="muted">SUBSTRATE ACTOR #${esc(c.actor.name.slice(-4).toUpperCase())} · ${esc(c.actor.state)}</div>` : ""}
+    </div>`;
+  $("familyBox").innerHTML = card(fam.original, fam.checkpointMs ? ` · CHECKPOINT ${fmtMs(fam.checkpointMs)}` : "") +
+    fam.clones.map((c) => card(c, c.forkMs ? ` · FORKED IN ${fmtMs(c.forkMs)}` : "")).join("");
+}
+
+fetch("/api/me").then((r) => r.ok ? r.json() : Promise.reject()).then((p) => { me = p; start(); })
+  .catch(() => { $("join").classList.remove("hidden"); $("nick").focus(); });
+</script>
+</body>
+</html>
