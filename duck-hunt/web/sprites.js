@@ -5,7 +5,7 @@
 
 const NES = {
   sky: "#3cbcfc", skyDeep: "#0078f8", black: "#000000", white: "#fcfcfc",
-  grass: "#80d010", grassMid: "#00a800", grassDark: "#005800",
+  grass: "#80d010", grassMid: "#00a800", grassDark: "#005800", green: "#80d010",
   dirt: "#ac7c00", dirtDark: "#503000", orange: "#fc9838", red: "#d82800",
   yellow: "#f8b800", trunk: "#7c3c00", skin: "#fcbcb0", gray: "#bcbcbc",
 };

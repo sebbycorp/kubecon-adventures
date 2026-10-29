@@ -14,6 +14,7 @@
   #sound { position: absolute; right: 0; top: -2px; padding: 6px 8px; font-size: 8px; border-width: 2px; z-index: 1; }
   .duck .actor { grid-column: 1 / -1; font-size: 8px; margin-top: 6px; color: var(--gray); word-break: break-all; }
   .duck .actor b { font-weight: normal; }
+  .duck canvas.sv { grid-column: 1 / -1; width: 100%; height: auto; aspect-ratio: 320 / 220; margin-top: 10px; border: 2px solid #333; background: #000; }
   .duck .timeline { grid-column: 1 / -1; margin-top: 10px; font-size: 8px; line-height: 1.7; }
   .duck .timeline h3 { font-size: 8px; font-weight: normal; color: var(--orange); margin: 0 0 4px; }
   .duck .timeline li { list-style: none; margin: 0 0 4px; padding-left: 10px; border-left: 2px solid #333; }
@@ -66,11 +67,12 @@
 
 <script src="/duck-hunt/static/sprites.js"></script>
 <script src="/duck-hunt/static/sky.js"></script>
+<script src="/duck-hunt/static/substrate-view.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const KIND_NAMES = { fast: "FLY FAST", zigzag: "ZIG-ZAG", showoff: "SHOW OFF" };
-let me = null, mine = [], idleSeconds = 20, serverNow = Date.now(), clockSkew = 0;
+let lastState = {}, me = null, mine = [], idleSeconds = 20, serverNow = Date.now(), clockSkew = 0;
 
 async function api(path, body) {
   const r = await fetch("/duck-hunt/api/" + path, {
@@ -110,6 +112,7 @@ function start() {
 }
 
 function onState(s) {
+  lastState = s;
   idleSeconds = s.settings.idleSeconds;
   clockSkew = Date.now() - s.now;
   mine = (s.ducks || []).filter((d) => d.playerId === me.id);
@@ -138,6 +141,7 @@ function renderDucks() {
         <div class="actions"><button class="q">QUACK!</button><button class="r">REVIVE</button></div>
         <div class="times"></div>
         <div class="actor"></div>
+        <canvas class="sv" width="320" height="220" aria-label="Live diagram of how Agent Substrate runs this duck"></canvas>
         <div class="timeline"><h3>WHAT JUST HAPPENED</h3><ul style="margin:0;padding:0"></ul></div>`;
       el.querySelector(".q").onclick = () => act(d.id, "quack");
       el.querySelector(".r").onclick = () => act(d.id, "revive");
@@ -194,6 +198,8 @@ function animate(now) {
     if (d.state === "flying") drawSprite(g, duckSprite(FLAP[Math.floor(now / (160 - d.flight.speed * 10)) % 4], d.color), 8, 6);
     else if (d.state === "shot" || d.state === "reviving") drawSprite(g, duckSprite("shot", d.color), 8, 8, false, true);
     else drawSprite(g, eggSprite(d.color), 11, 8 + Math.sin(now / 90));
+    if (!el.view) el.view = new SubstrateView(el.querySelector(".sv"));
+    el.view.draw(d, lastState, now);
     const [txt, cls] = statusText(d), st = el.querySelector(".status");
     st.textContent = txt; st.className = "status " + cls;
   }
