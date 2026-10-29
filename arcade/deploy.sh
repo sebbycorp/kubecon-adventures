@@ -25,6 +25,10 @@ echo "==> duck Agent"
 k apply -f manifests/duck-agent.yaml
 k -n kagent wait agent/duck --for=condition=Ready --timeout 5m
 
+echo "==> Sandbox Escape: escape WorkerPool and BYTE Agent"
+k apply -f manifests/escape-agent.yaml
+k -n kagent wait agent/escapee --for=condition=Ready --timeout 5m
+
 echo "==> arcade image"
 IMAGE=localhost:5001/arcade:$(date +%Y%m%d-%H%M%S)
 docker build -q -t "$IMAGE" .
@@ -48,4 +52,5 @@ fi
 echo
 echo "Arcade:     http://localhost:8090/"
 echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen)"
+echo "Escape:     http://localhost:8090/sandbox-escape (big screen: /sandbox-escape/screen)"
 echo "Admin:      http://localhost:8090/admin"

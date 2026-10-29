@@ -5,8 +5,8 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Game | Shows off | Status | Design |
 |------|-----------|--------|--------|
 | Duck Hunt | Snapshots: idle agents sleep, suspend and resume | Playable | [docs/duck-hunt.md](docs/duck-hunt.md) |
-| Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Next | |
-| Fork Frenzy | Checkpoints and forks | Planned | |
+| Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
+| Fork Frenzy | Checkpoints and forks | Next | |
 | Agent Invaders | Scale and density | Planned | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
@@ -22,6 +22,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 |------|-----|
 | Arcade front page (players join once, then pick a game) | http://localhost:8090/ |
 | Duck Hunt phone / big screen (add `?autostart` for kiosk mode) | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
+| Sandbox Escape phone / big screen | http://localhost:8090/sandbox-escape, http://localhost:8090/sandbox-escape/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -47,3 +48,15 @@ Agents run with kagent's built-in `bash`, `read_file` and `write_file` tools ins
 - **Blocked:** the internet (no DNS), cloud metadata (169.254.169.254), the Kubernetes API, Substrate's snapshot store, and this host's services (Vault, Homepage, the kagent API). The host services got a bare 403 from Substrate's egress layer.
 - **Reachable:** only agentgateway's LLM route.
 - **Credentials:** the sandbox's `OPENAI_API_KEY` is a 26-character `kagent…` placeholder. The real key is added by agentgateway.
+
+## Sandbox Escape
+
+Each player gets BYTE, a prisoner agent (`manifests/escape-agent.yaml`, the `escapee` Agent on its own 4-worker `escape` pool). The player picks a plan (phone home, steal the key, ask the cloud, talk to Kubernetes, break the kernel) or types their own idea (max 120 characters, family-friendly filter). BYTE really tries the plan with kagent's built-in `bash` and file tools inside its gVisor sandbox. It then judges, from the real output, what stopped it:
+
+- `gvisor`: the user-space kernel
+- `egress`: Substrate's network policy
+- `agentgateway`: only a placeholder key in the sandbox
+- `nothing`: the command ran but led nowhere
+- `escaped`: never seen yet
+
+The screens show the real commands and output. Before anything is stored or shown, the backend redacts token-like strings and the values of key, token, secret and config variables, and trims output (`games/escape/game.go`, tested in `sanitize_test.go`). Each player can run one attempt at a time, with an 8-second cooldown between attempts.

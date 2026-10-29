@@ -84,10 +84,55 @@ func (k *Kagent) CreateSession(ctx context.Context, name string) (string, error)
 
 // Reply is an agent's answer to one prompt.
 type Reply struct {
-	JSON  string // structured output (when the Agent declares an outputSchema)
-	Text  string // plain text parts
+	JSON  string     // structured output (when the Agent declares an outputSchema)
+	Text  string     // plain text parts
+	Tools []ToolCall // tool calls the agent made, in order, with their results
 	Usage Usage
 	Task  *a2atype.Task
+}
+
+// ToolCall is one tool the agent ran (for example kagent's built-in bash) and its result.
+type ToolCall struct {
+	Name   string         `json:"name"`
+	Args   map[string]any `json:"args,omitempty"`
+	Output string         `json:"output"`
+}
+
+// toolCalls pairs kagent's function_call and function_response data parts by call ID.
+func toolCalls(task *a2atype.Task) []ToolCall {
+	var calls []ToolCall
+	byID := map[string]int{}
+	for _, artifact := range task.Artifacts {
+		for _, part := range artifact.Parts {
+			data, ok := part.Data().(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := data["id"].(string)
+			switch part.Meta()["kagent.dev/a2a/part-type"] {
+			case "function_call":
+				name, _ := data["name"].(string)
+				args, _ := data["args"].(map[string]any)
+				byID[id] = len(calls)
+				calls = append(calls, ToolCall{Name: name, Args: args})
+			case "function_response":
+				i, ok := byID[id]
+				if !ok {
+					continue
+				}
+				if resp, ok := data["response"].(map[string]any); ok {
+					switch v := resp["result"].(type) {
+					case string:
+						calls[i].Output = v
+					default:
+						b, _ := json.Marshal(resp)
+						calls[i].Output = string(b)
+					}
+				}
+			}
+		}
+	}
+	return calls
 }
 
 // Decode unmarshals the structured output (or JSON-looking text) into v.
@@ -143,6 +188,7 @@ func (k *Kagent) Prompt(ctx context.Context, sessionID, text string) (Reply, err
 		}
 	}
 	reply.Text = out.String()
+	reply.Tools = toolCalls(task)
 	return reply, nil
 }
 

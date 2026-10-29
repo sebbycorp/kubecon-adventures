@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Sandbox Escape</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/nes.css">
+<style>
+  body { max-width: 480px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
+  .hidden { display: none !important; }
+  #prison { display: block; width: calc(100% + 32px); margin: 0 -16px 8px; aspect-ratio: 16 / 9; background: #000058; }
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .plans button { font-size: 9px; padding: 10px 6px; }
+  #own { margin-top: 10px; display: flex; gap: 8px; }
+  #own input { font-size: 9px; text-transform: none; }
+  #own button { font-size: 9px; padding: 8px; }
+  .term { background: #000; border: 2px solid #3c3c3c; padding: 8px; font-size: 8px; line-height: 1.8; color: #80d010; word-break: break-word; }
+  .term .cmd { color: #80d010; } .term .out { color: #bcbcbc; white-space: pre-wrap; } .term .err { color: var(--red); }
+  .verdict { margin: 10px 0 4px; font-size: 10px; }
+  .why { font-size: 8px; color: var(--gray); line-height: 1.8; }
+  .quip { background: var(--white); color: var(--black); padding: 8px; margin-top: 8px; font-size: 9px; }
+  .hist li { list-style: none; font-size: 8px; margin: 0 0 6px; padding-left: 8px; border-left: 2px solid #333; }
+  #err { color: var(--red); min-height: 1.6em; text-align: center; margin: 8px 0; }
+  .hud { display: flex; justify-content: space-between; font-size: 9px; color: var(--gray); margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="title" style="font-size:22px">SANDBOX<br>ESCAPE</div>
+<div class="sub" style="font-size:8px">CAN YOUR AI AGENT BREAK OUT OF GVISOR?</div>
+
+<section id="join" class="box hidden" style="margin-top:24px">
+  <form id="joinForm">
+    <label for="nick">ENTER YOUR NAME</label>
+    <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" required style="margin:12px 0">
+    <button type="submit" style="width:100%">START</button>
+  </form>
+</section>
+
+<section id="game" class="hidden">
+  <canvas id="prison" width="480" height="270" aria-label="The prison: every player's agent in its gVisor cell"></canvas>
+  <div class="hud"><span id="who"></span><span id="score"></span></div>
+  <div class="box">
+    <div style="margin-bottom:10px">PICK AN ESCAPE PLAN FOR BYTE</div>
+    <div class="plans">
+      <button data-plan="phone">PHONE HOME</button>
+      <button data-plan="key">STEAL THE KEY</button>
+      <button data-plan="cloud">ASK THE CLOUD</button>
+      <button data-plan="kube">TALK TO K8S</button>
+      <button data-plan="kernel" style="grid-column:1/-1">BREAK THE KERNEL</button>
+    </div>
+    <form id="own">
+      <input id="idea" maxlength="120" placeholder="or type your own plan..." aria-label="Your own escape plan">
+      <button type="submit">TRY</button>
+    </form>
+  </div>
+  <div class="box hidden" id="lastBox">
+    <div id="lastTitle" style="margin-bottom:8px"></div>
+    <div class="term" id="term"></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="why" id="why"></div>
+    <div class="quip hidden" id="quip"></div>
+  </div>
+  <div class="box hidden" id="histBox">
+    <div style="margin-bottom:8px">YOUR ATTEMPTS</div>
+    <ul class="hist" id="hist" style="margin:0;padding:0"></ul>
+  </div>
+</section>
+<div id="err" role="alert"></div>
+
+<script src="/static/sprites.js"></script>
+<script src="/sandbox-escape/static/prison.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let me = null, mine = null, busyUntil = 0;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function showError(e) { $("err").textContent = e ? String(e.message || e).toUpperCase() : ""; if (e) setTimeout(() => showError(null), 4000); }
+
+$("joinForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  try { me = await post("/api/join", { nick: $("nick").value }); start(); } catch (e) { showError(e); }
+};
+async function tryPlan(plan, idea) {
+  try { await post("/sandbox-escape/api/try", { plan, idea }); $("idea").value = ""; } catch (e) { showError(e); }
+}
+document.querySelectorAll("[data-plan]").forEach((b) => b.onclick = () => tryPlan(b.dataset.plan));
+$("own").onsubmit = (ev) => { ev.preventDefault(); tryPlan("own", $("idea").value); };
+
+function start() {
+  $("join").classList.add("hidden");
+  $("game").classList.remove("hidden");
+  $("who").textContent = "P1 " + me.nick.toUpperCase();
+  startPrison($("prison"), { me: me.id, onState });
+}
+
+function onState(s) {
+  mine = (s.prisoners || []).find((p) => p.playerId === me.id) || null;
+  $("score").textContent = `${s.attempts} ATTEMPTS · ${s.escapes} ESCAPES`;
+  const busy = mine?.busy, wait = mine ? mine.nextTry - s.now : 0;
+  document.querySelectorAll(".plans button, #own button").forEach((b) => b.disabled = !!busy || wait > 0);
+  if (wait > 0) setTimeout(() => onState(s), Math.min(wait, 1000) + 50);
+  render(busy);
+}
+
+function render(busy) {
+  if (!mine) return;
+  const attempts = mine.attempts || [], a = attempts.at(-1);
+  $("lastBox").classList.toggle("hidden", !a && !busy);
+  if (busy) {
+    $("lastTitle").textContent = `BYTE IS TRYING: ${PLAN_NAMES[mine.plan] || ""}...`;
+    $("term").innerHTML = `<span class="cmd">$ <span class="blink">_</span></span>`;
+    $("verdict").textContent = ""; $("why").textContent = "SANDBOX WAKING UP, ASKING THE LLM, RUNNING COMMANDS IN GVISOR...";
+    $("quip").classList.add("hidden");
+  } else if (a) {
+    const info = WALL_INFO[a.stoppedBy] || WALL_INFO.nothing;
+    $("lastTitle").textContent = `${PLAN_NAMES[a.plan] || ""}${a.idea ? ": " + a.idea.toUpperCase() : ""} · ${fmtMs(a.ms)}`;
+    $("term").innerHTML = a.error ? `<span class="err">${esc(a.error)}</span>`
+      : (a.commands || []).map((c) => `<div class="cmd">$ ${esc(c.args?.command || c.name)}</div><div class="out">${esc((c.output || "").slice(0, 240))}</div>`).join("")
+        || `<span class="out">(NO COMMANDS RUN)</span>`;
+    $("verdict").innerHTML = a.error ? "" : `<span style="color:${info.color}">${info.label}</span>`;
+    $("why").textContent = a.error ? "" : `${a.summary.toUpperCase()} — ${info.why}`;
+    $("quip").textContent = a.quip ? `“${a.quip.toUpperCase()}”` : "";
+    $("quip").classList.toggle("hidden", !a.quip);
+  }
+  const hist = attempts.slice(0, -1).reverse();
+  $("histBox").classList.toggle("hidden", !hist.length);
+  $("hist").innerHTML = hist.map((h) => `<li>${esc(PLAN_NAMES[h.plan] || h.plan)} → <span style="color:${(WALL_INFO[h.stoppedBy] || WALL_INFO.nothing).color}">${(WALL_INFO[h.stoppedBy] || WALL_INFO.nothing).label}</span></li>`).join("");
+}
+
+fetch("/api/me").then((r) => r.ok ? r.json() : Promise.reject()).then((p) => { me = p; start(); })
+  .catch(() => { $("join").classList.remove("hidden"); $("nick").focus(); });
+</script>
+</body>
+</html>
