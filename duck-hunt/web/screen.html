@@ -123,7 +123,7 @@ function renderPanel(s) {
   $("tokens").textContent = (s.tokens.inputTokens + s.tokens.outputTokens).toLocaleString();
 }
 
-const sky = startSky(document.getElementById("sky"), { intro: params.has("autostart"), onState: renderPanel, onTicker: ticker });
+const sky = startSky(document.getElementById("sky"), { intro: params.has("autostart"), narrate: true, onState: renderPanel, onTicker: ticker });
 
 $("start").onclick = $("start").onkeydown = () => { Sfx.enable(); $("start").remove(); sky.intro(); };
 // Kiosk mode: ?autostart skips the title card (browsers keep sound off until a click).

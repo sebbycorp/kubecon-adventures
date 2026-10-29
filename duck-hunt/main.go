@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -86,6 +87,33 @@ func routes(g *Game) http.Handler {
 
 	// Player API
 	mux.HandleFunc("GET /duck-hunt/api/events", g.hub.ServeSSE)
+	// Flat numbers for dashboards (Homepage customapi widgets).
+	mux.HandleFunc("GET /duck-hunt/api/stats", func(w http.ResponseWriter, r *http.Request) {
+		s := g.Snapshot()
+		out := map[string]any{
+			"pools": len(s.Substrate.Pools), "workers": s.Substrate.Workers, "agents": len(s.Substrate.Agents),
+			"actors": s.Substrate.Actors, "running": s.Substrate.Running, "suspended": s.Substrate.Suspended,
+			"players": s.Players, "ducks": len(s.Ducks), "llmCalls": s.LLMCalls,
+			"tokens": s.Tokens.Input + s.Tokens.Output, "duckSandboxesAwake": s.Awake.Now, "duckWakeUps": s.Awake.WakeUps,
+		}
+		flying, down := 0, 0
+		for _, d := range s.Ducks {
+			switch d.State {
+			case Flying:
+				flying++
+			case Shot, Reviving:
+				down++
+			}
+		}
+		out["ducksFlying"], out["ducksDown"] = flying, down
+		for _, k := range []string{"snapshot", "restore", "hatch"} {
+			out[k+"P50Ms"] = s.Timings[k].P50
+		}
+		for _, p := range s.Substrate.Pools {
+			out["pool_"+p.Name] = fmt.Sprintf("%d/%d workers", p.Workers, p.Replicas)
+		}
+		writeJSON(w, out)
+	})
 	mux.HandleFunc("POST /duck-hunt/api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -20,6 +20,45 @@ const cross = { x: W / 2, y: 90, tx: W / 2, ty: 90, on: false };
 const DOG_COLORS = { B: "#c84c0c", L: "#fc9838", D: "#7c2c00", P: "#f878f8" };
 
 function rand(a, b) { return a + Math.random() * (b - a); }
+
+// ---- narrator: explains what Substrate/kagent just did, with real numbers ----
+const narr = { queue: [], cur: null, until: 0, lesson: 0, nextLesson: 0 };
+const LESSONS = [
+  () => "EVERY DUCK IS AN AI AGENT. HATCHING ONE CREATES A KAGENT SESSION, WHICH RUNS AS ITS OWN AGENT SUBSTRATE ACTOR.",
+  () => "EACH ACTOR RUNS IN A GVISOR SANDBOX: A USER-SPACE KERNEL BETWEEN THE AGENT AND THE HOST.",
+  () => `IDLE AGENTS SLEEP AS SNAPSHOTS. SUBSTRATE SAVES THE WHOLE SANDBOX IN ~${fmtMs(state?.timings?.snapshot?.p50 || 50)} AND FREES THE WORKER.`,
+  () => `A PROMPT WAKES IT UP: SUBSTRATE RESTORES THE SNAPSHOT IN ~${fmtMs(state?.timings?.restore?.p50 || 200)}, CONVERSATION INCLUDED.`,
+  () => "THE HUNTER'S SHOT IS A KAGENT SUSPEND. REVIVE IS A RESUME. SAME AGENT, SAME MEMORY.",
+  () => "AGENTGATEWAY HOLDS THE OPENAI KEY. THE DUCKS NEVER SEE IT, AND EVERY LLM CALL IS METERED.",
+  () => "SCAN THE QR CODE TO HATCH YOUR OWN AI DUCK!",
+];
+function narrate(text, color = NES.white, prio = 1) {
+  if (!opts.narrate) return;
+  narr.queue.push({ text, color, prio });
+  // Wake/sleep chatter (prio 0) gives way when lots is happening.
+  while (narr.queue.length > 3) {
+    const i = narr.queue.findIndex((n) => n.prio === 0);
+    narr.queue.splice(i >= 0 ? i : 0, 1);
+  }
+}
+function stepNarrator(now, attract) {
+  if (now < narr.until) return;
+  if (narr.queue.length) { narr.cur = narr.queue.shift(); narr.until = now + 3800; return; }
+  if (attract && now > narr.nextLesson) {
+    narr.cur = { text: LESSONS[narr.lesson++ % LESSONS.length](), color: NES.white, lesson: true };
+    narr.until = now + 6500; narr.nextLesson = now + 6500;
+    return;
+  }
+  narr.cur = null;
+}
+function drawNarrator(now) {
+  const n = narr.cur;
+  if (!opts.narrate || !n) return;
+  const lines = wrap(n.text, 50), w = 330, h = lines.length * 10 + 12, x = (W - w) / 2 + 30, y = 6;
+  block(x - 3, y - 3, w + 6, h + 6, NES.white); block(x - 1, y - 1, w + 2, h + 2, NES.black);
+  if (n.lesson) text("HOW IT WORKS", x + 6, y + 3, NES.orange, "left", 6);
+  lines.forEach((l, i) => text(l, x + 6, y + (n.lesson ? 12 : 6) + i * 10, n.color, "left", 6));
+}
 const typicalSnapshot = () => state?.timings?.snapshot?.p50 || 0;
 
 function newSim(d, demo = false) {
@@ -69,7 +108,14 @@ function onEvent(e) {
   const m = sims.get(e.duckId);
   switch (e.type) {
     case "hatch":
+      narrate(`${e.nick.toUpperCase()} HATCHED A DUCK: KAGENT SESSION + SUBSTRATE ACTOR READY IN ${fmtMs(e.ms)}.`, NES.green);
       opts.onTicker?.(`<span class="green">${esc(e.nick)}</span> HATCHED IN ${fmtMs(e.ms)}`);
+      break;
+    case "wake":
+      narrate(`${e.nick.toUpperCase()}'S DUCK WOKE UP: SANDBOX RESTORED FROM ITS SNAPSHOT${e.ms ? ` (~${fmtMs(e.ms)})` : ""}.`, NES.yellow, 0);
+      break;
+    case "sleep":
+      narrate(`${e.nick.toUpperCase()}'S DUCK FELL ASLEEP AFTER ${fmtMs(e.ms)} AWAKE: SNAPSHOT SAVED, WORKER FREE AGAIN.`, NES.white, 0);
       break;
     case "quack":
       if (m) m.bubble = { text: e.text, until: performance.now() + 6000 };
@@ -83,6 +129,7 @@ function onEvent(e) {
         m.pendingShot = e.ms || 0;
         if (m.mode === "fly" && !m.aimUntil) m.aimUntil = performance.now() + 1100;
       }
+      narrate(`THE HUNTER SUSPENDED ${e.nick.toUpperCase()}'S SESSION. SANDBOX FREED, MEMORY SAFE IN A SNAPSHOT${e.ms ? ` (${fmtMs(e.ms)})` : ""}.`, NES.yellow);
       opts.onTicker?.(`<span class="red">${esc(e.nick)}</span> SHOT! SANDBOX SNAPSHOTTED${e.ms ? ` <span class="yellow">${fmtMs(e.ms)}</span>` : ""}`);
       break;
     case "revive":
@@ -92,6 +139,7 @@ function onEvent(e) {
       }
       Sfx.revive();
       dogLaugh(m ? m.x : W / 2);
+      narrate(`${e.nick.toUpperCase()} REVIVED THEIR DUCK: KAGENT RESUMED THE SESSION AND SUBSTRATE RESTORES IT${e.ms ? ` IN ~${fmtMs(e.ms)}` : ""}. IT REMEMBERS!`, NES.green);
       opts.onTicker?.(`<span class="green">${esc(e.nick)}</span> REVIVED! RESTORED${e.ms ? ` <span class="yellow">${fmtMs(e.ms)}</span>` : ""}`);
       break;
   }
@@ -439,6 +487,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   stepDemo(now);
+  stepNarrator(now, ![...sims.values()].some((m) => !m.demo));
   for (const m of [...sims.values()]) step(m, dt, now);
   stepDog(now, dt);
   if (![...sims.values()].some((m) => m.aimUntil)) cross.on = false;
@@ -474,7 +523,8 @@ function frame(now) {
     }
     drawHUD(state);
     drawGun(now);
-    if (![...sims.values()].some((m) => !m.demo)) {
+    drawNarrator(now);
+    if (!opts.narrate && !opts.me && ![...sims.values()].some((m) => !m.demo)) {
       if (Math.floor(now / 600) % 2) text("SCAN THE QR CODE TO HATCH", W / 2 - 40, 14, NES.white, "center", 8);
       text("YOUR OWN AI DUCK!", W / 2 - 40, 26, NES.yellow, "center", 8);
     }

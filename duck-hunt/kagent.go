@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -286,18 +287,38 @@ func (k *Kagent) ActorStates(ctx context.Context) (map[string]Actor, error) {
 	}
 }
 
-// SubstrateStats is the Substrate summary shown on the big screen.
+// SubstrateStats is the arcade-wide Agent Substrate picture: every worker pool and
+// every agent (all games), not just ducks.
 type SubstrateStats struct {
 	Actors      int64            `json:"actors"`
 	Running     int64            `json:"running"`
+	Suspended   int64            `json:"suspended"`
 	Workers     int64            `json:"workers"`
 	BusyWorkers int64            `json:"busyWorkers"`
 	ByState     map[string]int64 `json:"byState"`
+	Pools       []PoolStats      `json:"pools"`
+	Agents      []AgentStats     `json:"agents"`
 	Error       string           `json:"error,omitempty"`
 }
 
+type PoolStats struct {
+	Name     string   `json:"name"`
+	Replicas int64    `json:"replicas"` // desired workers (WorkerPool spec)
+	Workers  int      `json:"workers"`  // workers registered with Substrate
+	Nodes    []string `json:"nodes"`
+}
+
+// AgentStats groups actors by the kagent Agent whose template they run.
+type AgentStats struct {
+	Name      string `json:"name"`
+	Actors    int    `json:"actors"`
+	Awake     int    `json:"awake"`
+	Suspended int    `json:"suspended"`
+}
+
 func (k *Kagent) Substrate(ctx context.Context) (SubstrateStats, error) {
-	r, err := k.system.GetSubstrateSummary(k.ctx(ctx), &apiv1.GetSubstrateSummaryRequest{})
+	ctx = k.ctx(ctx)
+	r, err := k.system.GetSubstrateSummary(ctx, &apiv1.GetSubstrateSummaryRequest{})
 	if err != nil {
 		return SubstrateStats{}, err
 	}
@@ -307,7 +328,85 @@ func (k *Kagent) Substrate(ctx context.Context) (SubstrateStats, error) {
 		ByState: map[string]int64{}, Error: r.GetAteApiError(),
 	}
 	for _, c := range r.GetActorStatusCounts() {
-		s.ByState[strings.TrimPrefix(c.GetState().String(), "ACTOR_STATE_")] = c.GetCount()
+		st := strings.TrimPrefix(c.GetState().String(), "ACTOR_STATE_")
+		s.ByState[st] = c.GetCount()
 	}
+	s.Suspended = s.ByState["SUSPENDED"]
+
+	pools := map[string]*PoolStats{}
+	for _, wp := range r.GetWorkerPools() {
+		ps := &PoolStats{Name: wp.GetRef().GetName()}
+		if spec, ok := wp.GetResource().GetValue().AsMap()["spec"].(map[string]any); ok {
+			if n, ok := spec["replicas"].(float64); ok {
+				ps.Replicas = int64(n)
+			}
+		}
+		pools[ps.Name] = ps
+	}
+	page := &apiv1.PageRequest{}
+	for {
+		w, err := k.system.ListSubstrateWorkers(ctx, &apiv1.ListSubstrateWorkersRequest{Page: page})
+		if err != nil {
+			return s, err
+		}
+		for _, wk := range w.GetWorkers() {
+			ps, ok := pools[wk.GetWorkerPool()]
+			if !ok {
+				ps = &PoolStats{Name: wk.GetWorkerPool()}
+				pools[ps.Name] = ps
+			}
+			ps.Workers++
+			if n := wk.GetNodeName(); n != "" && !slices.Contains(ps.Nodes, n) {
+				ps.Nodes = append(ps.Nodes, n)
+			}
+		}
+		if page = (&apiv1.PageRequest{PageToken: w.GetPage().GetNextPageToken()}); page.PageToken == "" {
+			break
+		}
+	}
+	for _, ps := range pools {
+		slices.Sort(ps.Nodes)
+		s.Pools = append(s.Pools, *ps)
+	}
+	slices.SortFunc(s.Pools, func(a, b PoolStats) int { return strings.Compare(a.Name, b.Name) })
+
+	agents := map[string]*AgentStats{}
+	page = &apiv1.PageRequest{}
+	for {
+		a, err := k.system.ListSubstrateActors(ctx, &apiv1.ListSubstrateActorsRequest{Page: page})
+		if err != nil {
+			return s, err
+		}
+		for _, act := range a.GetActors() {
+			name := agentOfTemplate(act.GetActorTemplate().GetName())
+			as, ok := agents[name]
+			if !ok {
+				as = &AgentStats{Name: name}
+				agents[name] = as
+			}
+			as.Actors++
+			switch st := strings.TrimPrefix(act.GetStatus().GetState().String(), "ACTOR_STATE_"); {
+			case st == "SUSPENDED":
+				as.Suspended++
+			case st == "RUNNING" || st == "RESUMING" || st == "SUSPENDING":
+				as.Awake++
+			}
+		}
+		if page = (&apiv1.PageRequest{PageToken: a.GetPage().GetNextPageToken()}); page.PageToken == "" {
+			break
+		}
+	}
+	for _, as := range agents {
+		s.Agents = append(s.Agents, *as)
+	}
+	slices.SortFunc(s.Agents, func(a, b AgentStats) int { return b.Actors - a.Actors })
 	return s, nil
+}
+
+// agentOfTemplate maps a kagent ActorTemplate ("<agent>-<12 hex revision>") to its Agent.
+func agentOfTemplate(t string) string {
+	if i := strings.LastIndex(t, "-"); i > 0 && len(t)-i-1 == 12 {
+		return t[:i]
+	}
+	return t
 }

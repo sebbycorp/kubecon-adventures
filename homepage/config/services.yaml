@@ -6,25 +6,42 @@
         href: http://172.16.10.135:8090/duck-hunt/screen
         description: Big screen · /duck-hunt phone · /admin
         namespace: duck-hunt
+        app: duck-hunt
         podSelector: app=duck-hunt
         siteMonitor: http://localhost:8090/duck-hunt
+        widget:
+          type: customapi
+          url: http://localhost:8090/duck-hunt/api/stats
+          refreshInterval: 3000
+          mappings:
+            - field: players
+              label: Players
+            - field: ducksFlying
+              label: Flying
+            - field: ducksDown
+              label: Down
+            - field: duckSandboxesAwake
+              label: Awake
     - kagent UI:
         icon: https://raw.githubusercontent.com/kagent-dev/kagent/main/img/icon-dark.svg
         href: http://172.16.10.135:8080
         description: kagent 1.0.0-alpha17
         namespace: kagent
+        app: kagent-ui
         podSelector: app.kubernetes.io/name=kagent,app.kubernetes.io/component=ui
         siteMonitor: http://localhost:8080
     - kagent controller:
         icon: kubernetes.png
         description: Agents, sessions, A2A gateway
         namespace: kagent
+        app: kagent-controller
         podSelector: app.kubernetes.io/name=kagent,app.kubernetes.io/component=controller
     - agentgateway:
         icon: https://raw.githubusercontent.com/agentgateway/agentgateway/main/ui/public/favicon.svg
         href: https://github.com/agentgateway/agentgateway/releases/tag/v1.7.0
         description: agentgateway v1.7.0 control plane
         namespace: agentgateway-system
+        app: agentgateway
         podSelector: app.kubernetes.io/name=agentgateway
     - Vault:
         icon: vault.png
@@ -35,32 +52,73 @@
         siteMonitor: http://localhost:8200/v1/sys/health?sealedcode=200&uninitcode=200
 
 - Agent Substrate:
+    - Substrate overview:
+        icon: mdi-chip
+        description: All games · from the kagent control plane
+        widget:
+          type: customapi
+          url: http://localhost:8090/duck-hunt/api/stats
+          refreshInterval: 3000
+          display: list
+          mappings:
+            - field: pools
+              label: Worker pools
+            - field: workers
+              label: gVisor workers
+            - field: agents
+              label: Agents (kinds)
+            - field: actors
+              label: Actors total
+            - field: running
+              label: Running now
+            - field: suspended
+              label: Suspended (snapshots)
+            - field: snapshotP50Ms
+              label: Snapshot p50
+              format: number
+              suffix: " ms"
+            - field: restoreP50Ms
+              label: Restore p50
+              format: number
+              suffix: " ms"
     - Duck pool (gVisor workers):
         icon: mdi-duck
-        description: WorkerPool kagent-default; each agent session is an actor here
+        description: WorkerPool ducks; every duck is an actor here
         namespace: kagent
+        app: duck-pool-gvisor-workers
+        podSelector: ate.dev/worker-pool=ducks
+    - Default pool (gVisor workers):
+        icon: mdi-server-network
+        description: WorkerPool kagent-default; other kagent agents
+        namespace: kagent
+        app: default-pool-gvisor-workers
         podSelector: ate.dev/worker-pool=kagent-default
     - ate-api-server:
         icon: mdi-api
         namespace: ate-system
+        app: ate-api-server
         podSelector: app=ate-api-server
     - ate-controller:
         icon: mdi-cog
         namespace: ate-system
+        app: ate-controller
         podSelector: app=ate-controller
     - atelet:
         icon: mdi-server
         description: Node agent, runs the sandboxes
         namespace: ate-system
+        app: atelet
         podSelector: app=atelet
     - atenet-router:
         icon: mdi-router-network
         namespace: ate-system
+        app: atenet-router
         podSelector: app=atenet-router
     - rustfs (snapshots):
         icon: mdi-database
         description: Object storage for actor snapshots
         namespace: ate-system
+        app: rustfs-snapshots
         podSelector: app=rustfs
 
 - Kubernetes:
@@ -79,6 +137,7 @@
     - kagent postgres:
         icon: postgres.png
         namespace: kagent
+        app: kagent-postgres
         podSelector: app.kubernetes.io/name=kagent,app.kubernetes.io/component=database
 
 - Docker:

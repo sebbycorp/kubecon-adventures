@@ -14,6 +14,12 @@
   #sound { position: absolute; right: 0; top: -2px; padding: 6px 8px; font-size: 8px; border-width: 2px; z-index: 1; }
   .duck .actor { grid-column: 1 / -1; font-size: 8px; margin-top: 6px; color: var(--gray); word-break: break-all; }
   .duck .actor b { font-weight: normal; }
+  .duck .timeline { grid-column: 1 / -1; margin-top: 10px; font-size: 8px; line-height: 1.7; }
+  .duck .timeline h3 { font-size: 8px; font-weight: normal; color: var(--orange); margin: 0 0 4px; }
+  .duck .timeline li { list-style: none; margin: 0 0 4px; padding-left: 10px; border-left: 2px solid #333; }
+  .duck .timeline .t { color: var(--gray); }
+  .k-kagent { border-color: var(--sky) !important; } .k-substrate { border-color: var(--yellow) !important; }
+  .k-llm { border-color: var(--green) !important; } .k-hunter { border-color: var(--red) !important; } .k-owner { border-color: var(--orange) !important; }
   .hidden { display: none !important; }
   #err { color: var(--red); min-height: 1.6em; text-align: center; margin: 8px 0; }
   .duck { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
@@ -131,7 +137,8 @@ function renderDucks() {
         <div class="quack hidden"></div>
         <div class="actions"><button class="q">QUACK!</button><button class="r">REVIVE</button></div>
         <div class="times"></div>
-        <div class="actor"></div>`;
+        <div class="actor"></div>
+        <div class="timeline"><h3>WHAT JUST HAPPENED</h3><ul style="margin:0;padding:0"></ul></div>`;
       el.querySelector(".q").onclick = () => act(d.id, "quack");
       el.querySelector(".r").onclick = () => act(d.id, "revive");
       root.append(el);
@@ -153,9 +160,15 @@ function renderDucks() {
         `<b class="${awake ? "yellow" : "muted"}">${awake ? "⚡ SANDBOX AWAKE" : "ZZ ASLEEP AS SNAPSHOT"}</b> · ${a.state}` +
         (a.node ? `<br>NODE ${a.node}` : "")
       : d.sessionId ? `SESSION ${d.sessionId}` : "";
+    const steps = (d.timeline || []).slice(-6).reverse(), t0 = Date.parse(d.hatchedAt);
+    el.querySelector(".timeline ul").innerHTML = steps.map((st) =>
+      `<li class="k-${st.kind}"><span class="t">+${((st.at - t0) / 1000).toFixed(1)}S</span> ${escHTML(st.text).toUpperCase()}</li>`).join("");
+    el.querySelector(".timeline").classList.toggle("hidden", !steps.length);
   }
   for (const el of [...root.children]) if (!mine.some((d) => d.id === el.dataset.id)) el.remove();
 }
+
+function escHTML(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
 
 async function act(id, what) {
   try { await api(`ducks/${id}/${what}`, {}); } catch (e) { showError(e); }
