@@ -126,7 +126,7 @@ class SubstrateView {
       this.cartridge(x, y, color, true);
     } else if (awake && mySlot) {
       if (Math.floor(now / 120) % 2) this.frame(mySlot.x - 2, mySlot.y - 2, 24, 17, NES.yellow);
-      drawSprite(this.g, duckSprite(FLAP[Math.floor(now / 120) % 4], color), mySlot.x + 2, mySlot.y);
+      drawSprite(this.g, duckSprite(FLAP[Math.floor(now / 120) % 4], color), mySlot.x + 1, mySlot.y, false, false, 0.6);
     } else if (a) {
       this.cartridge(myCart.x, myCart.y, color, true);
       if (parked) this.lock(myCart.x + 1, myCart.y - 10);

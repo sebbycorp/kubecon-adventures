@@ -195,8 +195,8 @@ function animate(now) {
     const d = el.duck, c = el.querySelector("canvas"), g = c.getContext("2d");
     g.imageSmoothingEnabled = false;
     g.fillStyle = NES.sky; g.fillRect(0, 0, 32, 24);
-    if (d.state === "flying") drawSprite(g, duckSprite(FLAP[Math.floor(now / (160 - d.flight.speed * 10)) % 4], d.color), 8, 6);
-    else if (d.state === "shot" || d.state === "reviving") drawSprite(g, duckSprite("shot", d.color), 8, 8, false, true);
+    if (d.state === "flying") drawSprite(g, duckSprite(FLAP[Math.floor(now / (160 - d.flight.speed * 10)) % 4], d.color), 1, 1);
+    else if (d.state === "shot" || d.state === "reviving") drawSprite(g, duckSprite("shot", d.color), 1, 2, false, true);
     else drawSprite(g, eggSprite(d.color), 11, 8 + Math.sin(now / 90));
     if (!el.view) el.view = new SubstrateView(el.querySelector(".sv"));
     el.view.draw(d, lastState, now);

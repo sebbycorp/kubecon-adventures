@@ -17,7 +17,8 @@ let demoSeq = 0, demoNext = 0, introNext = 0;
 const dog = { mode: "hidden", x: 0, y: 0, t0: 0, holding: null, queue: [] };
 const gun = { angle: -1.2, recoil: 0, muzzle: 0 };
 const cross = { x: W / 2, y: 90, tx: W / 2, ty: 90, on: false };
-const DOG_COLORS = { B: "#c84c0c", L: "#fc9838", D: "#7c2c00", P: "#f878f8" };
+const DOG_COLORS = { B: "#a85000", K: "#000000", W: "#fcfcfc", P: "#f87858" };
+const DS = 1.5, DCX = 22, DCY = 16;  // duck draw scale and sprite center (30x22 sprites)
 
 function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -163,7 +164,7 @@ function dogIntro() {
   if (dog.mode !== "hidden") return;
   Object.assign(dog, { mode: "walk", x: -40, y: GRASS_Y + 2, t0: performance.now() });
 }
-const dogX = (x) => Math.max(10, Math.min(W - 150, x + 16 - 32)); // keep the 64px dog clear of the bush/gun
+const dogX = (x) => Math.max(10, Math.min(W - 150, x + DCX - 27)); // keep the 54px dog clear of the bush/gun
 function dogRetrieve(m) { dog.queue.push({ x: dogX(m.x), color: m.color, ms: m.snapMs, demo: m.demo }); }
 function dogLaugh(x) { dog.queue.push({ laugh: true, x: dogX(x) }); }
 
@@ -205,51 +206,58 @@ function parts(x, y, list, flip = false, width = 34) {
   for (const [rx, ry, rw, rh, c] of R) block(x + rx, y + ry, rw, rh, c === "noline" ? NES.black : c);
 }
 
+// The hunting dog: brown, long black ears, white spotted muzzle, big black nose.
 function drawDogSide(x, y, now, pose) {
-  g.save(); g.translate(Math.round(x), Math.round(y)); g.scale(2, 2); x = 0; y = 0;
-  const { B, L, D } = DOG_COLORS;
-  const step = Math.floor(now / 140) % 2, sniff = pose === "walk" && Math.floor(now / 300) % 2;
-  const hy = sniff ? 3 : 0;
+  g.save(); g.translate(Math.round(x), Math.round(y)); g.scale(1.5, 1.5);
+  const { B, K, W: Wh } = DOG_COLORS;
+  const step = Math.floor(now / 150) % 2, sniff = pose === "walk" && Math.floor(now / 320) % 2, hy = sniff ? 6 : 0;
   const legs = pose === "jump"
-    ? [[24, 13, 7, 3, B], [-1, 13, 7, 3, B]]
-    : step ? [[5, 16, 3, 5, B], [10, 16, 3, 4, B], [17, 16, 3, 4, B], [22, 16, 3, 5, B]]
-           : [[6, 16, 3, 4, B], [9, 16, 3, 5, B], [18, 16, 3, 5, B], [21, 16, 3, 4, B]];
-  parts(x, y, [
-    [0, 5, 3, 2, B], [2, 7, 3, 3, B],                 // tail
+    ? [[30, 16, 9, 4, B], [-2, 16, 9, 4, B]]
+    : step ? [[5, 18, 4, 10, B], [11, 18, 4, 9, B], [20, 18, 4, 9, B], [26, 18, 4, 10, B]]
+           : [[6, 18, 4, 9, B], [10, 18, 4, 10, B], [21, 18, 4, 10, B], [25, 18, 4, 9, B]];
+  parts(0, 0, [
+    [1, 0, 3, 8, B], [3, 6, 3, 5, B],                         // tail, up
     ...legs,
-    [4, 8, 20, 9, B], [8, 14, 12, 3, L],              // body, belly
-    [20, 4 + hy, 6, 7, B], [21, 0 + hy, 9, 9, B],     // neck, head
-    [28, 4 + hy, 6, 5, L], [33, 4 + hy, 2, 2, "noline"], // snout, nose
-    [20, 1 + hy, 3, 10, D],                           // ear
-    [25, 2 + hy, 2, 2, "noline"],                     // eye
-  ], false, 36);
+    [4, 9, 22, 10, B], [21, 8, 9, 13, B],                     // body, deep chest
+    [26, 4 + hy, 7, 10, B],                                   // neck
+    [30, 2 + hy, 12, 10, B],                                  // head
+    [38, 6 + hy, 9, 7, Wh],                                   // long white muzzle
+    [40, 8 + hy, 1, 1, "noline"], [43, 10 + hy, 1, 1, "noline"], [40, 11 + hy, 1, 1, "noline"],
+    [46, 5 + hy, 3, 3, "noline"],                             // nose
+    [36, 4 + hy, 3, 3, Wh], [37, 5 + hy, 1, 2, "noline"],     // eye
+    [29, 3 + hy, 5, 14, K],                                   // ear, behind the eye
+  ], false, 50);
   g.restore();
 }
 
 function drawDogFront(x, y, now, laugh) {
-  g.save(); g.translate(Math.round(x), Math.round(y)); g.scale(2, 2); x = 0; y = 0;
-  const { B, L, D, P } = DOG_COLORS;
+  g.save(); g.translate(Math.round(x), Math.round(y)); g.scale(1.5, 1.5);
+  const { B, K, W: Wh, P } = DOG_COLORS;
   const bob = laugh ? Math.round(Math.sin(now / 70) * 1.5) : 0;
-  y += bob;
   const face = laugh
-    ? [[10, 7, 3, 1, "noline"], [19, 7, 3, 1, "noline"], [12, 12, 8, 3, "noline"], [14, 14, 4, 1, P]]
-    : [[10, 5, 3, 3, NES.white], [19, 5, 3, 3, NES.white], [11, 6, 2, 2, "noline"], [20, 6, 2, 2, "noline"], [13, 14, 6, 1, "noline"]];
-  parts(x, y, [
-    [8, 16, 16, 16, B], [12, 18, 8, 12, L],               // body, chest
-    [3, 3, 5, 12, D], [24, 3, 5, 12, D],                  // ears
-    [7, 1, 18, 15, B], [10, 9, 12, 7, L],                 // head, muzzle
-    [14, 9, 4, 3, "noline"],                              // nose
+    ? [[10, 9 + bob, 5, 1, "noline"], [21, 9 + bob, 5, 1, "noline"],                     // eyes squeezed shut
+       [12, 18 + bob, 12, 6, "noline"], [13, 18 + bob, 10, 2, Wh], [15, 22 + bob, 6, 2, P]] // open mouth, teeth, tongue
+    : [[10, 7, 5, 5, Wh], [21, 7, 5, 5, Wh], [12, 9, 2, 2, "noline"], [23, 9, 2, 2, "noline"],
+       [14, 20, 8, 1, "noline"], [13, 19, 1, 1, "noline"], [22, 19, 1, 1, "noline"]];      // smile
+  parts(0, bob, [
+    [8, 22, 20, 18, B],                                        // body
+    [0, 5, 7, 19, K], [29, 5, 7, 19, K],                       // ears
+    [6, 2, 24, 20, B],                                         // head
+    [9, 13, 18, 10, Wh],                                       // muzzle
+    [11, 16, 1, 1, "noline"], [13, 18, 1, 1, "noline"], [23, 16, 1, 1, "noline"], [25, 18, 1, 1, "noline"],
+    [15, 11, 6, 4, "noline"],                                  // nose
     ...face,
-    ...(laugh ? [[4, 20, 4, 8, B], [24, 20, 4, 8, B]] : [[25, 8, 5, 12, B], [25, 5, 5, 4, L]]), // arms
-  ], false, 32);
-  if (!laugh && dog.holding) drawSprite(g, duckSprite("shot", dog.holding.color), x + 22, y - 10, false, true, 1);
+    ...(laugh ? [[7, 23, 8, 7, B], [21, 23, 8, 7, B]]          // paws at the mouth
+              : [[28, 10, 6, 16, B], [28, 6, 7, 5, B]]),       // arm up, holding the duck
+  ], false, 36);
+  if (!laugh && dog.holding) drawSprite(g, duckSprite("shot", dog.holding.color), 22, -12, false, true, 0.8);
   g.restore();
 }
 
 function drawDog(now) {
   if (dog.mode === "walk" || dog.mode === "jump") {
     drawDogSide(dog.x, dog.y - 42, now, dog.mode);
-    if (dog.mode === "walk" && dog.stopAt) text("!", dog.x + 52, dog.y - 62, NES.white, "center", 12);
+    if (dog.mode === "walk" && dog.stopAt) text("!", dog.x + 58, dog.y - 58, NES.white, "center", 12);
   }
 }
 
@@ -263,7 +271,7 @@ function drawDogPopup(now) {
   if (rise === 1) {
     const h = dog.holding;
     const msg = dog.mode === "laugh" ? "HA HA! IT GOT AWAY!" : h?.demo ? "GOTCHA!" : h?.ms ? "SNAPSHOT " + fmtMs(h.ms) : "GOTCHA!";
-    text(msg, dog.x + 32, y - 34, NES.white, "center", 8);
+    text(msg, dog.x + 27, y - 30, NES.white, "center", 8);
   }
 }
 
@@ -353,7 +361,7 @@ function step(m, dt, now) {
       if (Math.abs(m.y - ty) < 2) m.mode = "fly";
     } else { m.x = tx; m.y = ty; }
     if (m.aimUntil) {
-      cross.on = true; cross.tx = m.x + 16; cross.ty = m.y + 12;
+      cross.on = true; cross.tx = m.x + DCX; cross.ty = m.y + DCY;
       if (now > m.aimUntil && m.pendingShot != null) fire(m);
     }
   } else if (m.mode === "flyaway") {
@@ -380,12 +388,15 @@ function circle(cx, cy, r, c) {
 }
 
 function drawTree() {
-  block(44, 96, 14, GRASS_Y - 96, NES.trunk);
-  block(36, 150, 8, 6, NES.trunk); block(58, 128, 10, 6, NES.trunk);
-  const blobs = [[50, 70, 30], [30, 88, 22], [72, 90, 22], [50, 100, 24], [20, 110, 14], [82, 112, 14]];
-  for (const [cx, cy, r] of blobs) circle(cx, cy, r + 2, NES.grassDark);
-  for (const [cx, cy, r] of blobs) circle(cx, cy, r, NES.grassMid);
-  for (const [cx, cy, r] of blobs) circle(cx - r / 3, cy - r / 3, r / 3, NES.grass);
+  const T = NES.trunk, TD = "#503000";
+  const trunk = [[40, 120, 8, GRASS_Y - 120], [43, 80, 6, 44], [46, 46, 5, 38], [30, 104, 14, 4], [24, 98, 8, 6],
+                 [48, 92, 18, 4], [62, 84, 6, 10], [50, 60, 14, 4], [60, 54, 5, 8], [36, 66, 12, 4], [32, 60, 6, 8]];
+  for (const [x, y, w, h] of trunk) { block(x - 1, y - 1, w + 2, h + 2, TD); }
+  for (const [x, y, w, h] of trunk) block(x, y, w, h, T);
+  const leaves = [[48, 40, 13], [26, 58, 12], [66, 50, 12], [20, 92, 12], [72, 80, 13], [36, 30, 9], [58, 30, 9]];
+  for (const [cx, cy, r] of leaves) circle(cx, cy, r + 2, NES.grassDark);
+  for (const [cx, cy, r] of leaves) circle(cx, cy, r, NES.grassMid);
+  for (const [cx, cy, r] of leaves) { circle(cx - r / 3, cy - r / 3, r / 2, NES.grass); block(cx + r / 4, cy + r / 4, 2, 2, NES.grassDark); }
 }
 
 function drawBush() {
@@ -426,7 +437,7 @@ function wrap(str, max) {
 function drawBubble(m, now) {
   if (!m.bubble || now > m.bubble.until) return;
   const lines = wrap(m.bubble.text, 18), w = Math.max(...lines.map((l) => l.length)) * 6 + 10, h = lines.length * 9 + 8;
-  let bx = Math.min(Math.max(m.x + 16 - w / 2, 2), W - w - 2), by = m.y - h - 14;
+  let bx = Math.min(Math.max(m.x + DCX - w / 2, 2), W - w - 2), by = m.y - h - 14;
   if (by < 2) by = m.y + 26;
   block(bx - 1, by - 1, w + 2, h + 2, NES.black);
   block(bx, by, w, h, NES.white);
@@ -440,27 +451,27 @@ function drawDuck(m, now) {
     const frame = FLAP[Math.floor(m.t * (6 + m.speed)) % FLAP.length];
     const awake = m.actor && ["RUNNING", "RESUMING", "SUSPENDING"].includes(m.actor.state);
     if (awake) { // sandbox running right now: yellow glow
-      g.fillStyle = "rgba(248,184,0,0.35)"; g.fillRect(Math.round(m.x - 4), Math.round(m.y - 3), 40, 30);
-      if (Math.floor(now / 100) % 2) block(m.x + rand(0, 32), m.y + rand(-2, 24), 2, 2, NES.yellow);
+      g.fillStyle = "rgba(248,184,0,0.35)"; g.fillRect(Math.round(m.x - 3), Math.round(m.y - 3), 51, 39);
+      if (Math.floor(now / 100) % 2) block(m.x + rand(0, 44), m.y + rand(-2, 32), 2, 2, NES.yellow);
     }
-    drawSprite(g, duckSprite(frame, m.color), m.x, m.y, flip, false, 2);
+    drawSprite(g, duckSprite(frame, m.color), m.x, m.y, flip, false, DS);
     const mine = opts.me && m.playerId === opts.me;
-    text(m.nick.toUpperCase(), m.x + 16, m.y - 9, m.demo ? NES.gray : mine ? NES.yellow : NES.white, "center", 6);
-    if (mine) text("▼ YOU", m.x + 16, m.y - 18, NES.yellow, "center", 6);
+    text(m.nick.toUpperCase(), m.x + DCX, m.y - 8, m.demo ? NES.gray : mine ? NES.yellow : NES.white, "center", 6);
+    if (mine) text("▼ YOU", m.x + DCX, m.y - 17, NES.yellow, "center", 6);
     if (m.actor) {
       // The duck's Agent Substrate actor: short ID, and Zs while it sleeps as a snapshot.
-      text("#" + m.actor.name.slice(-4).toUpperCase(), m.x + 16, m.y + 25, awake ? NES.yellow : NES.white, "center", 6);
+      text("#" + m.actor.name.slice(-4).toUpperCase(), m.x + DCX, m.y + 33, awake ? NES.yellow : NES.white, "center", 6);
       if (m.actor.state === "SUSPENDED") {
         for (let i = 0; i < 2; i++) {
           const p = ((now / 1600) + i * 0.5) % 1;
-          text("z", m.x + 30 + p * 10, m.y - 2 - p * 14, NES.white, "left", 6 + Math.round(p * 2));
+          text("z", m.x + 40 + p * 10, m.y - 2 - p * 14, NES.white, "left", 6 + Math.round(p * 2));
         }
       }
     }
   } else if (m.mode === "shotpose") {
-    drawSprite(g, duckSprite("shot", m.color), m.x, m.y, false, false, 2);
+    drawSprite(g, duckSprite("shot", m.color), m.x, m.y, false, false, DS);
   } else if (m.mode === "falling") {
-    drawSprite(g, duckSprite("shot", m.color), m.x, m.y, Math.floor(now / 120) % 2 === 0, true, 2);
+    drawSprite(g, duckSprite("shot", m.color), m.x, m.y, Math.floor(now / 120) % 2 === 0, true, DS);
   }
 }
 
@@ -495,7 +506,7 @@ function frame(now) {
   if (now < flashUntil) {
     // The classic zapper frame: black screen, white box where the duck is.
     block(0, 0, W, H, NES.black);
-    if (flashTarget) block(flashTarget.x - 4, flashTarget.y - 4, 40, 32, NES.white);
+    if (flashTarget) block(flashTarget.x - 2, flashTarget.y - 2, 50, 38, NES.white);
   } else {
     block(0, 0, W, H, NES.sky);
     drawTree();
@@ -519,7 +530,7 @@ function frame(now) {
     for (let i = labels.length - 1; i >= 0; i--) {
       const l = labels[i];
       if (now > l.until) { labels.splice(i, 1); continue; }
-      text(l.text, Math.max(50, Math.min(W - 50, l.x + 16)), l.y - (2200 - (l.until - now)) / 100, l.color, "center", 8);
+      text(l.text, Math.max(50, Math.min(W - 50, l.x + DCX)), l.y - (2200 - (l.until - now)) / 100, l.color, "center", 8);
     }
     drawHUD(state);
     drawGun(now);
