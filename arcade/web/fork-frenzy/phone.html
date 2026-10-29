@@ -30,7 +30,7 @@
 </head>
 <body>
 <div class="title" style="font-size:22px">FORK<br>FRENZY</div>
-<div class="sub" style="font-size:8px">CHECKPOINT AN AI AGENT. CLONE IT.</div>
+<div class="sub" style="font-size:8px">SNAPSHOT AN AI AGENT. SPLIT IT ACROSS THE MULTIVERSE.</div>
 
 <section id="join" class="box hidden" style="margin-top:24px">
   <form id="joinForm">
@@ -58,8 +58,8 @@
         <button type="submit">TEACH</button>
       </form>
     </div>
-    <button class="big hidden" id="cpBtn">💾 CHECKPOINT FORKY</button>
-    <button class="big hidden" id="forkBtn">🧬 FORK ×3</button>
+    <button class="big hidden" id="cpBtn">📸 SNAPSHOT FORKY</button>
+    <button class="big hidden" id="forkBtn">⚡ FORK INTO 3 UNIVERSES</button>
     <button class="big hidden" id="askBtn">📣 ASK EVERYONE WHAT THEY KNOW</button>
     <button class="big hidden" id="restartBtn" style="font-size:8px">START OVER</button>
   </div>
@@ -77,8 +77,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const STEPS = {
   new: ["1. TEACH FORKY A SECRET", "THE SECRET LIVES IN FORKY'S CONVERSATION, INSIDE ITS OWN SUBSTRATE SANDBOX. TEACH ONE OR TWO."],
   taught: ["2. CHECKPOINT FORKY", "A KAGENT CHECKPOINT SAVES FORKY'S SANDBOX SNAPSHOT AND CONVERSATION AS AN IMMUTABLE SUBSTRATE TAG. OR TEACH IT ANOTHER SECRET FIRST."],
-  checkpointed: ["3. FORK THREE CLONES", "EACH FORK IS A BRAND-NEW KAGENT SESSION AND ITS OWN SUBSTRATE ACTOR, STARTED FROM THE CHECKPOINT. ALL THREE AT ONCE."],
-  forked: ["4. SPLIT THEIR MEMORIES", "CLONES SHARE EVERYTHING UP TO THE CHECKPOINT AND NOTHING AFTER IT. TEACH ONE CLONE A NEW SECRET, THEN ASK EVERYONE."],
+  checkpointed: ["3. FORK INTO 3 UNIVERSES", "EACH FORK IS A BRAND-NEW KAGENT SESSION AND ITS OWN SUBSTRATE ACTOR, BOOTED FROM THE SNAPSHOT IN MILLISECONDS. EACH LANDS IN ITS OWN UNIVERSE."],
+  forked: ["4. SPLIT THE TIMELINES", "CLONES SHARE EVERY ORB UP TO THE SNAPSHOT AND NOTHING AFTER IT. TEACH ONE UNIVERSE A NEW SECRET, THEN ASK EVERYONE. GREEN LAMP = SANDBOX AWAKE, RED = SNAPSHOTTED TO DISK."],
 };
 
 async function post(path, body = {}) {
@@ -127,7 +127,7 @@ function onState(s) {
   $("clonePick").classList.toggle("hidden", !clones.length);
   $("presets").classList.toggle("hidden", phase === "forked");
   if (clones.length && !clones.some((c) => c.id === pickedClone)) pickedClone = clones[1]?.id || clones[0].id;
-  $("clonePick").innerHTML = clones.map((c) => `<button data-id="${c.id}" class="${c.id === pickedClone ? "sel" : ""}">TEACH ${esc(c.name)} (${esc(c.persona.toUpperCase())})</button>`).join("");
+  $("clonePick").innerHTML = clones.map((c) => `<button data-id="${c.id}" class="${c.id === pickedClone ? "sel" : ""}">TEACH THE ${esc(c.persona.toUpperCase())}-VERSE</button>`).join("");
   $("clonePick").querySelectorAll("button").forEach((b) => b.onclick = () => { pickedClone = b.dataset.id; onState(s); });
   if (phase !== "forked") pickedClone = null;
   renderFamily(s);

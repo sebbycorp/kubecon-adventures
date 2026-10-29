@@ -263,6 +263,9 @@ const Sfx = {
   laugh() { for (let i = 0; i < 6; i++) this.tone(i % 2 ? 392 : 523, 0.09, "square", i * 0.12, 0.06); },
   gotcha() { [523, 659, 784, 659, 1047].forEach((f, i) => this.tone(f, 0.09, "square", i * 0.09, 0.06)); },
   walk() { this.tone(110, 0.03, "triangle", 0, 0.05); },
+  shutter() { this.noise(0.05, 0.25); this.tone(1568, 0.05, "square", 0.06, 0.05); },
+  zap() { for (let i = 0; i < 6; i++) this.tone(1200 - i * 160 + Math.random() * 80, 0.04, "sawtooth", i * 0.03, 0.04); },
+  plink() { this.tone(1319, 0.06, "triangle", 0, 0.07); this.tone(1760, 0.08, "triangle", 0.05, 0.06); },
 };
 
 function fmtMs(ms) {
