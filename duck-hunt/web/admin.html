@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duck Hunt Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/duck-hunt/static/nes.css">
+<style>
+  body { padding: 8px 16px 32px; font-size: 10px; }
+  h1 { font-size: 16px; color: var(--sky); margin: 16px 8px; font-weight: normal; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .controls input { width: 6em; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 9px; }
+  th, td { padding: 8px 6px; text-align: left; border-bottom: 2px solid #333; white-space: nowrap; }
+  th { color: var(--orange); font-weight: normal; }
+  td button { padding: 4px 8px; border-width: 2px; font-size: 8px; }
+  .s-flying { color: var(--green); } .s-shot, .s-failed { color: var(--red); } .s-hatching, .s-reviving { color: var(--yellow); }
+  .mono { font-family: ui-monospace, monospace; font-size: 11px; color: var(--gray); }
+  #err { color: var(--red); margin: 8px; }
+</style>
+</head>
+<body>
+<h1>DUCK HUNT ADMIN</h1>
+
+<div class="grid">
+  <div class="box">
+    <div class="row"><span>PLAYERS</span><span id="players">0</span></div>
+    <div class="row"><span>DUCKS FLYING</span><span id="flying" class="green">0</span></div>
+    <div class="row"><span>DUCKS DOWN</span><span id="down" class="red">0</span></div>
+    <div class="row"><span>LLM CALLS / TOKENS</span><span id="llm">0</span></div>
+  </div>
+  <div class="box">
+    <div class="row"><span>SUBSTRATE ACTORS</span><span id="actors">--</span></div>
+    <div class="row"><span>WORKERS BUSY/ALL</span><span id="workers">--</span></div>
+    <div class="row"><span>BY STATE</span><span id="bystate" class="mono">--</span></div>
+    <div class="row red" id="suberr"></div>
+  </div>
+  <div class="box">
+    <div class="row"><span>HATCH P50/P95</span><span id="t-hatch">--</span></div>
+    <div class="row"><span>SUBSTRATE SNAPSHOT</span><span id="t-snapshot">--</span></div>
+    <div class="row"><span>SUBSTRATE RESTORE</span><span id="t-restore">--</span></div>
+    <div class="row"><span>KAGENT SUSPEND API</span><span id="t-suspend">--</span></div>
+    <div class="row"><span>KAGENT RESUME API</span><span id="t-resume">--</span></div>
+    <div class="row"><span>LLM REPLY</span><span id="t-reply">--</span></div>
+    <div class="muted" style="font-size:8px">P50 / P95</div>
+  </div>
+</div>
+
+<div class="box controls">
+  <label><input type="checkbox" id="hunterOn"> HUNTER ON</label>
+  <label>IDLE <input type="number" id="idle" min="5" max="600"> S</label>
+  <button id="save">SAVE</button>
+  <button id="reset" class="red">NEW ROUND (DELETE ALL)</button>
+  <a class="btn" href="/duck-hunt/screen" target="_blank" style="text-decoration:none">BIG SCREEN</a>
+</div>
+<div id="err" role="alert"></div>
+
+<div class="box scroll">
+  <table>
+    <thead><tr><th>PLAYER</th><th>DUCK</th><th>STATE</th><th>FLIGHT</th><th>IDLE</th><th>SHOT/REV/QK</th><th>HATCH</th><th>SUSPEND API</th><th>RESUME API</th><th>SESSION</th><th></th></tr></thead>
+    <tbody id="ducks"></tbody>
+  </table>
+</div>
+
+<script src="/duck-hunt/static/sprites.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let settingsLoaded = false, clockSkew = 0;
+
+async function admin(path, body) {
+  const r = await fetch("/admin/api/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { $("err").textContent = (data.error || r.statusText).toUpperCase(); setTimeout(() => $("err").textContent = "", 4000); }
+  return data;
+}
+
+$("save").onclick = () => admin("settings", { hunterOn: $("hunterOn").checked, idleSeconds: +$("idle").value });
+$("reset").onclick = async () => {
+  if (!confirm("Delete every duck session and start a new round?")) return;
+  const r = await admin("reset");
+  if (r.deletedSessions != null) $("err").textContent = `DELETED ${r.deletedSessions} SESSIONS`;
+};
+
+const pct = (t) => t ? `${fmtMs(t.p50)} / ${fmtMs(t.p95)}` : "--";
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function render(s) {
+  clockSkew = Date.now() - s.now;
+  const ducks = s.ducks || [];
+  $("players").textContent = s.players;
+  $("flying").textContent = ducks.filter((d) => d.state === "flying").length;
+  $("down").textContent = ducks.filter((d) => d.state === "shot").length;
+  $("llm").textContent = `${s.llmCalls} / ${(s.tokens.inputTokens + s.tokens.outputTokens).toLocaleString()}`;
+  const sub = s.substrate || {};
+  $("actors").textContent = sub.actors != null ? `${sub.running} RUN / ${sub.actors}` : "--";
+  $("workers").textContent = sub.workers != null ? `${sub.busyWorkers} / ${sub.workers}` : "--";
+  $("bystate").textContent = Object.entries(sub.byState || {}).map(([k, v]) => `${k}:${v}`).join(" ") || "--";
+  $("suberr").textContent = sub.error || "";
+  for (const k of ["hatch", "snapshot", "restore", "suspend", "resume", "reply"]) $("t-" + k).textContent = pct(s.timings[k]);
+  if (!settingsLoaded) { $("hunterOn").checked = s.settings.hunterOn; $("idle").value = s.settings.idleSeconds; settingsLoaded = true; }
+
+  $("ducks").innerHTML = ducks.map((d) => {
+    const idle = Math.round((Date.now() - clockSkew - Date.parse(d.lastActive)) / 1000);
+    return `<tr>
+      <td>${esc(d.nick).toUpperCase()}</td><td>${esc(d.kind).toUpperCase()}</td>
+      <td class="s-${d.state}">${d.state.toUpperCase()}${d.busy ? "…" : ""}${d.error ? ` <span class="red" title="${esc(d.error)}">!</span>` : ""}</td>
+      <td>${d.flight?.pattern ? `${d.flight.pattern.toUpperCase()} ${d.flight.speed}` : "--"}</td>
+      <td>${d.state === "flying" ? idle + "S" : "--"}</td>
+      <td>${d.shots}/${d.revives}/${d.quacks}</td>
+      <td>${fmtMs(d.hatchMs)}</td><td>${fmtMs(d.lastShotMs)}</td><td>${fmtMs(d.lastReviveMs)}</td>
+      <td class="mono">${esc((d.sessionId || "").slice(0, 13))}</td>
+      <td><button data-a="shoot" data-id="${d.id}" ${d.state !== "flying" || d.busy ? "disabled" : ""}>SHOOT</button>
+          <button data-a="revive" data-id="${d.id}" ${d.state !== "shot" || d.busy ? "disabled" : ""}>REVIVE</button>
+          <button data-a="delete" data-id="${d.id}">DEL</button></td></tr>`;
+  }).join("") || `<tr><td colspan="11" class="muted">NO DUCKS YET</td></tr>`;
+}
+
+$("ducks").onclick = (e) => {
+  const b = e.target.closest("button[data-a]");
+  if (b) admin(`ducks/${b.dataset.id}/${b.dataset.a}`);
+};
+
+connectState(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Duck Hunt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/duck-hunt/static/nes.css">
+<style>
+  body { max-width: 480px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
+  .hidden { display: none !important; }
+  #err { color: var(--red); min-height: 1.6em; text-align: center; margin: 8px 0; }
+  .duck { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
+  .duck canvas { width: 64px; height: 48px; background: var(--sky); border: 4px solid var(--white); }
+  .duck .name { color: var(--orange); }
+  .duck .status { margin: 2px 0; }
+  .duck .quack { background: var(--white); color: var(--black); padding: 8px; margin-top: 8px; grid-column: 1 / -1; font-size: 9px; }
+  .duck .actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
+  .duck .actions button { flex: 1; }
+  .duck .times { grid-column: 1 / -1; font-size: 8px; color: var(--gray); margin-top: 6px; }
+  .hud { display: flex; justify-content: space-between; font-size: 9px; color: var(--gray); margin: 4px 8px; }
+  footer { text-align: center; font-size: 8px; color: var(--gray); margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="title">DUCK<br>HUNT</div>
+<div class="sub" style="font-size:9px">AGENT SUBSTRATE EDITION</div>
+
+<section id="join" class="box hidden" style="margin-top:24px">
+  <form id="joinForm">
+    <label for="nick">ENTER YOUR NAME</label>
+    <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" required style="margin:12px 0">
+    <button type="submit" style="width:100%">START</button>
+  </form>
+</section>
+
+<section id="game" class="hidden">
+  <div class="hud"><span id="who"></span><span id="flyCount"></span></div>
+  <div class="box">
+    <div style="margin-bottom:8px">SELECT A DUCK TO HATCH</div>
+    <ul class="menu">
+      <li><button data-kind="fast">FLY FAST</button></li>
+      <li><button data-kind="zigzag">ZIG-ZAG</button></li>
+      <li><button data-kind="showoff">SHOW OFF</button></li>
+    </ul>
+  </div>
+  <div id="ducks"></div>
+  <footer>EACH DUCK IS AN AI AGENT IN ITS OWN GVISOR SANDBOX.<br>IDLE DUCKS GET SNAPSHOTTED BY THE HUNTER.<br><br>WATCH THE BIG SCREEN!</footer>
+</section>
+
+<div id="err" role="alert"></div>
+
+<script src="/duck-hunt/static/sprites.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const KIND_NAMES = { fast: "FLY FAST", zigzag: "ZIG-ZAG", showoff: "SHOW OFF" };
+let me = null, mine = [], idleSeconds = 20, serverNow = Date.now(), clockSkew = 0;
+
+async function api(path, body) {
+  const r = await fetch("/duck-hunt/api/" + path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+function showError(e) { $("err").textContent = e ? String(e.message || e).toUpperCase() : ""; if (e) setTimeout(() => showError(null), 4000); }
+
+$("joinForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  try { me = await api("join", { nick: $("nick").value }); start(); } catch (e) { showError(e); }
+};
+
+document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = async () => {
+  b.disabled = true;
+  try { await api("hatch/" + b.dataset.kind, {}); me.ducks[b.dataset.kind] = "pending"; } catch (e) { showError(e); b.disabled = false; }
+});
+
+function start() {
+  $("join").classList.add("hidden");
+  $("game").classList.remove("hidden");
+  $("who").textContent = "P1 " + me.nick.toUpperCase();
+  connectState(onState);
+  requestAnimationFrame(animate);
+}
+
+function onState(s) {
+  idleSeconds = s.settings.idleSeconds;
+  clockSkew = Date.now() - s.now;
+  mine = (s.ducks || []).filter((d) => d.playerId === me.id);
+  if (!mine.length && Object.keys(me.ducks).length && !s.ducks?.length) me.ducks = {}; // round was reset
+  for (const [kind, label] of Object.entries(KIND_NAMES)) {
+    const btn = document.querySelector(`[data-kind="${kind}"]`);
+    const used = mine.some((d) => d.kind === kind) || me.ducks[kind];
+    btn.disabled = !!used;
+    btn.textContent = used ? label + " ✓" : label;
+  }
+  $("flyCount").textContent = (s.ducks || []).filter((d) => d.state === "flying").length + " IN THE SKY";
+  renderDucks();
+}
+
+function renderDucks() {
+  const root = $("ducks");
+  for (const d of mine) {
+    let el = root.querySelector(`[data-id="${d.id}"]`);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "box duck";
+      el.dataset.id = d.id;
+      el.innerHTML = `<canvas width="32" height="24"></canvas>
+        <div><div class="name"></div><div class="status"></div></div>
+        <div class="quack hidden"></div>
+        <div class="actions"><button class="q">QUACK!</button><button class="r">REVIVE</button></div>
+        <div class="times"></div>`;
+      el.querySelector(".q").onclick = () => act(d.id, "quack");
+      el.querySelector(".r").onclick = () => act(d.id, "revive");
+      root.append(el);
+    }
+    el.duck = d;
+    el.querySelector(".name").textContent = KIND_NAMES[d.kind] + " DUCK";
+    const quack = el.querySelector(".quack");
+    quack.textContent = d.flight?.quack ? "“" + d.flight.quack.toUpperCase() + "”" : "";
+    quack.classList.toggle("hidden", !d.flight?.quack);
+    el.querySelector(".q").disabled = d.state !== "flying" || d.busy;
+    el.querySelector(".r").disabled = d.state !== "shot" || d.busy;
+    el.querySelector(".r").classList.toggle("hidden", d.state !== "shot" && d.state !== "reviving");
+    el.querySelector(".q").classList.toggle("hidden", d.state === "shot" || d.state === "reviving");
+    el.querySelector(".times").textContent =
+      `HATCHED IN ${fmtMs(d.hatchMs)}` + (d.shots ? ` · SHOT ×${d.shots}` : "") + (d.revives ? ` · REVIVED ×${d.revives}` : "");
+  }
+  for (const el of [...root.children]) if (!mine.some((d) => d.id === el.dataset.id)) el.remove();
+}
+
+async function act(id, what) {
+  try { await api(`ducks/${id}/${what}`, {}); } catch (e) { showError(e); }
+}
+
+function statusText(d) {
+  switch (d.state) {
+    case "hatching": return ["HATCHING...", "yellow"];
+    case "reviving": return ["REVIVING...", "yellow"];
+    case "shot": return ["SHOT DOWN!", "red"];
+    case "failed": return ["EGG FAILED", "red"];
+  }
+  if (d.busy) return ["QUACKING...", "yellow"];
+  const left = Math.max(0, Math.ceil(idleSeconds - (Date.now() - clockSkew - Date.parse(d.lastActive)) / 1000));
+  return [`FLYING · HUNTER IN ${left}S`, left <= 5 ? "red" : "green"];
+}
+
+function animate(now) {
+  for (const el of $("ducks").children) {
+    const d = el.duck, c = el.querySelector("canvas"), g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.fillStyle = NES.sky; g.fillRect(0, 0, 32, 24);
+    if (d.state === "flying") drawSprite(g, duckSprite(FLAP[Math.floor(now / (160 - d.flight.speed * 10)) % 4], d.color), 8, 6);
+    else if (d.state === "shot" || d.state === "reviving") drawSprite(g, duckSprite("shot", d.color), 8, 8, false, true);
+    else drawSprite(g, eggSprite(d.color), 11, 8 + Math.sin(now / 90));
+    const [txt, cls] = statusText(d), st = el.querySelector(".status");
+    st.textContent = txt; st.className = "status " + cls;
+  }
+  requestAnimationFrame(animate);
+}
+
+(async () => {
+  try { me = await api("me"); start(); } catch { $("join").classList.remove("hidden"); $("nick").focus(); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+# The Duck Hunt backend and pages, behind the agentgateway "arcade" Gateway.
+# One replica: game state (players, ducks, timers) lives in memory.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: duck-hunt
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: duck-hunt
+  namespace: duck-hunt
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: duck-hunt
+  template:
+    metadata:
+      labels:
+        app: duck-hunt
+    spec:
+      containers:
+      - name: duck-hunt
+        image: IMAGE   # set by deploy.sh
+        args: ["-idle", "20"]
+        ports:
+        - containerPort: 8080
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: duck-hunt
+  namespace: duck-hunt
+spec:
+  selector:
+    app: duck-hunt
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: duck-hunt
+  namespace: duck-hunt
+spec:
+  parentRefs:
+  - name: arcade
+    namespace: agentgateway-system
+  rules:
+  - matches:
+    - path: { type: PathPrefix, value: /duck-hunt }
+    - path: { type: PathPrefix, value: /admin }
+    - path: { type: Exact, value: / }
+    backendRefs:
+    - name: duck-hunt
+      port: 80
+    timeouts:
+      request: 0s   # Server-Sent Events stay open

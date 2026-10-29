@@ -1,0 +1,21 @@
+# Dedicated gVisor worker pool for ducks. Each worker hosts one awake actor at a time,
+# so replicas is how many ducks can talk (or be restored) at the same moment.
+# Idle ducks are snapshots and use no worker. deploy.sh sets replicas (DUCK_WORKERS).
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: ducks
+  namespace: kagent
+  labels:
+    # kagent's ActorTemplates select workers by these labels; without them no worker matches.
+    kagent.dev/worker-pool-name: ducks
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: REPLICAS
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3

@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duck Hunt Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/duck-hunt/static/nes.css">
+<style>
+  html, body { height: 100%; overflow: hidden; }
+  body { display: grid; grid-template-columns: 1fr minmax(300px, 24vw); }
+  #stage { position: relative; display: flex; align-items: center; justify-content: center; background: #000; min-width: 0; }
+  #sky { width: 100%; max-height: 100vh; aspect-ratio: 16 / 9; object-fit: contain; display: block; }
+  #panel { overflow: hidden; display: flex; flex-direction: column; font-size: 10px; padding: 4px 4px 4px 0; }
+  #panel .box { margin: 10px 10px 6px; padding: 10px; }
+  #panel h2 { font-size: 10px; margin: 0 0 8px; color: var(--orange); font-weight: normal; }
+  .row { display: flex; justify-content: space-between; gap: 8px; }
+  .big { font-size: 18px; }
+  #qr { background: #fff; padding: 8px; width: fit-content; margin: 6px auto; }
+  #qr img, #qr canvas { display: block; width: 150px; height: 150px; image-rendering: pixelated; }
+  #joinurl { text-align: center; font-size: 8px; word-break: break-all; color: var(--sky); }
+  #ticker { font-size: 8px; line-height: 1.9; flex: 1; min-height: 0; overflow: hidden; }
+  #start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           background: rgba(0,0,0,.85); cursor: pointer; z-index: 5; text-align: center; gap: 24px; }
+  #start .title { font-size: 48px; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="sky" width="480" height="270" aria-label="Duck Hunt sky with every player's duck"></canvas></div>
+
+<aside id="panel">
+  <div class="box" style="text-align:center">
+    <h2>SCAN TO PLAY</h2>
+    <div id="qr"></div>
+    <div id="joinurl"></div>
+  </div>
+  <div class="box">
+    <h2>DUCKS</h2>
+    <div class="row"><span>FLYING</span><span class="big green" id="flying">0</span></div>
+    <div class="row"><span>DOWN</span><span class="big red" id="down">0</span></div>
+    <div class="row muted"><span>PLAYERS</span><span id="players">0</span></div>
+  </div>
+  <div class="box">
+    <h2>AGENT SUBSTRATE</h2>
+    <div class="row"><span>SANDBOXES AWAKE</span><span class="big yellow" id="awake">--</span></div>
+    <div class="muted" style="font-size:7px;margin:-4px 0 8px">IDLE DUCKS SLEEP AS SNAPSHOTS</div>
+    <div class="row"><span>SNAPSHOT</span><span class="yellow" id="t-snapshot">--</span></div>
+    <div class="row"><span>RESTORE</span><span class="yellow" id="t-restore">--</span></div>
+    <div class="row"><span>HATCH</span><span id="t-hatch">--</span></div>
+    <div class="row muted"><span>GVISOR WORKERS</span><span id="workers">--</span></div>
+  </div>
+  <div class="box">
+    <h2>AGENTGATEWAY</h2>
+    <div class="row"><span>LLM CALLS</span><span id="calls">0</span></div>
+    <div class="row"><span>TOKENS</span><span id="tokens">0</span></div>
+  </div>
+  <div class="box" id="ticker"></div>
+</aside>
+
+<div id="start" role="button" tabindex="0">
+  <div class="title">DUCK HUNT</div>
+  <div class="sub">AGENT SUBSTRATE EDITION</div>
+  <div class="blink">PUSH START</div>
+  <div class="muted" style="font-size:8px">CLICK TO ENABLE SOUND</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/duck-hunt/static/sprites.js"></script>
+<script>
+"use strict";
+const W = 480, H = 270, GRASS_Y = 214, DIRT_Y = 238;
+const canvas = document.getElementById("sky"), g = canvas.getContext("2d");
+g.imageSmoothingEnabled = false;
+const $ = (id) => document.getElementById(id);
+
+// ---- join QR --------------------------------------------------------------
+const joinURL = new URLSearchParams(location.search).get("url") || location.origin + "/duck-hunt";
+$("joinurl").textContent = joinURL.replace(/^https?:\/\//, "");
+if (window.QRCode) new QRCode($("qr"), { text: joinURL, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+
+$("start").onclick = $("start").onkeydown = () => { Sfx.enable(); $("start").remove(); };
+// Kiosk mode: ?autostart skips the title card (browsers keep sound off until a click).
+if (new URLSearchParams(location.search).has("autostart")) $("start").remove();
+
+// ---- simulation -----------------------------------------------------------
+const sims = new Map();      // duck id -> sim
+const labels = [];           // floating text
+const hunters = [];          // hunter pop-ups
+let state = null, lastEventAt = null, flashUntil = 0, flashTarget = null;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function newSim(d) {
+  return {
+    id: d.id, nick: d.nick, color: d.color, mode: "fly",
+    bx: rand(60, W - 60), by: rand(30, 150), dir: Math.random() < 0.5 ? -1 : 1, vyb: rand(-8, 8),
+    t: rand(0, 10), x: 0, y: 0, pattern: "wobble", speed: 5,
+    bubble: null, pendingShot: null, aimUntil: 0, fallV: 0, shotPoseUntil: 0, sparkle: 0,
+  };
+}
+
+function syncState(s) {
+  const seen = new Set();
+  for (const d of s.ducks || []) {
+    seen.add(d.id);
+    let m = sims.get(d.id);
+    if (!m) {
+      m = newSim(d);
+      if (d.state === "hatching" || d.state === "failed") { m.mode = "egg"; m.bx = rand(40, W - 40); }
+      else if (d.state === "shot" || d.state === "reviving") { m.mode = "down"; }
+      sims.set(d.id, m);
+    }
+    m.pattern = d.flight?.pattern || m.pattern;
+    m.speed = d.flight?.speed || m.speed;
+    m.serverState = d.state;
+    if (m.mode === "egg" && d.state === "flying") { m.mode = "rising"; m.by = GRASS_Y - 10; m.y = GRASS_Y; }
+    if (m.mode === "down" && d.state === "reviving") m.sparkle = 1;
+  }
+  for (const id of [...sims.keys()]) if (!seen.has(id)) sims.delete(id);
+
+  const events = s.events || [];
+  if (lastEventAt === null) lastEventAt = events.length ? events[events.length - 1].at : 0;
+  for (const e of events) {
+    if (e.at <= lastEventAt) continue;
+    lastEventAt = e.at;
+    onEvent(e);
+  }
+  state = s;
+  renderPanel(s);
+}
+
+function onEvent(e) {
+  const m = sims.get(e.duckId);
+  switch (e.type) {
+    case "hatch":
+      Sfx.hatch();
+      ticker(`<span class="green">${esc(e.nick)}</span> HATCHED IN ${fmtMs(e.ms)}`);
+      break;
+    case "quack":
+      if (m) m.bubble = { text: e.text, until: performance.now() + 6000 };
+      Sfx.quack();
+      break;
+    case "aim":
+      if (m && m.mode === "fly") m.aimUntil = performance.now() + 900;
+      break;
+    case "shot":
+      if (m) {
+        m.pendingShot = e.ms;
+        if (m.mode === "fly" && !m.aimUntil) m.aimUntil = performance.now() + 900;
+        if (m.mode !== "fly") fire(m);
+      }
+      ticker(`<span class="red">${esc(e.nick)}</span> SHOT! SANDBOX SNAPSHOTTED${e.ms ? ` <span class="yellow">${fmtMs(e.ms)}</span>` : ""}`);
+      break;
+    case "revive":
+      if (m) {
+        m.mode = "rising"; m.y = GRASS_Y + 4; m.by = rand(60, 140); m.sparkle = 1;
+        labels.push({ text: e.ms ? "RESTORED " + fmtMs(e.ms) : "RESTORED!", x: m.x, y: GRASS_Y - 20, until: performance.now() + 2500, color: NES.green });
+      }
+      Sfx.revive();
+      ticker(`<span class="green">${esc(e.nick)}</span> REVIVED! RESTORED${e.ms ? ` <span class="yellow">${fmtMs(e.ms)}</span>` : ""}`);
+      break;
+  }
+}
+
+function fire(m) {
+  const ms = m.pendingShot;
+  m.pendingShot = null; m.aimUntil = 0;
+  flashUntil = performance.now() + 90; flashTarget = { x: m.x, y: m.y };
+  Sfx.shot();
+  m.mode = "shotpose"; m.shotPoseUntil = performance.now() + 500; m.fallV = 0;
+  labels.push({ text: ms ? "SNAPSHOT " + fmtMs(ms) : "SNAPSHOTTED!", x: m.x, y: m.y - 14, until: performance.now() + 2500, color: NES.yellow });
+  m.snapMs = ms;
+}
+
+function step(m, dt, now) {
+  m.t += dt;
+  const base = 22 + m.speed * 9;
+  if (m.mode === "fly" || m.mode === "rising") {
+    m.bx += m.dir * base * dt;
+    if (m.bx < 24) { m.bx = 24; m.dir = 1; }
+    if (m.bx > W - 40) { m.bx = W - 40; m.dir = -1; }
+    m.by += m.vyb * dt;
+    if (m.by < 24 || m.by > 150) { m.vyb = -m.vyb; m.by = Math.max(24, Math.min(150, m.by)); }
+    let ox = 0, oy = 0;
+    const t = m.t;
+    switch (m.pattern) {
+      case "straight": oy = 3 * Math.sin(t); break;
+      case "zigzag": oy = 26 * (2 * Math.abs(((t * 1.3) % 2) - 1) - 1); break;
+      case "loop": ox = 22 * Math.cos(t * 3) * m.dir; oy = 22 * Math.sin(t * 3); break;
+      case "dive": oy = 46 * Math.pow(Math.sin(t * 1.4), 3); break;
+      default: oy = 4 * Math.sin(t * 7) + 10 * Math.sin(t * 1.3);
+    }
+    const tx = m.bx + ox, ty = m.by + oy;
+    if (m.mode === "rising") {
+      m.x = tx; m.y += (ty - m.y) * Math.min(1, dt * 3);
+      if (Math.abs(m.y - ty) < 2) m.mode = "fly";
+    } else { m.x = tx; m.y = ty; }
+    if (m.aimUntil && now > m.aimUntil && m.pendingShot != null) fire(m);
+  } else if (m.mode === "shotpose") {
+    if (now > m.shotPoseUntil) { m.mode = "falling"; Sfx.fall(); }
+  } else if (m.mode === "falling") {
+    m.fallV = Math.min(m.fallV + 220 * dt, 160);
+    m.y += m.fallV * dt;
+    if (m.y > GRASS_Y + 6) {
+      m.mode = "down";
+      hunters.push({ x: Math.max(20, Math.min(W - 52, m.x - 8)), color: m.color, ms: m.snapMs, start: now });
+    }
+  }
+}
+
+// ---- drawing --------------------------------------------------------------
+function block(x, y, w, h, c) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+
+function drawTree() {
+  block(44, 96, 14, GRASS_Y - 96, NES.trunk);
+  block(36, 150, 8, 6, NES.trunk); block(58, 128, 10, 6, NES.trunk);
+  const blobs = [[50, 70, 30], [30, 88, 22], [72, 90, 22], [50, 100, 24], [20, 110, 14], [82, 112, 14]];
+  for (const [cx, cy, r] of blobs) circle(cx, cy, r + 2, NES.grassDark);
+  for (const [cx, cy, r] of blobs) circle(cx, cy, r, NES.grassMid);
+  for (const [cx, cy, r] of blobs) circle(cx - r / 3, cy - r / 3, r / 3, NES.grass);
+}
+
+function drawBush() {
+  const blobs = [[420, 200, 18], [444, 194, 22], [466, 204, 16], [400, 208, 12]];
+  for (const [cx, cy, r] of blobs) circle(cx, cy, r + 2, NES.grassDark);
+  for (const [cx, cy, r] of blobs) circle(cx, cy, r, NES.grassMid);
+}
+
+function circle(cx, cy, r, c) {
+  g.fillStyle = c;
+  for (let y = -r; y <= r; y += 2) {
+    const w = Math.round(Math.sqrt(r * r - y * y));
+    g.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2, 2);
+  }
+}
+
+function drawGrass() {
+  for (let x = 0; x < W; x += 4) {
+    const h = 10 + ((x * 7) % 13);
+    block(x, GRASS_Y - h, 4, h + 30, (x / 4) % 3 === 0 ? NES.grassMid : NES.grass);
+    block(x + 1, GRASS_Y - h, 2, 3, NES.grassDark);
+  }
+  block(0, GRASS_Y, W, DIRT_Y - GRASS_Y, NES.grassMid);
+  block(0, DIRT_Y, W, H - DIRT_Y, NES.dirt);
+  for (let x = 3; x < W; x += 17) block(x, DIRT_Y + 4 + (x % 5), 3, 2, NES.dirtDark);
+}
+
+function text(str, x, y, color = NES.white, align = "left", size = 8) {
+  g.font = `${size}px "Press Start 2P"`;
+  g.textAlign = align; g.textBaseline = "top";
+  g.fillStyle = NES.black; g.fillText(str, Math.round(x) + 1, Math.round(y) + 1);
+  g.fillStyle = color; g.fillText(str, Math.round(x), Math.round(y));
+}
+
+function wrap(str, max) {
+  const words = String(str).toUpperCase().split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    if ((line + " " + w).trim().length > max) { if (line) lines.push(line); line = w; }
+    else line = (line + " " + w).trim();
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 3);
+}
+
+function drawBubble(m, now) {
+  if (!m.bubble || now > m.bubble.until) return;
+  const lines = wrap(m.bubble.text, 18), w = Math.max(...lines.map((l) => l.length)) * 6 + 10, h = lines.length * 9 + 8;
+  let bx = Math.min(Math.max(m.x + 16 - w / 2, 2), W - w - 2), by = m.y - h - 14;
+  if (by < 2) by = m.y + 26;
+  block(bx - 1, by - 1, w + 2, h + 2, NES.black);
+  block(bx, by, w, h, NES.white);
+  g.font = '6px "Press Start 2P"'; g.textAlign = "left"; g.textBaseline = "top"; g.fillStyle = NES.black;
+  lines.forEach((l, i) => g.fillText(l, Math.round(bx + 5), Math.round(by + 5 + i * 9)));
+}
+
+function drawDuck(m, now) {
+  const flip = m.dir < 0;
+  if (m.mode === "fly" || m.mode === "rising") {
+    const frame = FLAP[Math.floor(m.t * (6 + m.speed)) % FLAP.length];
+    drawSprite(g, duckSprite(frame, m.color), m.x, m.y, flip, false, 2);
+    text(m.nick.toUpperCase(), m.x + 16, m.y - 9, NES.white, "center", 6);
+    if (m.aimUntil) drawCrosshair(m.x + 16, m.y + 12, now);
+  } else if (m.mode === "shotpose") {
+    drawSprite(g, duckSprite("shot", m.color), m.x, m.y, false, false, 2);
+  } else if (m.mode === "falling") {
+    drawSprite(g, duckSprite("shot", m.color), m.x, m.y, Math.floor(now / 120) % 2 === 0, true, 2);
+  }
+}
+
+function drawCrosshair(x, y, now) {
+  const r = 12 + 3 * Math.sin(now / 60), c = NES.red;
+  g.strokeStyle = c; g.lineWidth = 2;
+  g.strokeRect(Math.round(x - r), Math.round(y - r), Math.round(r * 2), Math.round(r * 2));
+  block(x - r - 6, y - 1, 8, 2, c); block(x + r - 2, y - 1, 8, 2, c);
+  block(x - 1, y - r - 6, 2, 8, c); block(x - 1, y + r - 2, 2, 8, c);
+}
+
+function drawHunters(now) {
+  for (let i = hunters.length - 1; i >= 0; i--) {
+    const h = hunters[i], age = (now - h.start) / 1000;
+    if (age > 3) { hunters.splice(i, 1); continue; }
+    const rise = age < 0.4 ? age / 0.4 : age > 2.6 ? (3 - age) / 0.4 : 1;
+    const y = GRASS_Y + 4 - rise * 34;
+    drawSprite(g, hunterSprite(), h.x, y, false, false, 2);
+    drawSprite(g, duckSprite("shot", h.color), h.x + 28, y - 4, false, true, 1);
+    if (rise === 1) text("GOTCHA!", h.x + 16, y - 16, NES.white, "center", 6);
+  }
+}
+
+function drawHUD(s) {
+  const ducks = s?.ducks || [];
+  const shots = ducks.reduce((n, d) => n + d.shots, 0);
+  const score = ducks.reduce((n, d) => n + d.quacks * 100 + d.revives * 500 + (d.state === "flying" ? 50 : 0), 0);
+  const y = DIRT_Y + 6;
+  const box = (x, w) => { block(x, y, w, 22, NES.black); g.strokeStyle = NES.green; g.lineWidth = 1; g.strokeRect(x + 1.5, y + 1.5, w - 3, 19); };
+  box(10, 70); text("SHOT", 18, y + 4, NES.sky, "left", 6); text(String(shots), 18, y + 12, NES.white, "left", 6);
+  box(90, 290); text("HIT", 98, y + 8, NES.green, "left", 6);
+  ducks.slice(0, 32).forEach((d, i) => {
+    const down = d.state === "shot" || d.state === "reviving";
+    block(124 + i * 8, y + 8, 6, 6, down ? NES.red : d.state === "flying" ? NES.white : NES.gray);
+  });
+  box(390, 80); text(String(score).padStart(6, "0"), 398, y + 4, NES.white, "left", 6); text("SCORE", 398, y + 12, NES.white, "left", 6);
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  for (const m of sims.values()) step(m, dt, now);
+
+  if (now < flashUntil) {
+    block(0, 0, W, H, NES.black);
+    if (flashTarget) block(flashTarget.x - 4, flashTarget.y - 4, 40, 32, NES.white);
+  } else {
+    block(0, 0, W, H, NES.sky);
+    drawTree();
+    for (const m of sims.values()) drawDuck(m, now);
+    drawHunters(now);
+    drawGrass();
+    drawBush();
+    for (const m of sims.values()) {
+      if (m.mode === "egg") {
+        const wob = Math.sin(now / 90) * 1.5;
+        drawSprite(g, eggSprite(m.color), m.bx + wob, GRASS_Y + 8, false, false, 1.5);
+        text(m.nick.toUpperCase(), m.bx + 7, GRASS_Y - 2, NES.white, "center", 6);
+      }
+      if (m.mode === "down" && m.serverState === "reviving") {
+        for (let i = 0; i < 4; i++) block(m.x + rand(-6, 22), GRASS_Y + rand(-14, 6), 2, 2, NES.yellow);
+      }
+    }
+    for (const m of sims.values()) if (m.mode === "fly") drawBubble(m, now);
+    for (let i = labels.length - 1; i >= 0; i--) {
+      const l = labels[i];
+      if (now > l.until) { labels.splice(i, 1); continue; }
+      text(l.text, Math.max(40, Math.min(W - 40, l.x + 12)), l.y - (2500 - (l.until - now)) / 100, l.color, "center", 8);
+    }
+    drawHUD(state);
+    if (!sims.size) {
+      text("SCAN THE QR CODE", W / 2, 90, NES.white, "center", 10);
+      text("TO HATCH A DUCK!", W / 2, 108, NES.white, "center", 10);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---- side panel -----------------------------------------------------------
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]).toUpperCase(); }
+
+function ticker(html) {
+  const el = $("ticker"), div = document.createElement("div");
+  div.innerHTML = html;
+  el.prepend(div);
+  while (el.children.length > 14) el.lastChild.remove();
+}
+
+function pct(t) { return t ? `${fmtMs(t.p50)}<span class="muted"> P95 ${fmtMs(t.p95)}</span>` : "--"; }
+
+function renderPanel(s) {
+  const ducks = s.ducks || [];
+  $("flying").textContent = ducks.filter((d) => d.state === "flying").length;
+  $("down").textContent = ducks.filter((d) => d.state === "shot" || d.state === "reviving").length;
+  $("players").textContent = s.players;
+  $("t-snapshot").innerHTML = pct(s.timings.snapshot);
+  $("t-restore").innerHTML = pct(s.timings.restore);
+  $("t-hatch").innerHTML = pct(s.timings.hatch);
+  const sub = s.substrate || {};
+  $("awake").textContent = sub.actors != null ? `${sub.running}/${ducks.length}` : "--";
+  $("workers").textContent = sub.workers != null ? `${sub.busyWorkers}/${sub.workers}` : "--";
+  $("calls").textContent = s.llmCalls;
+  $("tokens").textContent = (s.tokens.inputTokens + s.tokens.outputTokens).toLocaleString();
+}
+
+document.fonts.load('8px "Press Start 2P"').finally(() => {
+  connectState(syncState);
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# OpenAI behind agentgateway. Agents call http://arcade.agentgateway-system/v1/chat/completions;
+# the gateway injects the real key from the "openai" Secret (created by deploy.sh from Vault).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: openai
+  namespace: agentgateway-system
+spec:
+  ai:
+    provider:
+      openai:
+        model: gpt-4.1-mini
+  policies:
+    auth:
+      secretRef:
+        name: openai
+        key: OPENAI_API_KEY
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openai
+  namespace: agentgateway-system
+spec:
+  parentRefs:
+  - name: arcade
+  # Only the in-cluster name, so the public tunnel to this Gateway can't reach the LLM.
+  hostnames:
+  - arcade.agentgateway-system.svc.cluster.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/chat/completions
+    backendRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: openai

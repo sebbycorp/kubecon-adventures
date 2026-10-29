@@ -1,0 +1,17 @@
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v2.7.0
+    container_name: homepage
+    # Host networking so Homepage reaches the kind API server on 127.0.0.1
+    # and the MetalLB IPs on the kind Docker network.
+    network_mode: host
+    environment:
+      PORT: "3000"
+      HOMEPAGE_ALLOWED_HOSTS: localhost:3000,127.0.0.1:3000,172.16.10.135:3000,omarchy:3000
+      KUBECONFIG: /app/config/kubeconfig
+      PUID: "1000"
+      PGID: "${DOCKER_GID:-966}"
+    volumes:
+      - ./config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped

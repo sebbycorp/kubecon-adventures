@@ -1,0 +1,17 @@
+title: KubeCon Adventures
+theme: dark
+color: slate
+headerStyle: boxed
+layout:
+  Platform:
+    style: row
+    columns: 4
+  Agent Substrate:
+    style: row
+    columns: 3
+  Kubernetes:
+    style: row
+    columns: 4
+  Docker:
+    style: row
+    columns: 4

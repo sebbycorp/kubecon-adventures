@@ -1,0 +1,26 @@
+- Projects:
+    - kagent:
+        - icon: github.png
+          href: https://github.com/kagent-dev/kagent/releases
+    - Agent Substrate:
+        - icon: github.png
+          href: https://github.com/kagent-dev/substrate/releases
+    - agentgateway:
+        - icon: github.png
+          href: https://github.com/agentgateway/agentgateway/releases
+- Docs:
+    - kagent docs:
+        - href: https://kagent.dev/docs/kagent/1.x/
+    - agentgateway docs:
+        - href: https://agentgateway.dev/docs/
+    - Homepage docs:
+        - href: https://gethomepage.dev/
+- External:
+    - Cloudflare:
+        - icon: cloudflare.png
+          href: https://dash.cloudflare.com/
+    - agentpwned.ai:
+        - href: https://agentpwned.ai
+    - Lab Vault:
+        - icon: vault.png
+          href: http://172.16.10.111:8200/ui/

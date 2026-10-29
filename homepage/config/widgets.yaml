@@ -1,0 +1,25 @@
+- resources:
+    label: omarchy
+    cpu: true
+    memory: true
+    disk: /
+    cputemp: true
+    uptime: true
+- kubernetes:
+    # kind nodes share the host, so a cluster total would count it three times.
+    cluster:
+      show: false
+      cpu: true
+      memory: true
+      showLabel: true
+      label: kind-kagent
+    nodes:
+      show: true
+      cpu: true
+      memory: true
+      showLabel: true
+- datetime:
+    text_size: md
+    format:
+      timeStyle: short
+      dateStyle: short

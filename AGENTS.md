@@ -9,6 +9,9 @@ A collection of KubeCon demo/lab builds. Each top-level folder is a self-contain
 | Folder | What it is | Start it |
 |--------|------------|----------|
 | `vault/` | HashiCorp Vault 1.21 in Docker, file storage, UI on | `cd vault && ./init.sh` |
+| `kagent/` | kind cluster with kagent 1.0 alpha, Agent Substrate, agentgateway | `cd kagent && ./setup.sh` |
+| `duck-hunt/` | Duck Hunt game: each duck is a kagent agent on Agent Substrate (port 8090) | `cd duck-hunt && ./deploy.sh` |
+| `homepage/` | Homepage dashboard for the host, cluster, and containers (port 3000) | `cd homepage && ./start.sh` |
 
 Add a row here when you add a new component.
 
@@ -27,4 +30,5 @@ Add a row here when you add a new component.
 
 - The host user is in the `docker` group, but a shell started before the group was added needs `newgrp docker <<< "<cmd>"` to reach the Docker socket.
 - The host firewall is ufw with ufw-docker, so published container ports are blocked from other machines until opened with `sudo ufw route allow proto tcp from any to any port <port>`. Agents can't sudo; ask the user to run it.
+- Public domain for the games: `kubecon.agentpwned.ai`, served through a Cloudflare Tunnel into the kind cluster. Leave the other `agentpwned.ai` records (apex, `www`, `lab`, `desk`) alone. Cloudflare credentials are in the lab Vault (`http://172.16.10.111:8200`, `secret/lab/cloudflare`); its address and token are in the local Vault at `secret/kubecon/lab-vault`.
 - Vault: `VAULT_ADDR=http://localhost:8200`. A container restart leaves Vault sealed; rerun `vault/init.sh` to unseal.

@@ -1,0 +1,98 @@
+:root {
+  --sky: #3cbcfc;
+  --black: #000;
+  --white: #fcfcfc;
+  --orange: #fc9838;
+  --red: #d82800;
+  --green: #80d010;
+  --gray: #bcbcbc;
+  --yellow: #f8b800;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--black);
+  color: var(--white);
+  font-family: "Press Start 2P", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  -webkit-font-smoothing: none;
+  image-rendering: pixelated;
+}
+
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+/* NES dialog box: black with a white double border. */
+.box {
+  background: var(--black);
+  border: 4px solid var(--white);
+  box-shadow: 0 0 0 4px var(--black), 0 0 0 8px var(--white);
+  padding: 12px;
+  margin: 8px;
+}
+
+.title {
+  color: var(--sky);
+  font-size: 28px;
+  letter-spacing: 2px;
+  text-align: center;
+  text-shadow: 4px 4px 0 #0000bc;
+  margin: 24px 0 8px;
+}
+
+.sub { color: var(--orange); text-align: center; }
+.muted { color: var(--gray); }
+.red { color: var(--red); }
+.green { color: var(--green); }
+.orange { color: var(--orange); }
+.yellow { color: var(--yellow); }
+
+button, .btn {
+  font: inherit;
+  color: var(--white);
+  background: var(--black);
+  border: 4px solid var(--white);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+button:hover, button:focus-visible { color: var(--orange); border-color: var(--orange); outline: none; }
+button:active { transform: translate(2px, 2px); }
+button:disabled { color: #555; border-color: #555; cursor: default; transform: none; }
+
+input {
+  font: inherit;
+  color: var(--white);
+  background: var(--black);
+  border: 4px solid var(--white);
+  padding: 10px;
+  width: 100%;
+  text-transform: uppercase;
+}
+input:focus { outline: none; border-color: var(--orange); }
+
+/* Menu items with the blinking ▶ cursor. */
+.menu { list-style: none; margin: 0; padding: 0; }
+.menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  padding: 12px 8px 12px 32px;
+  position: relative;
+  color: var(--orange);
+}
+.menu button:hover::before, .menu button:focus-visible::before {
+  content: "▶";
+  position: absolute;
+  left: 8px;
+  color: var(--white);
+  animation: blink 0.8s steps(1) infinite;
+}
+.menu button:disabled { color: #555; }
+
+@keyframes blink { 50% { opacity: 0; } }
+.blink { animation: blink 1s steps(1) infinite; }

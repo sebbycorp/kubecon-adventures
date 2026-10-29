@@ -1,0 +1,98 @@
+# Kubernetes tiles show pod status/CPU/RAM from the kind-kagent cluster (podSelector is a label selector).
+# Docker tiles show container status/CPU/RAM from the local Docker socket.
+- Platform:
+    - Duck Hunt:
+        icon: mdi-duck
+        href: http://172.16.10.135:8090/duck-hunt/screen
+        description: Big screen · /duck-hunt phone · /admin
+        namespace: duck-hunt
+        podSelector: app=duck-hunt
+        siteMonitor: http://localhost:8090/duck-hunt
+    - kagent UI:
+        icon: https://raw.githubusercontent.com/kagent-dev/kagent/main/img/icon-dark.svg
+        href: http://172.16.10.135:8080
+        description: kagent 1.0.0-alpha17
+        namespace: kagent
+        podSelector: app.kubernetes.io/name=kagent,app.kubernetes.io/component=ui
+        siteMonitor: http://localhost:8080
+    - kagent controller:
+        icon: kubernetes.png
+        description: Agents, sessions, A2A gateway
+        namespace: kagent
+        podSelector: app.kubernetes.io/name=kagent,app.kubernetes.io/component=controller
+    - agentgateway:
+        icon: https://raw.githubusercontent.com/agentgateway/agentgateway/main/ui/public/favicon.svg
+        href: https://github.com/agentgateway/agentgateway/releases/tag/v1.7.0
+        description: agentgateway v1.7.0 control plane
+        namespace: agentgateway-system
+        podSelector: app.kubernetes.io/name=agentgateway
+    - Vault:
+        icon: vault.png
+        href: http://172.16.10.135:8200/ui/
+        description: Lab secrets (secret/kubecon/*)
+        server: local
+        container: vault
+        siteMonitor: http://localhost:8200/v1/sys/health?sealedcode=200&uninitcode=200
+
+- Agent Substrate:
+    - Duck pool (gVisor workers):
+        icon: mdi-duck
+        description: WorkerPool kagent-default; each agent session is an actor here
+        namespace: kagent
+        podSelector: ate.dev/worker-pool=kagent-default
+    - ate-api-server:
+        icon: mdi-api
+        namespace: ate-system
+        podSelector: app=ate-api-server
+    - ate-controller:
+        icon: mdi-cog
+        namespace: ate-system
+        podSelector: app=ate-controller
+    - atelet:
+        icon: mdi-server
+        description: Node agent, runs the sandboxes
+        namespace: ate-system
+        podSelector: app=atelet
+    - atenet-router:
+        icon: mdi-router-network
+        namespace: ate-system
+        podSelector: app=atenet-router
+    - rustfs (snapshots):
+        icon: mdi-database
+        description: Object storage for actor snapshots
+        namespace: ate-system
+        podSelector: app=rustfs
+
+- Kubernetes:
+    - kagent-control-plane:
+        icon: kubernetes.png
+        server: local
+        container: kagent-control-plane
+    - kagent-worker:
+        icon: kubernetes.png
+        server: local
+        container: kagent-worker
+    - kagent-worker2:
+        icon: kubernetes.png
+        server: local
+        container: kagent-worker2
+    - kagent postgres:
+        icon: postgres.png
+        namespace: kagent
+        podSelector: app.kubernetes.io/name=kagent,app.kubernetes.io/component=database
+
+- Docker:
+    - kind-registry:
+        icon: docker.png
+        description: localhost:5001 (game images)
+        server: local
+        container: kind-registry
+    - kagent-ui-port:
+        icon: docker.png
+        description: Host :8080 to kagent UI NodePort
+        server: local
+        container: kagent-ui-port
+    - Homepage:
+        icon: homepage.png
+        server: local
+        container: homepage

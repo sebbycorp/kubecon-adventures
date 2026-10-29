@@ -1,0 +1,15 @@
+# Headless Service so the duck-hunt backend can find every atelet (one per node) and
+# read Substrate's own checkpoint/restore timings from its Prometheus endpoint.
+apiVersion: v1
+kind: Service
+metadata:
+  name: atelet-metrics
+  namespace: ate-system
+spec:
+  clusterIP: None
+  selector:
+    app: atelet
+  ports:
+  - name: prometheus
+    port: 9090
+    targetPort: 9090
