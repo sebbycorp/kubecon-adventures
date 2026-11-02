@@ -1,0 +1,58 @@
+# Agent Flow: every player gets their own "flowbot" agent. Each session is its own
+# Substrate actor on the "flow" WorkerPool; between runs it sleeps as a snapshot.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: flow
+  namespace: kagent
+  labels:
+    # kagent's ActorTemplates select workers by these labels.
+    kagent.dev/worker-pool-name: flow
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 6
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: flow
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: flow
+    snapshotPolicy:
+      location: s3://ate-snapshots/agent-flow/
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: flowbot
+  namespace: kagent
+spec:
+  harnessRef:
+    name: flow
+  template:
+    inline:
+      description: A KubeCon booth visitor's own agent; does small tasks in its gVisor sandbox
+      modelConfig:
+        name: duck-model
+      systemPrompt: |
+        You are a friendly AI agent at a KubeCon booth, running in your own gVisor sandbox on
+        Kubernetes. A visitor picked a small task for you on their phone. Do it for real with
+        your bash tool when it needs commands. Available tools: busybox, wget, awk. There is no
+        curl. Prefix every network command with "timeout 5". Never run destructive or
+        long-running commands, and never print the value of any variable that looks like a key
+        or token.
+
+        Reply in plain text for a phone screen: at most 4 short lines, no markdown headings.
+        Include the real command output that matters (for example the FizzBuzz lines or the
+        dice rolls). Stay cheerful and family-friendly.

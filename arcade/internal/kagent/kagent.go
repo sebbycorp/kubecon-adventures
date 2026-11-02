@@ -174,7 +174,101 @@ func (k *Kagent) Prompt(ctx context.Context, sessionID, text string) (Reply, err
 	if !ok {
 		return reply, fmt.Errorf("unexpected A2A result %T", result)
 	}
-	reply.Task, reply.Usage = task, taskUsage(task)
+	return replyFromTask(task)
+}
+
+// StreamEvent is one step of an agent turn, as kagent streams it.
+type StreamEvent struct {
+	Kind   string   // "working", "tool_call", "tool_result", "text"
+	Tool   ToolCall // tool_call (Name, Args) and tool_result (Name, Output)
+	Text   string   // text
+	Tokens int64    // LLM tokens of the call that produced a tool_call or text
+}
+
+// PromptStream is Prompt over A2A streaming: on sees the agent start working, each
+// LLM-chosen tool call, each tool result and the final text as they happen.
+func (k *Kagent) PromptStream(ctx context.Context, sessionID, text string, on func(StreamEvent)) (Reply, error) {
+	client, err := k.gateway.A2A.ForSession(ctx, sessionID)
+	if err != nil {
+		return Reply{}, err
+	}
+	request := &a2atype.SendMessageRequest{Message: a2atype.NewMessage(a2atype.MessageRoleUser, a2atype.NewTextPart(text))}
+	var final *a2atype.Task
+	// kagent rejects sends briefly while a session is resuming; retry those.
+	for attempt := 0; ; attempt++ {
+		got := false
+		err = nil
+		for ev, e := range client.SendStreamingMessage(ctx, request) {
+			if e != nil {
+				err = e
+				break
+			}
+			got = true
+			switch ev := ev.(type) {
+			case *a2atype.Task:
+				final = ev
+			case *a2atype.TaskStatusUpdateEvent:
+				if ev.Status.State == a2atype.TaskStateWorking {
+					on(StreamEvent{Kind: "working"})
+				}
+			case *a2atype.TaskArtifactUpdateEvent:
+				streamArtifact(ev.Artifact, on)
+			}
+		}
+		if got || !errors.Is(err, a2atype.ErrUnsupportedOperation) || attempt == 30 {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err != nil {
+		return Reply{}, err
+	}
+	if final == nil {
+		return Reply{}, errors.New("a2a stream ended without a task")
+	}
+	return replyFromTask(final)
+}
+
+// streamArtifact turns one streamed artifact into StreamEvents.
+func streamArtifact(a *a2atype.Artifact, on func(StreamEvent)) {
+	if a == nil {
+		return
+	}
+	var tokens int64
+	if u, ok := a.Metadata["kagent.dev/a2a/usage"].(map[string]any); ok {
+		if v, ok := u["totalTokenCount"].(float64); ok {
+			tokens = int64(v)
+		}
+	}
+	for _, part := range a.Parts {
+		data, _ := part.Data().(map[string]any)
+		name, _ := data["name"].(string)
+		switch part.Meta()["kagent.dev/a2a/part-type"] {
+		case "function_call":
+			args, _ := data["args"].(map[string]any)
+			on(StreamEvent{Kind: "tool_call", Tool: ToolCall{Name: name, Args: args}, Tokens: tokens})
+		case "function_response":
+			out := ""
+			if resp, ok := data["response"].(map[string]any); ok {
+				if s, ok := resp["result"].(string); ok {
+					out = s
+				} else {
+					b, _ := json.Marshal(resp)
+					out = string(b)
+				}
+			}
+			on(StreamEvent{Kind: "tool_result", Tool: ToolCall{Name: name, Output: out}})
+		default:
+			if t := part.Text(); t != "" {
+				on(StreamEvent{Kind: "text", Text: t, Tokens: tokens})
+			}
+		}
+	}
+}
+
+func replyFromTask(task *a2atype.Task) (Reply, error) {
+	var err error
+	reply := Reply{Task: task, Usage: taskUsage(task)}
 	if task.Status.State != a2atype.TaskStateCompleted {
 		return reply, fmt.Errorf("task ended in %s", task.Status.State)
 	}

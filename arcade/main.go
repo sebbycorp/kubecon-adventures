@@ -21,6 +21,7 @@ import (
 
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/duckhunt"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/escape"
+	"github.com/sebbycorp/kubecon-adventures/arcade/games/flow"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/fork"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
@@ -50,6 +51,7 @@ func main() {
 	duck := duckhunt.New(p, agentClient("duck"), *idle)
 	esc := escape.New(p, agentClient("escapee"))
 	frk := fork.New(p, agentClient("forky"))
+	flw := flow.New(p, agentClient("flowbot"))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -58,6 +60,7 @@ func main() {
 	duck.Run(ctx)
 	esc.Run(ctx)
 	frk.Run(ctx)
+	flw.Run(ctx)
 
 	web := func(dir string) fs.FS {
 		sub, err := fs.Sub(webFS, path.Join("web", dir))
@@ -71,10 +74,11 @@ func main() {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "index.html") })
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
-	arcadeAPI(mux, p, duck, esc, frk)
+	arcadeAPI(mux, p, duck, esc, frk, flw)
 	duck.Routes(mux, web("duck-hunt"))
 	esc.Routes(mux, web("sandbox-escape"))
 	frk.Routes(mux, web("fork-frenzy"))
+	flw.Routes(mux, web("agent-flow"))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	go func() {
@@ -98,7 +102,7 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, esc *escape.Game, frk *fork.Game) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, esc *escape.Game, frk *fork.Game, flw *flow.Game) {
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -138,6 +142,9 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, es
 		}
 		for k, v := range frk.Stats() {
 			out["forkFrenzy_"+k] = v
+		}
+		for k, v := range flw.Stats() {
+			out["agentFlow_"+k] = v
 		}
 		platform.WriteJSON(w, out)
 	})

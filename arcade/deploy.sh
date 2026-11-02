@@ -33,6 +33,10 @@ echo "==> Fork Frenzy: forks WorkerPool and FORKY Agent"
 k apply -f manifests/fork-agent.yaml
 k -n kagent wait agent/forky --for=condition=Ready --timeout 5m
 
+echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
+k apply -f manifests/flow-agent.yaml
+k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
+
 echo "==> arcade image"
 IMAGE=localhost:5001/arcade:$(date +%Y%m%d-%H%M%S)
 docker build -q -t "$IMAGE" .
@@ -58,4 +62,5 @@ echo "Arcade:     http://localhost:8090/"
 echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen)"
 echo "Escape:     http://localhost:8090/sandbox-escape (big screen: /sandbox-escape/screen)"
 echo "Forks:      http://localhost:8090/fork-frenzy (big screen: /fork-frenzy/screen)"
+echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
 echo "Admin:      http://localhost:8090/admin"

@@ -38,3 +38,12 @@ docker rm -f kind-registry kagent-ui-port
 ## Lab-only caveats
 
 kagent and Substrate are alpha builds. TLS is off inside the cluster, and the OpenAI key is stored as a plain Kubernetes Secret in the `kagent` namespace. Don't use this setup outside a local lab.
+
+## After a host reboot
+
+The cluster comes back, but agent calls can hang: sessions report READY, and every send fails after about 11 s with `input was not accepted; retry after the session becomes available` (the arcade games sit at "busy"). Restarting Substrate, then the worker pools and the controller, fixes it:
+
+```bash
+kubectl --context kind-kagent -n ate-system rollout restart $(kubectl --context kind-kagent -n ate-system get deploy,ds -o name)
+kubectl --context kind-kagent -n kagent rollout restart deploy/ducks deploy/escape deploy/forks deploy/flow deploy/kagent-default deploy/kagent-controller
+```

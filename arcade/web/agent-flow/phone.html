@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f0f12">
+<title>Agent Flow · kagent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Styled after the kagent UI: near-black panels, thin zinc borders, violet accents. */
+  :root {
+    --bg: #0f0f12; --side: #17171b; --panel: #151519; --line: #27272a; --fg: #e4e4e7; --mute: #a1a1aa; --dim: #71717a;
+    --accent: #7c3aed; --accentSoft: #2b2750; --accentLine: #4c3a8f; --red: #f87171;
+    --grid: #17191b; --green: #5fd068; --greenDim: #3d7a45; /* the live flow scene */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.5 Inter, system-ui, sans-serif; }
+  button { font: inherit; cursor: pointer; color: inherit; }
+  a { color: inherit; }
+  .hidden { display: none !important; }
+
+  .top { position: sticky; top: 0; z-index: 5; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--side); border-bottom: 1px solid var(--line); }
+  .logo { display: flex; align-items: center; padding: 4px 8px; border-radius: 8px; background: #232329; }
+  .logo img { height: 22px; display: block; }
+  .live { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-size: 13px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: #1c1c21; }
+  .live:hover { border-color: var(--accentLine); background: var(--accentSoft); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  .shell { display: flex; min-height: calc(100% - 52px); }
+  nav.side { display: none; width: 232px; flex: none; padding: 16px 12px; background: var(--side); border-right: 1px solid var(--line); }
+  nav.side a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; text-decoration: none; color: #d4d4d8; margin-bottom: 2px; }
+  nav.side a:hover { background: #222227; }
+  nav.side a.on { background: var(--accentSoft); color: #fff; }
+  nav.side svg { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .stats { margin-top: 18px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; color: var(--mute); }
+  .stats div { display: flex; justify-content: space-between; padding: 2px 0; }
+  .stats b { color: var(--fg); font-weight: 500; }
+  @media (min-width: 900px) {
+    nav.side { display: block; position: sticky; top: 52px; height: calc(100vh - 52px); overflow-y: auto; }
+    .scene svg { max-height: 46vh; }
+  }
+
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .wrap { width: 100%; max-width: 760px; margin: 0 auto; padding: 14px 14px 0; flex: 1; }
+
+  .scene { border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(ellipse at 50% 45%, #131614, #0d0e0f 75%); overflow: hidden; }
+  .scene svg { display: block; width: 100%; aspect-ratio: 835 / 650; }
+  .scene .hint { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--mute); font-size: 12.5px; background: #111114; }
+
+  .empty { text-align: center; padding: 34px 0 18px; }
+  .empty b { display: block; font-weight: 500; font-size: 15px; }
+  .empty span { color: var(--mute); font-size: 13.5px; }
+
+  .msgs { padding: 16px 0 8px; display: flex; flex-direction: column; gap: 14px; }
+  .me { align-self: flex-end; max-width: 85%; background: #232329; border: 1px solid var(--line); border-radius: 12px 12px 2px 12px; padding: 9px 13px; }
+  .bot { display: flex; gap: 10px; align-items: flex-start; }
+  .av { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #232329; display: grid; place-items: center; }
+  .av img { width: 18px; }
+  .bot .body { flex: 1; min-width: 0; }
+  .bot .name { font-weight: 500; font-size: 13px; color: var(--mute); margin-bottom: 4px; }
+  details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin-bottom: 8px; }
+  summary { list-style: none; cursor: pointer; padding: 8px 12px; font-size: 12.5px; color: var(--mute); display: flex; align-items: center; gap: 8px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "▾"; margin-left: auto; }
+  details[open] summary::after { content: "▴"; }
+  .steps { list-style: none; margin: 0; padding: 2px 12px 10px; }
+  .steps li { display: flex; gap: 10px; padding: 4px 0; font-size: 13px; color: #d4d4d8; }
+  .steps li i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #3f3f46; margin-top: 7px; }
+  .steps li.now i { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .steps li.bad i { background: var(--red); }
+  .steps code { display: block; color: var(--dim); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+  .answer { white-space: pre-wrap; word-break: break-word; }
+  .answer.mono { font: 13px/1.55 ui-monospace, monospace; }
+  .meta { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  .err { color: var(--red); }
+  .typing span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mute); margin-right: 3px; animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; } .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 50% { opacity: .2; } }
+
+  .dock { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 22%); padding: 18px 14px calc(14px + env(safe-area-inset-bottom)); }
+  .dock .inner { max-width: 760px; margin: 0 auto; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+  .chips button { flex: none; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #18181c; font-size: 13px; color: #d4d4d8; }
+  .chips button:hover:not(:disabled) { border-color: var(--accentLine); background: var(--accentSoft); }
+  .composer { display: flex; align-items: center; gap: 8px; padding: 7px; border: 1px solid var(--accentLine); border-radius: 12px; background: #141418; box-shadow: 0 0 0 1px #3b2a6b55, 0 6px 30px #7c3aed33; }
+  .composer input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; font-size: 15px; padding: 8px 6px; }
+  .composer input::placeholder { color: var(--dim); }
+  .send { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid #3f3f46; background: #27272a; color: #d4d4d8; }
+  .send:not(:disabled):hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .send:disabled, .chips button:disabled { opacity: .45; cursor: default; }
+  .send svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  #err { color: var(--red); font-size: 12.5px; min-height: 1.3em; padding: 6px 2px 0; }
+
+  .join { max-width: 560px; margin: 0 auto; padding: 18vh 16px 0; text-align: center; }
+  .join b { display: block; font-weight: 500; font-size: 16px; }
+  .join p { color: var(--mute); margin: 6px 0 22px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="logo" href="/agent-flow" aria-label="kagent"><img src="/agent-flow/static/kagent-logo.svg" alt="kagent"></a>
+  <a class="live" href="/agent-flow/screen" target="_blank" rel="noopener"><span class="dot"></span>Live flow ↗</a>
+</header>
+
+<div class="shell">
+  <nav class="side" aria-label="Arcade">
+    <a class="on" href="/agent-flow"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01"/></svg>Your agent</a>
+    <a href="/agent-flow/screen" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4zM3 12l9 4 9-4M3 17l9 4 9-4"/></svg>Live flow</a>
+    <a href="/"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Arcade</a>
+    <div class="stats" id="stats"></div>
+  </nav>
+
+  <main>
+    <section id="join" class="join hidden">
+      <b>flowbot</b>
+      <p>Get your own AI agent on Agent Substrate. What's your name?</p>
+      <form id="joinForm" class="composer">
+        <input id="nick" maxlength="16" autocomplete="nickname" required placeholder="Your name, shown on the big screen">
+        <button class="send" type="submit"><svg viewBox="0 0 24 24"><path d="M5 12l14-7-5 15-3-6-6-2z"/></svg>Start</button>
+      </form>
+      <div id="joinErr" class="err" style="margin-top:10px"></div>
+    </section>
+
+    <section id="app" class="hidden" style="display:flex;flex-direction:column;flex:1">
+      <div class="wrap">
+        <div class="scene">
+          <svg id="scene" viewBox="345 95 835 650" preserveAspectRatio="xMidYMid meet" aria-label="Your request moving through kagent and Agent Substrate"></svg>
+          <div class="hint"><span class="dot" id="hintDot"></span><span id="sceneHint">Your request will show up here as a green cube.</span></div>
+        </div>
+        <div class="empty" id="empty"><b>flowbot</b><span>Send a message to start a new conversation.</span></div>
+        <div class="msgs" id="msgs" aria-live="polite"></div>
+      </div>
+      <div class="dock"><div class="inner">
+        <div class="chips" id="chips"></div>
+        <form class="composer" id="askForm">
+          <input id="ask" maxlength="200" autocomplete="off" placeholder="Ask the agent something...">
+          <button class="send" id="sendBtn" type="submit"><svg viewBox="0 0 24 24"><path d="M5 12l14-7-5 15-3-6-6-2z"/></svg>Send</button>
+        </form>
+        <div id="err" role="alert"></div>
+      </div></div>
+    </section>
+  </main>
+</div>
+
+<script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg";</script>
+<script src="/agent-flow/static/scene.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+let me = null, state = null, flow = null, busy = false, lastCount = -1;
+const open = new Set(); // runs whose steps are expanded
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function showError(e, el = $("err")) { el.textContent = e ? String(e.message || e) : ""; if (e) setTimeout(() => showError(null, el), 4000); }
+
+$("joinForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  try { me = await post("/api/join", { nick: $("nick").value }); start(); } catch (e) { showError(e, $("joinErr")); }
+};
+async function startRun(task, ask) {
+  try {
+    await post("/agent-flow/api/run", { task, ask });
+    $("ask").value = "";
+    $("ask").blur();
+    window.scrollTo({ top: 0, behavior: "smooth" }); // watch your cube while the agent works
+  } catch (e) { showError(e); }
+}
+$("askForm").onsubmit = (ev) => { ev.preventDefault(); if ($("ask").value.trim()) startRun("own", $("ask").value); };
+
+function start() {
+  $("join").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  flow = startFlowScreen($("scene"), { me: me.id, compact: true, live: false });
+  const connect = () => {
+    const es = new EventSource("/agent-flow/api/events");
+    es.onmessage = (m) => { state = JSON.parse(m.data); flow.apply(state); render(); };
+    es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+  };
+  connect();
+}
+
+function render() {
+  const mine = (state.runs || []).filter((r) => r.playerId === me.id).slice(-6);
+  const run = mine.at(-1);
+  busy = !!(run && !run.done);
+
+  if (!$("chips").children.length) {
+    $("chips").innerHTML = (state.tasks || []).map((t) => `<button type="button" data-task="${esc(t.id)}" title="${esc(t.blurb)}">${esc(t.label)}</button>`).join("");
+    $("chips").querySelectorAll("button").forEach((b) => b.onclick = () => startRun(b.dataset.task));
+  }
+  document.querySelectorAll("#chips button, #sendBtn").forEach((b) => b.disabled = busy);
+  $("ask").placeholder = busy ? "Your agent is working..." : "Ask the agent something...";
+
+  const hint = !run ? "Your request will show up here as a green cube."
+    : busy ? (run.steps.at(-1)?.text || "on its way") : "Your agent is asleep in Snapshot Storage. Ask again to wake it.";
+  $("sceneHint").textContent = hint;
+  $("hintDot").style.opacity = busy ? 1 : 0.35;
+
+  $("empty").classList.toggle("hidden", mine.length > 0);
+  $("msgs").innerHTML = mine.map((r) => {
+    const live = !r.done;
+    const steps = r.steps.filter((s) => s.stage !== "controller");
+    const list = steps.map((s, i) => `<li class="${s.stage === "error" ? "bad" : live && i === steps.length - 1 ? "now" : ""}"><i></i><div>${esc(s.text)}${s.detail ? `<code>${esc(s.detail)}</code>` : ""}</div></li>`).join("");
+    const tools = r.steps.filter((s) => (s.stage === "tool" || s.stage === "hook") && s.text !== "tool output").length;
+    const sum = live ? "Working through the stack..." : `${steps.length} steps${tools ? ` · ${tools} tool call${tools > 1 ? "s" : ""}` : ""}`;
+    const body = r.error ? `<div class="err">Something went wrong: ${esc(r.error)}</div>`
+      : r.answer ? `<div class="answer${/\n/.test(r.answer) ? " mono" : ""}">${esc(r.answer)}</div><div class="meta">${(r.ms / 1000).toFixed(1)}s · ${r.tokens.toLocaleString()} tokens</div>`
+      : `<div class="typing"><span></span><span></span><span></span></div>`;
+    return `<div class="me">${esc(r.ask || r.task)}</div>
+      <div class="bot"><div class="av"><img src="/agent-flow/static/kagent-icon.svg" alt=""></div><div class="body">
+        <div class="name">flowbot</div>
+        <details data-run="${esc(r.id)}"${open.has(r.id) ? " open" : ""}><summary>${live ? '<span class="dot"></span>' : ""}${esc(sum)}</summary><ul class="steps">${list}</ul></details>
+        ${body}</div></div>`;
+  }).join("");
+  $("msgs").querySelectorAll("details").forEach((d) => d.ontoggle = () => d.open ? open.add(d.dataset.run) : open.delete(d.dataset.run));
+  // Scroll to a new answer once it arrives (the scene stays in view while the agent works).
+  const answers = mine.filter((r) => r.done).length;
+  if (answers > lastCount && lastCount !== -1) setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }), 1200);
+  lastCount = answers;
+
+  const t = state.timings || {}, sub = state.substrate || {};
+  const ms = (p) => (p && p.count ? (p.p50 >= 1000 ? (p.p50 / 1000).toFixed(1) + "s" : p.p50 + "ms") : "–");
+  $("stats").innerHTML = [["Agents", state.agents], ["Runs", state.total], ["Awake", sub.running ?? 0], ["Asleep", sub.suspended ?? 0],
+    ["Restore p50", ms(t.restore)], ["Snapshot p50", ms(t.snapshot)]].map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join("");
+}
+
+fetch("/api/me").then((r) => r.ok ? r.json() : Promise.reject()).then((p) => { me = p; start(); })
+  .catch(() => { $("join").classList.remove("hidden"); $("nick").focus(); });
+</script>
+</body>
+</html>

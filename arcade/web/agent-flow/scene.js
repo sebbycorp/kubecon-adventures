@@ -1,0 +1,540 @@
+// Agent Flow big screen: an isometric map of the real components (agentgateway,
+// kagent-controller, the Agent Substrate control plane, gVisor sandboxes, rustfs) with a
+// cube for every live request, moved by the stages the backend streams.
+"use strict";
+
+const NS = "http://www.w3.org/2000/svg";
+const S = 36, OX = 640, OY = 150;
+const P = (x, y, z = 0) => [OX + (x - y) * S * 0.866, OY + (x + y) * S * 0.5 - z * S];
+const pts = (a) => a.map((p) => p.join(",")).join(" ");
+function el(t, a, parent) {
+  const e = document.createElementNS(NS, t);
+  for (const k in a) e.setAttribute(k, a[k]);
+  parent.appendChild(e);
+  return e;
+}
+
+// The belt the cubes ride, from the phones (off screen left) to the LLM (off screen top right).
+const NODES = [
+  { key: "phones", at: [-14, 4] },
+  { key: "gw", at: [2, 4] },
+  { key: "ctrl", at: [7, 4] },
+  { key: "ate", at: [7, 9] },
+  { key: "box", at: [13, 9] },
+  { key: "egress", at: [13, 4] },
+  { key: "llm", at: [13, -14] },
+];
+const DIST = [0];
+for (let i = 1; i < NODES.length; i++) {
+  const [a, b] = [NODES[i - 1].at, NODES[i].at];
+  DIST.push(DIST[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]));
+}
+const NODE = Object.fromEntries(NODES.map((n, i) => [n.key, i]));
+// Where each backend stage sends a request's cube.
+const STAGE_NODE = {
+  gateway: "gw", controller: "ctrl", schedule: "ate", restore: "ate", sandbox: "box",
+  llm: "llm", tool: "box", hook: "egress", reply: "phones", snapshot: "phones", asleep: "phones", error: "phones",
+};
+const DONE = new Set(["reply", "snapshot", "asleep", "error"]);
+
+function posAt(s) {
+  let i = 1;
+  while (i < DIST.length - 1 && s > DIST[i]) i++;
+  const [a, b] = [NODES[i - 1].at, NODES[i].at];
+  const f = Math.min(1, Math.max(0, (s - DIST[i - 1]) / (DIST[i] - DIST[i - 1] || 1)));
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+function createScene(svg, opts = {}) {
+  const L = {};
+  for (const k of ["grid", "floor", "obj", "orbs", "cubes", "lab"]) L[k] = el("g", {}, svg);
+  for (let i = -14; i <= 24; i++) {
+    el("line", { x1: P(i, -14)[0], y1: P(i, -14)[1], x2: P(i, 24)[0], y2: P(i, 24)[1], stroke: "var(--grid)" }, L.grid);
+    el("line", { x1: P(-14, i)[0], y1: P(-14, i)[1], x2: P(24, i)[0], y2: P(24, i)[1], stroke: "var(--grid)" }, L.grid);
+  }
+  function box(x, y, w, d, h, g = L.obj, o = {}) {
+    const c = el("g", {}, g), st = o.st || "#9a9fa4", z = o.z || 0;
+    el("polygon", { points: pts([P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)]), fill: o.f2 || "#101112", stroke: st }, c);
+    el("polygon", { points: pts([P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: o.f3 || "#0c0d0e", stroke: st }, c);
+    el("polygon", { points: pts([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: o.f1 || "#161718", stroke: st }, c);
+    return c;
+  }
+  // belts draws the conveyor as one path with rounded corners, then its slats and the
+  // moving dashes that always flow from the phones toward the LLM.
+  function belts() {
+    const d = "M" + NODES.map((n) => P(...n.at).join(",")).join(" L");
+    const bw = 2 * 0.866 * S * 0.55;
+    el("path", { d, fill: "none", stroke: "#5d6166", "stroke-width": bw + 2, "stroke-linejoin": "round" }, L.floor);
+    el("path", { d, fill: "none", stroke: "#141516", "stroke-width": bw, "stroke-linejoin": "round" }, L.floor);
+    for (let i = 1; i < NODES.length; i++) {
+      const [x1, y1] = NODES[i - 1].at, [x2, y2] = NODES[i].at, hz = y1 === y2, w = 0.53;
+      const lo = (hz ? Math.min(x1, x2) : Math.min(y1, y2)) + 0.6, hi = (hz ? Math.max(x1, x2) : Math.max(y1, y2)) - 0.6;
+      for (let t = lo; t < hi; t += 0.33) {
+        const [p, r] = hz ? [P(t, y1 - w), P(t, y1 + w)] : [P(x1 - w, t), P(x1 + w, t)];
+        el("line", { x1: p[0], y1: p[1], x2: r[0], y2: r[1], stroke: "#232527" }, L.floor);
+      }
+    }
+    el("path", { d, class: "flowline" }, L.floor);
+  }
+  // orbit is a station's ring; its arrows circle it (faster while the station is busy).
+  function orbit(x, y, r) {
+    const [cx, cy] = P(x, y), g = el("g", {}, L.floor), rx = r * S * 1.2247, ry = r * S * 0.7071;
+    const e = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: "var(--green)", opacity: 0.18 }, g);
+    const arrows = [0.3, 1.9, 3.5, 5.1].map((a) => ({ a, p: el("path", { d: "M-5,-4 L0,0 L-5,4", fill: "none", stroke: "var(--green)", opacity: 0.45 }, g) }));
+    const o = { e, arrows, cx, cy, rx, ry, phase: Math.random() * 6 };
+    o.spin = (dt, on) => {
+      o.phase += dt * (on ? 2.4 : 0.3);
+      for (const ar of arrows) {
+        const a = ar.a + o.phase, x2 = cx + Math.cos(a) * rx, y2 = cy + Math.sin(a) * ry;
+        const dir = Math.atan2(Math.cos(a) * ry, -Math.sin(a) * rx) * 57.3; // tangent, clockwise on screen
+        ar.p.setAttribute("transform", `translate(${x2} ${y2}) rotate(${dir + 180})`);
+        ar.p.setAttribute("opacity", on ? 0.9 : 0.4);
+      }
+    };
+    o.spin(0, false);
+    return o;
+  }
+  function cyl(x, y, h) {
+    const [cx, cy] = P(x, y), rx = 0.34 * S * 1.22, ry = 0.34 * S * 0.7;
+    el("path", { d: `M${cx - rx},${cy} v${-h * S} a${rx},${ry} 0 0 0 ${2 * rx},0 v${h * S} a${rx},${ry} 0 0 1 ${-2 * rx},0`, fill: "#101112", stroke: "#9a9fa4" }, L.obj);
+    return el("ellipse", { cx, cy: cy - h * S, rx, ry, fill: "var(--greenDim)", stroke: "var(--green)" }, L.obj);
+  }
+  const LAB = {};
+  function label(key, x, y, z, name, role, icon, short) {
+    const [a, b] = P(x, y, z), g = el("g", { class: "station" }, L.lab);
+    if (opts.onPick) g.addEventListener("click", () => opts.onPick(key));
+    el("title", {}, g).textContent = `${name}: ${role}`;
+    if (opts.compact) {
+      const n = short || name, w = n.length * 15 + 26 + (icon ? 34 : 0);
+      const r = el("rect", { x: a - w / 2, y: b - 22, width: w, height: 40, rx: 10, fill: "#121314", stroke: "#34373a" }, g);
+      const d = document.createElementNS(NS, "circle"); // no status dot; the border shows activity
+      el("text", { x: a - w / 2 + 14, y: b + 7, fill: "#f0f0f0", "font-size": 25, "font-weight": 600 }, g).textContent = n;
+      if (icon) el("image", { href: icon, x: a + w / 2 - 36, y: b - 15, width: 28, height: 26 }, g);
+      LAB[key] = { r, d };
+      return;
+    }
+    let w = Math.max(name.length * 8.6, role.length * 6.6) + 26;
+    if (icon) w += 30;
+    const r = el("rect", { x: a - w / 2, y: b - 24, width: w, height: 44, rx: 9, fill: "#121314", stroke: "#34373a" }, g);
+    const d = document.createElementNS(NS, "circle"); // no status dot; the border shows activity
+    el("text", { x: a - w / 2 + 13, y: b - 5, fill: "#f0f0f0", "font-size": 14, "font-weight": 600 }, g).textContent = name;
+    el("text", { x: a - w / 2 + 13, y: b + 11, fill: "#7d8287", "font-size": 11.5 }, g).textContent = role;
+    if (icon) el("image", { href: icon, x: a + w / 2 - 34, y: b - 16, width: 28, height: 25 }, g);
+    LAB[key] = { r, d };
+  }
+
+  const style = el("style", {}, svg);
+  style.textContent = `.flowline { fill: none; stroke: var(--green); stroke-width: 2; stroke-dasharray: 3 16; opacity: .35;
+      animation: agf-flow var(--flowdur, 1.8s) linear infinite; }
+    @keyframes agf-flow { to { stroke-dashoffset: -38; } }
+    .station { cursor: pointer; } .station:hover rect { stroke: var(--green); }
+    .hit { fill: transparent; cursor: pointer; } .pickable { cursor: pointer; }`;
+  L.fx = el("g", {}, svg);
+  belts();
+  const ORB = {};
+  for (const n of NODES.slice(1, -1)) ORB[n.key] = orbit(...n.at, n.key === "box" ? 2.6 : 1.9);
+  const disc = (x, y, r, h, g = L.obj, o = {}) => {
+    const [cx, cy] = P(x, y, o.z || 0), rx = r * S * 1.2247, ry = r * S * 0.7071;
+    el("path", { d: `M${cx - rx},${cy} v${-h * S} a${rx},${ry} 0 0 0 ${2 * rx},0 v${h * S} a${rx},${ry} 0 0 1 ${-2 * rx},0`, fill: o.f || "#101112", stroke: o.st || "#9a9fa4" }, g);
+    return el("ellipse", { cx, cy: cy - h * S, rx, ry, fill: o.top || "#161718", stroke: o.st || "#9a9fa4" }, g);
+  };
+  const dyn = el("g", {}, L.obj); // machine parts redrawn every frame
+
+  // Every component is its own kind of machine:
+  // agentgateway, a scanner gate: pillars here, its lit top beam and scan line in machines().
+  box(1.6, 3.2, 0.3, 0.3, 2.4); box(1.6, 4.5, 0.3, 0.3, 2.4);
+  // kagent-controller, a card reader: a dock on the belt and a block with a slot that takes a session card.
+  box(6.3, 3.3, 1.4, 1.4, 0.12);
+  box(8.0, 2.0, 1.8, 1.5, 0.9, L.obj, { f1: "#18191a" });
+  el("polygon", { points: pts([P(8.35, 2.68, 0.9), P(9.45, 2.68, 0.9), P(9.45, 2.82, 0.9), P(8.35, 2.82, 0.9)]), fill: "#060707", stroke: "#5d6166" }, L.obj);
+  const pg = cyl(9.4, 5.6, 0.75);
+  // ate-api-server + controller, a turntable that places each actor.
+  disc(7, 9, 1.15, 0.22);
+  el("ellipse", { cx: P(7, 9, 0.22)[0], cy: P(7, 9, 0.22)[1], rx: 0.8 * S * 1.2247, ry: 0.8 * S * 0.7071, fill: "none", stroke: "#3a3d40" }, L.obj);
+  // ate-idp, a badge kiosk that prints an identity for every new actor.
+  box(4.2, 10.2, 0.8, 0.8, 0.6, L.obj, { f1: "#18191a" });
+  el("polygon", { points: pts([P(4.35, 10.55, 0.6), P(4.85, 10.55, 0.6), P(4.85, 10.65, 0.6), P(4.35, 10.65, 0.6)]), fill: "#060707", stroke: "#5d6166" }, L.obj);
+  const idp = el("circle", { cx: P(4.9, 11, 0.45)[0], cy: P(4.9, 11, 0.45)[1], r: 3.5, fill: "var(--greenDim)" }, L.obj);
+  // atelet + gVisor, a glass cage on a platform, with a crane that reaches in.
+  box(11.6, 8.4, 2.8, 1.2, 0.15);
+  box(14.8, 7.8, 0.32, 0.32, 3.2); box(12.4, 7.8, 2.7, 0.32, 0.3, L.obj, { z: 3.2 });
+  const cage = el("g", { fill: "none", "stroke-dasharray": "5 5" }, L.obj);
+  {
+    const [x0, y0, x1, y1, z0, z1] = [11.7, 8.3, 14.3, 9.7, 0.15, 1.6];
+    const C = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    el("polygon", { points: pts([P(x0, y1, z0), P(x1, y1, z0), P(x1, y1, z1), P(x0, y1, z1)]), fill: "#5fd06808", stroke: "none" }, cage);
+    el("polygon", { points: pts([P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1), P(x1, y0, z1)]), fill: "#5fd06806", stroke: "none" }, cage);
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = C[i], [bx2, by2] = C[(i + 1) % 4];
+      for (const z of [z1]) { const [p1, p2] = [P(ax, ay, z), P(bx2, by2, z)]; el("line", { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, cage); }
+      const [q1, q2] = [P(ax, ay, z0), P(ax, ay, z1)];
+      el("line", { x1: q1[0], y1: q1[1], x2: q2[0], y2: q2[1] }, cage);
+    }
+    cage.setAttribute("stroke", "#6b7f70");
+  }
+  // Snapshot Storage, a rack of drawers with status LEDs.
+  const rf = [];
+  for (let i = 0; i < 2; i++) {
+    box(15.9, 10.3, 1.2, 1.0, 0.45, L.obj, { z: i * 0.47, f1: "#18191a" });
+    const [h1, h2] = [P(16.25, 11.3, i * 0.47 + 0.22), P(16.75, 11.3, i * 0.47 + 0.22)];
+    el("line", { x1: h1[0], y1: h1[1], x2: h2[0], y2: h2[1], stroke: "#5d6166", "stroke-width": 2 }, L.obj);
+    const led = P(15.98, 11.3, i * 0.47 + 0.22);
+    rf.push(el("circle", { cx: led[0] + 2, cy: led[1], r: 3.5, fill: "var(--greenDim)" }, L.obj));
+  }
+  // atenet-egress, a boom barrier across the belt (its arm and light in machines()).
+  box(11.75, 3.85, 0.35, 0.35, 1.0);
+  // The LLM: a radio mast at the edge of the map.
+  box(14.3, -7.9, 0.18, 0.18, 2.4);
+  const awakeG = el("g", {}, L.obj);
+  // awake draws one small cube on the sandbox platform per actor running in Substrate right now.
+  let awakeN = -1;
+  function awake(n) {
+    n = Math.min(n, 9);
+    if (n === awakeN) return;
+    awakeN = n;
+    awakeG.innerHTML = "";
+    for (let i = 0; i < n; i++) {
+      const c = box(11.75 + (i % 5) * 0.52, 8.55 + Math.floor(i / 5) * 0.5, 0.3, 0.3, 0.3, awakeG, { st: "var(--green)", f1: "#1a3320", f2: "#122016", f3: "#0f1a12", z: 0.15 });
+      c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
+    }
+  }
+
+  // machines animates the moving parts from what is happening right now.
+  const M = { hookZ: 2.2, card: 0.9, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
+  const ease = (cur, want, dt, k = 5) => cur + (want - cur) * (1 - Math.exp(-dt * k));
+  function machines(glow, dt) {
+    dyn.innerHTML = "";
+    const now = performance.now(), G = "var(--green)", grey = "#9a9fa4";
+    // Gate: the top beam lights up and a scan line sweeps down while a cube passes.
+    M.gate = ease(M.gate, glow.gw ? 1 : 0, dt, 6);
+    box(1.5, 3.1, 0.5, 1.8, 0.3, dyn, { z: 2.4, st: M.gate > 0.5 ? G : grey, f1: M.gate > 0.5 ? "#1a3320" : "#161718" });
+    if (M.gate > 0.05) {
+      const z = 2.3 - ((now / 500) % 1) * 2.2, [a, b] = [P(1.75, 3.5, z), P(1.75, 4.5, z)];
+      el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 3, opacity: M.gate, filter: "url(#glow)" }, dyn);
+      const [g1, g2, g3, g4] = [P(1.75, 3.5, 0), P(1.75, 4.5, 0), P(1.75, 4.5, 2.4), P(1.75, 3.5, 2.4)];
+      el("polygon", { points: pts([g1, g2, g3, g4]), fill: G, opacity: 0.12 * M.gate }, dyn);
+    }
+    // kagent: a session card drops into the reader's slot.
+    M.card = ease(M.card, glow.ctrl ? 0.25 : 0.95, dt, 4);
+    {
+      const z = 0.9 + M.card, st = glow.ctrl ? G : grey;
+      for (const x of [8.55, 9.25]) { const [a, b] = [P(x, 2.75, 0.9), P(x, 2.75, z)]; el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: grey, "stroke-dasharray": "3 4", opacity: 0.6 }, dyn); }
+      box(8.55, 2.71, 0.7, 0.08, 0.95, dyn, { z, st, f1: "#1b1c1d", f3: "#141516" });
+      const dot = P(8.9, 2.79, z + 0.6);
+      el("circle", { cx: dot[0], cy: dot[1], r: 5, fill: G, opacity: glow.ctrl ? 1 : 0.7 }, dyn);
+    }
+    // Scheduler: an arrow rides round the turntable, fast while it places an actor.
+    M.turn += dt * (glow.ate ? 3.2 : 0.5);
+    {
+      const [cx, cy] = P(7, 9, 0.22), rx = 0.8 * S * 1.2247, ry = 0.8 * S * 0.7071, a0 = M.turn, a1 = a0 + 1.6;
+      const p0 = [cx + Math.cos(a0) * rx, cy + Math.sin(a0) * ry], p1 = [cx + Math.cos(a1) * rx, cy + Math.sin(a1) * ry];
+      el("path", { d: `M${p0} A${rx},${ry} 0 0 1 ${p1}`, fill: "none", stroke: G, "stroke-width": 3, opacity: glow.ate ? 1 : 0.5 }, dyn);
+      const dir = Math.atan2(Math.cos(a1) * ry, -Math.sin(a1) * rx) * 57.3;
+      el("path", { d: "M-7,-5 L0,0 L-7,5", fill: "none", stroke: G, "stroke-width": 3, opacity: glow.ate ? 1 : 0.5, transform: `translate(${p1[0]} ${p1[1]}) rotate(${dir})` }, dyn);
+    }
+    // ate-idp: a badge pops out of the kiosk for a new actor.
+    M.badge = ease(M.badge, glow.idp ? 0.6 : 0.08, dt, 6);
+    box(4.38, 10.57, 0.45, 0.06, 0.5, dyn, { z: 0.6 + M.badge - 0.45, st: glow.idp ? G : grey, f1: "#1b1c1d" });
+    // Sandbox crane: the hook lowers into the glass cage while the agent works.
+    M.hookZ = ease(M.hookZ, glow.box ? 0.95 : 2.2, dt, 4);
+    {
+      const [a, b] = P(13.2, 8.05, 3.2), [c, d] = P(13.2, 8.05, M.hookZ + 0.5);
+      el("line", { x1: a, y1: b, x2: c, y2: d, stroke: grey }, dyn);
+      box(12.95, 7.8, 0.5, 0.5, 0.5, dyn, { z: M.hookZ, st: glow.box ? G : grey });
+    }
+    cage.setAttribute("stroke", glow.box ? "#5fd068" : "#6b7f70");
+    // Egress: the barrier arm lifts and its light turns green as traffic goes out.
+    M.arm = ease(M.arm, glow.egress || glow.llm ? 1.25 : 0, dt, 5);
+    {
+      const pv = [11.92, 4.02, 0.9], L2 = 2.3, ex = pv[0] + Math.cos(M.arm) * L2, ez = pv[2] + Math.sin(M.arm) * L2;
+      const [a, b] = P(...pv), [c, d] = P(ex, pv[1], ez);
+      el("line", { x1: a, y1: b, x2: c, y2: d, stroke: "#e8e8e8", "stroke-width": 5, "stroke-linecap": "round" }, dyn);
+      el("line", { x1: a, y1: b, x2: c, y2: d, stroke: "#0d0e0f", "stroke-width": 5, "stroke-dasharray": "6 8", "stroke-linecap": "butt" }, dyn);
+      const lt = P(11.92, 4.02, 1.15);
+      el("circle", { cx: lt[0], cy: lt[1], r: 6, fill: M.arm > 0.4 ? G : "#f59e0b", filter: "url(#glow)" }, dyn);
+    }
+    // Snapshot Storage: the top drawer slides out while a snapshot is saved or restored.
+    M.drawer = ease(M.drawer, glow.rf ? 0.55 : 0, dt, 5);
+    if (M.drawer > 0.02) box(15.95, 10.3 + M.drawer, 1.1, 1.0, 0.4, dyn, { z: 0.96, st: G, f1: "#1a3320" });
+    // LLM mast: waves go out while a call is in flight.
+    M.waves += dt;
+    {
+      const [mx, my] = P(14.39, -7.81, 2.4);
+      el("circle", { cx: mx, cy: my, r: 4, fill: glow.llm ? G : grey }, dyn);
+      if (glow.llm) for (let i = 0; i < 3; i++) {
+        const r = 10 + ((M.waves * 40 + i * 18) % 54);
+        el("path", { d: `M${mx - r},${my - r * 0.3} A${r},${r} 0 0 1 ${mx + r},${my - r * 0.3}`, fill: "none", stroke: G, opacity: (1 - (r - 10) / 54).toFixed(2) }, dyn);
+      }
+    }
+  }
+
+  label("gw", 2, 4, 3.4, "agentgateway", "front door · auth · webhooks", window.AGW_ICON);
+  label("ctrl", 7.2, 2.6, 3.6, "kagent-controller", "sessions · A2A · agent CRDs", window.KAGENT_ICON, "kagent");
+  label("pg", 10.2, 6.6, 1.4, "postgres", "chat history");
+  label("ate", 7, 9, 2.0, "ate-api-server + controller", "schedules agent actors", null, "Substrate");
+  label("idp", 4.6, 11.8, -0.9, "ate-idp", "gives each agent an identity");
+  label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
+  label("rf", 17.6, 12.4, -0.9, "Snapshot Storage", "sleeping agents (rustfs)");
+  label("egress", 15, 2, 1.5, "atenet-egress", "only allowed hosts go out", null, "egress");
+  // A beacon where requests leave the map for the LLM; it pulses while a call is out.
+  const [bx, by] = P(13, -7.6);
+  const beacon = el("circle", { cx: bx, cy: by, r: 9, fill: "var(--green)", opacity: 0.25, filter: "url(#glow)" }, L.obj);
+  {
+    const [a, b] = P(13, -6.5, 0.2);
+    el("text", { x: a + 16, y: b, fill: "#6d7277", "font-size": opts.compact ? 22 : 12, "font-family": "ui-monospace,monospace" }, L.lab).textContent = opts.compact ? "↗ LLM" : "↗ via agentgateway to OpenAI";
+    const [c, d] = P(-6, 4);
+    el("text", { x: c - 10, y: d + 34, fill: "#6d7277", "font-size": 12, "font-family": "ui-monospace,monospace" }, L.lab).textContent = "← phones";
+  }
+
+  // Click targets over each machine (the labels are clickable too).
+  const SPOTS = { gw: [2, 4], ctrl: [8.6, 3], pg: [9.4, 5.6], ate: [7, 9], idp: [4.6, 10.6], box: [13, 9], egress: [12.6, 4], rf: [16.5, 10.8] };
+  if (opts.onPick) {
+    const hit = el("g", {}, svg);
+    for (const [key, at] of Object.entries(SPOTS)) {
+      const [cx, cy] = P(...at, 0.5);
+      el("ellipse", { class: "hit", cx, cy, rx: 1.3 * S, ry: 1.0 * S }, hit).addEventListener("click", () => opts.onPick(key));
+    }
+    L.hit = hit;
+  }
+  const spot = (key) => P(...(SPOTS[key] || [7, 6]));
+  const pulse = (e, ms = 700) => e.animate([{ fill: "#9cff9f" }, { fill: "var(--greenDim)" }], { duration: ms });
+  const flash = (key) => {
+    const l = LAB[key];
+    if (!l) return;
+    l.r.animate([{ stroke: "#9cff9f", strokeWidth: 3 }, { stroke: "#34373a", strokeWidth: 1 }], { duration: 1200 });
+  };
+  // A snapshot orb travelling between the sandbox and rustfs.
+  function orb(from, to) {
+    const [a, b] = P(...from, 0.6), [c, d] = P(...to, 0.9);
+    const o = el("circle", { r: 7, fill: "var(--green)", opacity: 0.9, filter: "url(#glow)" }, L.orbs);
+    o.animate([{ cx: a, cy: b }, { cx: (a + c) / 2, cy: Math.min(b, d) - 60 }, { cx: c, cy: d }], { duration: 900, easing: "ease-in-out" }).onfinish = () => o.remove();
+    o.setAttribute("cx", c); o.setAttribute("cy", d);
+  }
+  // bubble floats a short message up from a spot on the map, then fades it out. Bubbles at
+  // the same spot stack upward instead of covering each other.
+  const stacks = new Map();
+  function bubble(at, text, kind = "") {
+    const k = opts.compact ? 1.9 : 1, key = at.join(",");
+    const slot = [0, 1, 2, 3, 4, 5].find((i) => !(stacks.get(key) || new Set()).has(i)) ?? 0;
+    if (!stacks.has(key)) stacks.set(key, new Set());
+    stacks.get(key).add(slot);
+    const fs = 12.5 * k, w = text.length * fs * 0.62 + 20 * k, h = 26 * k;
+    const [a, b0] = P(...at), b = b0 - slot * (h + 6 * k), g = el("g", {}, L.fx);
+    const color = kind === "bad" ? "#ff6b6b" : kind === "code" ? "#cfe9d2" : "#e8e8e8";
+    el("rect", { x: a - w / 2, y: b - h, width: w, height: h, rx: 7 * k, fill: kind === "bad" ? "#2a1212" : "#0f1a12", stroke: kind === "bad" ? "#ff6b6b" : "var(--green)" }, g);
+    el("text", { x: a, y: b - h / 2 + fs * 0.36, fill: color, "font-size": fs, "text-anchor": "middle", "font-family": kind === "code" ? "ui-monospace,monospace" : "Inter,system-ui,sans-serif" }, g).textContent = text;
+    g.animate([{ transform: "translateY(8px)", opacity: 0 }, { transform: "translateY(0)", opacity: 1, offset: 0.12 }, { transform: "translateY(-10px)", opacity: 1, offset: 0.75 }, { transform: "translateY(-26px)", opacity: 0 }],
+      { duration: 3200, easing: "ease-out" }).onfinish = () => { g.remove(); stacks.get(key).delete(slot); };
+  }
+  // ripple sends a ring out from a station when a request arrives.
+  function ripple(key) {
+    const n = NODES.find((x) => x.key === key);
+    if (!n) return;
+    const [cx, cy] = P(...n.at);
+    const e = el("ellipse", { cx, cy, rx: S * 1.2247, ry: S * 0.7071, fill: "none", stroke: "var(--green)", "stroke-width": 2, style: "transform-box: fill-box; transform-origin: center" }, L.floor);
+    e.animate([{ transform: "scale(.6)", opacity: 0.9 }, { transform: "scale(2.6)", opacity: 0 }], { duration: 1100, easing: "ease-out" }).onfinish = () => e.remove();
+  }
+  // trail leaves a fading green spark behind a moving cube.
+  function trail(x, y) {
+    const [a, b] = P(x, y, 0.08);
+    const t = el("circle", { cx: a, cy: b, r: opts.compact ? 6 : 3.5, fill: "var(--green)", opacity: 0.55 }, L.floor);
+    t.animate([{ opacity: 0.55 }, { opacity: 0 }], { duration: 700, easing: "ease-out" }).onfinish = () => t.remove();
+  }
+  // tour highlights one station with a short explainer, for when nobody is using the screen.
+  const TOUR = [
+    ["gw", [2, 4, 3.0], "agentgateway: every request comes in here"],
+    ["ctrl", [7.2, 3.2, 3.2], "kagent: sessions, A2A, the agent's CRD"],
+    ["ate", [7, 9, 2.6], "Substrate schedules each agent as an actor"],
+    ["box", [13, 9, 2.6], "every agent gets its own gVisor sandbox"],
+    ["egress", [13, 4, 2.2], "only allowed hosts can get out"],
+    ["rf", [18.6, 10.6, 1.2], "Snapshot Storage: idle agents sleep here"],
+  ];
+  function tour(i) {
+    const [key, at, text] = TOUR[i % TOUR.length];
+    ripple(key);
+    flash(key);
+    bubble(at, text);
+    if (key === "rf") rf.forEach((c) => pulse(c, 1500));
+    return P(at[0], at[1]);
+  }
+  const defs = el("defs", {}, svg);
+  const f = el("filter", { id: "glow", x: "-50%", y: "-50%", width: "200%", height: "200%" }, defs);
+  el("feGaussianBlur", { stdDeviation: 3, result: "b" }, f);
+  const m = el("feMerge", {}, f);
+  el("feMergeNode", { in: "b" }, m); el("feMergeNode", { in: "SourceGraphic" }, m);
+
+  // drawCube draws a request. With opts.me set (the phone), other people's cubes are dimmed.
+  function drawCube(g, x, y, nick, bad, other, flag) {
+    g.innerHTML = "";
+    const st = bad ? "#ff6b6b" : other ? "#4d5a50" : "var(--green)";
+    const sz = opts.compact && !other ? 0.9 : 0.64;
+    box(x - sz / 2, y - sz / 2, sz, sz, sz, g, { st, f1: bad ? "#3a1a1a" : other ? "#161917" : "#1a3320", f2: bad ? "#2a1212" : other ? "#121413" : "#122016", f3: bad ? "#1f0e0e" : other ? "#0e100f" : "#0f1a12" });
+    if (flag && !other) {
+      // A small flag on the cube while its agent runs a tool, like Tessl's issue markers.
+      const [fx, fy] = P(x + sz / 2 - 0.05, y - sz / 2 + 0.05, sz), h = 18 * (opts.compact ? 1.8 : 1);
+      el("line", { x1: fx, y1: fy, x2: fx, y2: fy - h, stroke: "#f59e0b", "stroke-width": 1.5 }, g);
+      el("path", { d: `M${fx},${fy - h} l${h * 0.6},${h * 0.22} l${-h * 0.6},${h * 0.22}z`, fill: "#f59e0b" }, g);
+    }
+    if (other && opts.compact) return;
+    const [a, b] = P(x, y, sz + 0.45);
+    el("text", { x: a, y: b, fill: bad ? "#ffd0d0" : "#cfe9d2", "font-size": opts.compact ? 24 : 11, "font-weight": opts.compact ? 600 : 400, "text-anchor": "middle", "font-family": "ui-monospace,monospace" }, g).textContent = opts.compact ? "you" : nick;
+  }
+
+  svg.appendChild(L.cubes); // cubes on top: above the labels and click targets, so a cube can be picked
+  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot };
+}
+
+// startFlowScreen wires the scene to the backend's live state.
+// With me set, the scene highlights that player's cubes; live: false leaves the event
+// stream to the caller, which feeds states in through the returned apply.
+// With camera, the view zooms in and follows the newest live request (or the idle tour).
+// onPick(key) is called when a station is clicked; clicking a cube follows that request.
+function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, camera, live = true }) {
+  let picked = null, pickedUntil = 0, pinned = null;
+  const sc = createScene(svg, { compact, me, onPick: onPick && ((key) => { picked = key; pickedUntil = Date.now() + 9000; sc.ripple(key); sc.flash(key); onPick(key); }) });
+  const VW = 1000, VH = 560, cam = { x: 720, y: 400 };
+  let focusId = null, focusUntil = 0, tourAt = null;
+  const cubes = new Map(); // run ID -> {g, s, target, nick, stage, bad}
+  const seenSteps = new Map(); // run ID -> steps already announced
+  let seenHook = Date.now() - 2000;
+  let firstState = true;
+
+  function apply(st) {
+    for (const r of st.runs || []) {
+      const node = STAGE_NODE[r.stage] || "gw";
+      let c = cubes.get(r.id);
+      const known = seenSteps.get(r.id) || 0;
+      if (!c) {
+        // Old finished runs from before this screen opened are not replayed.
+        if (firstState && r.done) { seenSteps.set(r.id, r.steps.length); continue; }
+        if (r.done && known >= r.steps.length) continue;
+        c = { g: document.createElementNS(NS, "g"), s: 0, nick: r.nick, stage: "", bad: false, other: !!me && r.playerId !== me };
+        if (onPick) { c.g.classList.add("pickable"); c.g.addEventListener("click", () => { pinned = r.id; focusId = r.id; focusUntil = 0; picked = null; }); }
+        if (c.other) sc.L.cubes.prepend(c.g); else sc.L.cubes.appendChild(c.g);
+        cubes.set(r.id, c);
+      }
+      c.target = DIST[NODE[node]];
+      c.final = DONE.has(r.stage);
+      c.flag = r.stage === "tool" || r.stage === "hook";
+      c.started = r.started;
+      c.bad = r.stage === "error";
+      if (c.stage !== r.stage && !c.other) {
+        if (r.stage === "restore") sc.orb([16.6, 11.1], [13, 9]);
+        if (r.stage === "snapshot") sc.orb([13, 9], [16.6, 11.1]);
+        c.stage = r.stage;
+      }
+      for (const step of r.steps.slice(known)) {
+        if (!c.other && !firstState) effect(step);
+        onStep && onStep(r, step);
+      }
+      seenSteps.set(r.id, r.steps.length);
+    }
+    for (const h of st.hooks || []) {
+      if (h.at > seenHook) {
+        seenHook = h.at;
+        sc.flash("gw"); sc.flash("egress");
+        onHook && onHook(h);
+      }
+    }
+    firstState = false;
+    // Focus the camera and story card on the newest live request; hold a finished one briefly.
+    const now = Date.now(), fc = cubes.get(focusId);
+    if (fc && fc.final && !focusUntil) focusUntil = now + 3500;
+    if (pinned && cubes.has(pinned) && !(fc && fc.final && now > focusUntil && focusUntil)) focusId = pinned;
+    else if (!fc || (focusUntil && now > focusUntil)) {
+      pinned = null;
+      const live = [...cubes.entries()].filter(([, c]) => !c.final && !c.other).sort((a, b) => b[1].started - a[1].started);
+      if (live.length) { focusId = live[0][0]; focusUntil = 0; } else if (!fc) focusId = null;
+    }
+    sc.awake(st.substrate?.running || 0);
+    onState && onState(st);
+  }
+
+  // effect turns one real step into a floating bubble at the station where it happened.
+  const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
+  function effect(step) {
+    const d = step.detail || "";
+    switch (step.stage) {
+      case "tool": if (step.text !== "tool output") sc.bubble([13, 9, 2.6], "$ " + clip(d.split("\n")[0], 34), "code"); break;
+      case "hook": sc.bubble([13, 4, 2.2], "POST /agent-flow/hook", "code"); break;
+      case "llm": sc.bubble([13, 1, 1.4], "→ LLM"); break;
+      case "schedule": sc.bubble([7, 9, 2.6], "new agent actor"); break;
+      case "restore": if (d && d !== "Snapshot Storage") sc.bubble([18.6, 10.6, 1.2], "restored in " + d); break;
+      case "asleep": if (d) sc.bubble([18.6, 10.6, 1.2], "snapshot in " + d); break;
+      case "reply": sc.bubble([2, 4, 3.0], "✓ answered in " + d); break;
+      case "error": sc.bubble([2, 4, 3.0], "error", "bad"); break;
+    }
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    const glow = {};
+    for (const [id, c] of cubes) {
+      const speed = 11; // grid units per second
+      const d = c.target - c.s;
+      c.s += Math.sign(d) * Math.min(Math.abs(d), speed * dt);
+      const [x, y] = posAt(c.s);
+      sc.drawCube(c.g, x, y, c.nick, c.bad, c.other, c.flag);
+      if (id === focusId) c.pos = P(x, y);
+      if (Math.abs(d) > 0.05 && !c.other && now - (c.trailAt || 0) > 45) { c.trailAt = now; sc.trail(x, y); }
+      if (c.target === DIST[NODE.llm] && !c.other) glow.llm = true;
+      if (Math.abs(d) < 0.01 && !c.other) {
+        const n = NODES[DIST.indexOf(c.target)];
+        if (n) glow[n.key] = true;
+        if (n && c.at !== n.key) { c.at = n.key; if (n.key !== "phones" && n.key !== "llm") sc.ripple(n.key); }
+        if (c.final && c.target === 0) { c.g.remove(); cubes.delete(id); }
+      }
+      if (c.other) continue;
+      if (c.stage === "controller" && Math.abs(d) < 0.01) glow.pg = true;
+      if (c.stage === "schedule" && Math.abs(d) < 0.01) glow.idp = true;
+      if ((c.stage === "restore" || c.stage === "snapshot")) glow.rf = true;
+    }
+    // The belts speed up with the number of requests in flight.
+    const busy = [...cubes.values()].filter((c) => !c.final).length;
+    const dur = Math.max(0.45, 1.8 - busy * 0.3).toFixed(2) + "s";
+    if (svg.style.getPropertyValue("--flowdur") !== dur) svg.style.setProperty("--flowdur", dur);
+    for (const k in sc.ORB) {
+      const on = !!glow[k];
+      sc.ORB[k].spin(dt, on);
+      sc.ORB[k].e.setAttribute("opacity", on ? 0.85 : (0.16 + 0.08 * Math.sin(now / 900 + sc.ORB[k].phase)).toFixed(3));
+      const lb = sc.LAB[k];
+      if (lb) { lb.r.setAttribute("stroke", on ? "var(--green)" : "#34373a"); lb.d.setAttribute("fill", on ? "var(--green)" : "#3a3d40"); }
+    }
+    for (const k of ["pg", "idp", "rf"]) {
+      const lb = sc.LAB[k], on = !!glow[k];
+      lb.r.setAttribute("stroke", on ? "var(--green)" : "#34373a"); lb.d.setAttribute("fill", on ? "var(--green)" : "#3a3d40");
+    }
+    sc.machines(glow, dt);
+    if (camera) {
+      const f = cubes.get(focusId);
+      if (picked && Date.now() > pickedUntil) picked = null;
+      const [tx, ty] = picked ? sc.spot(picked) : f && f.pos ? f.pos : tourAt || [720, 400];
+      const k = 1 - Math.exp(-dt * 1.6);
+      cam.x += (Math.min(960, Math.max(520, tx)) - cam.x) * k;
+      cam.y += (Math.min(540, Math.max(280, ty)) - cam.y) * k;
+      svg.setAttribute("viewBox", `${(cam.x - VW / 2).toFixed(1)} ${(cam.y - VH / 2).toFixed(1)} ${VW} ${VH}`);
+    }
+    sc.beacon.setAttribute("opacity", glow.llm ? (0.6 + 0.4 * Math.sin(now / 120)).toFixed(2) : 0.2);
+    sc.beacon.setAttribute("r", glow.llm ? 12 : 8);
+    sc.pg.setAttribute("fill", glow.pg ? "var(--green)" : "var(--greenDim)");
+    sc.idp.setAttribute("fill", glow.idp ? "var(--green)" : "var(--greenDim)");
+    for (const r of sc.rf) r.setAttribute("fill", glow.rf ? "var(--green)" : "var(--greenDim)");
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  const active = () => [...cubes.values()].some((c) => !c.final);
+  const tour = (i) => { tourAt = sc.tour(i); };
+  const focus = () => (picked ? null : focusId);
+  const pickedKey = () => picked;
+  if (!live) return { apply, tour, active, focus, picked: pickedKey };
+  let es;
+  (function connect() {
+    es = new EventSource("/agent-flow/api/events");
+    es.onmessage = (m) => apply(JSON.parse(m.data));
+    es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+  })();
+  return { apply, tour, active, focus, picked: pickedKey };
+}

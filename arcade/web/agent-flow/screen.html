@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0d0e0f; --grid: #17191b; --fg: #e8e8e8; --mute: #8a8f94; --green: #5fd068; --greenDim: #3d7a45; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 Inter, system-ui, sans-serif; height: 100%; overflow: hidden; }
+  svg { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #vig { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, var(--bg) 100%); }
+  .ui { position: fixed; z-index: 2; }
+  #title { left: 32px; top: 28px; }
+  #title img { height: 34px; display: block; margin-bottom: 10px; }
+  #title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  #title p { margin: 4px 0 0; color: var(--mute); font-size: 13px; }
+  #stats { right: 28px; top: 28px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; max-width: 560px; }
+  .stat { border: 1px solid #2a2d30; background: #121314ee; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; color: var(--mute); }
+  .stat b { color: var(--fg); font-weight: 600; margin-right: 4px; }
+  #feed { right: 28px; bottom: 28px; width: 400px; display: flex; flex-direction: column; gap: 8px; }
+  .ev { border: 1px solid #2a2d30; background: #121314ee; border-radius: 10px; padding: 9px 12px; font-size: 13px; display: flex; gap: 8px; align-items: center; animation: in .35s ease; }
+  .ev.hook { border-color: var(--green); box-shadow: 0 0 30px #5fd06822; }
+  .ev.bad { border-color: #8a3a3a; }
+  .ev b { font-weight: 600; flex: none; }
+  .ev span { color: #c3c7cb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev code { margin-left: auto; padding-left: 8px; color: var(--green); font: 12px ui-monospace, monospace; flex: none; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .av { width: 22px; height: 22px; border-radius: 50%; background: #2c3c63; display: grid; place-items: center; font-size: 11px; flex: none; }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } }
+  #qr { left: 32px; bottom: 28px; display: flex; gap: 14px; align-items: center; border: 1px solid var(--greenDim); border-radius: 14px; padding: 12px 18px 12px 12px; background: #111412; box-shadow: 0 0 40px #5fd06814; }
+  #qr .code { width: 112px; height: 112px; background: #fff; border-radius: 6px; padding: 6px; box-sizing: border-box; }
+  #qr .code img, #qr .code svg { width: 100%; height: 100%; display: block; position: static; }
+  #qr b { display: block; font-size: 16px; }
+  #qr span { color: var(--mute); font-size: 12.5px; }
+  #qr .ask { display: block; margin-top: 6px; color: var(--green); font-size: 12.5px; min-height: 1.4em; transition: opacity .4s; }
+
+  /* Ambient life: a slow light sweep and drifting sparks behind the map. */
+  #sweep { position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+    background: radial-gradient(circle at 30% 40%, #5fd06812, transparent 30%), radial-gradient(circle at 70% 60%, #7c3aed10, transparent 32%);
+    animation: sweep 22s ease-in-out infinite alternate; }
+  @keyframes sweep { to { transform: translate(8%, -6%) rotate(8deg); } }
+  body { background: var(--bg); } svg#scene { z-index: 0; }
+  .spark { position: fixed; z-index: 0; width: 3px; height: 3px; border-radius: 50%; background: var(--green); opacity: 0; pointer-events: none; animation: drift linear infinite; }
+  @keyframes drift { 0% { opacity: 0; transform: translateY(0); } 15% { opacity: .5; } 85% { opacity: .35; } 100% { opacity: 0; transform: translateY(-160px); } }
+
+  #live { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--mute); border: 1px solid #2a2d30; background: #121314ee; border-radius: 999px; padding: 5px 12px 5px 10px; }
+  #live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: beat 1.4s ease-in-out infinite; }
+  #live b { color: var(--fg); font-weight: 600; letter-spacing: .06em; }
+  @keyframes beat { 50% { transform: scale(.6); opacity: .5; } }
+  .stat { transition: border-color .6s, box-shadow .6s; }
+  .stat.bump { border-color: var(--green); box-shadow: 0 0 22px #5fd06844; }
+  .stat.bump b { color: var(--green); }
+  .av { color: #0d0e0f; font-weight: 700; }
+
+  #toasts { left: 50%; top: 26px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .toast { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 12px; border: 1px solid var(--green); background: #0f1a12f0; box-shadow: 0 0 40px #5fd06833; font-size: 15px; animation: pop .5s cubic-bezier(.2, 1.6, .4, 1); }
+  .toast.hook { border-color: #a78bfa; background: #1a1430f0; box-shadow: 0 0 40px #7c3aed44; }
+  .toast b { font-weight: 600; }
+  .toast.out { animation: fade .5s forwards; }
+  @keyframes pop { from { opacity: 0; transform: translateY(-14px) scale(.9); } }
+  @keyframes fade { to { opacity: 0; transform: translateY(-10px); } }
+
+  /* The story card: follows the focused request, like Tessl's review/remediation cards. */
+  #story { right: 28px; top: 50%; width: 430px; transform: translateY(-58%); border: 1px solid var(--greenDim); border-radius: 14px; background: #101311f2;
+    box-shadow: 0 0 60px #5fd06818; padding: 16px 18px; transition: opacity .5s, transform .5s; }
+  #story.off { opacity: 0; transform: translateY(-54%); pointer-events: none; }
+  #story header { display: flex; align-items: center; gap: 10px; }
+  #story header img { height: 20px; }
+  #story header b { font-size: 16px; font-weight: 600; }
+  #story header small { color: var(--mute); font-size: 13px; }
+  .badge { margin-left: auto; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 7px; border: 1px solid; white-space: nowrap; transition: all .3s; }
+  .badge.work { color: #fdba74; border-color: #c2410c; background: #2a160b; box-shadow: 0 0 18px #f9731633; }
+  .badge.think { color: #c4b5fd; border-color: #6d28d9; background: #1b1430; box-shadow: 0 0 18px #7c3aed33; }
+  .badge.ok { color: #bbf7d0; border-color: var(--green); background: #12301a; box-shadow: 0 0 18px #5fd06833; }
+  .badge.bad { color: #fecaca; border-color: #b91c1c; background: #2a1010; }
+  #story .ask { margin: 12px 0 8px; font-size: 14.5px; }
+  #story .rows div { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; color: #d1d5d8; padding: 3px 0; animation: in .35s ease; }
+  #story .rows i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--green); transform: translateY(-1px); }
+  #story .rows i.o { background: #f59e0b; } #story .rows i.p { background: #a78bfa; }
+  #story .label { margin: 10px 0 4px; color: var(--mute); font: 11.5px ui-monospace, monospace; }
+  #story pre { margin: 0; padding: 10px 12px; border-radius: 8px; background: #0a0b0b; border: 1px solid #23272a; font: 12.5px/1.55 ui-monospace, monospace; color: #d1d5d8; white-space: pre-wrap; word-break: break-word; max-height: 170px; overflow: hidden; }
+  #story pre .cmd { color: var(--green); }
+  #story .answer { margin-top: 10px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; max-height: 63px; overflow: hidden; }
+  #feed { transition: opacity .5s; }
+  body.story #feed { opacity: 0; }
+  #story .meta { margin-top: 8px; color: var(--mute); font-size: 12px; }
+  .caret::after { content: "▍"; color: var(--green); animation: beat 1s steps(2) infinite; }
+  #feed { gap: 6px; }
+
+  body.idle #qr { animation: invite 2.4s ease-in-out infinite; }
+  @keyframes invite { 50% { box-shadow: 0 0 70px #5fd06855; border-color: var(--green); transform: translateY(-3px); } }
+</style>
+</head>
+<body>
+<svg id="scene" viewBox="0 0 1400 800" preserveAspectRatio="xMidYMid slice" aria-label="Live map of kagent on Agent Substrate"></svg>
+<div id="sweep"></div>
+<div id="vig"></div>
+<div id="title" class="ui"><img src="/agent-flow/static/kagent-logo.svg" alt="kagent"><h1>on Agent Substrate</h1><p>Every cube is someone's real request, live.</p>
+  <div id="live"><i></i><b>LIVE</b><span id="since">waiting for the first request</span></div></div>
+<div id="stats" class="ui"></div>
+<div id="toasts" class="ui" aria-live="polite"></div>
+<div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
+<div id="story" class="ui off" aria-live="polite"></div>
+<div id="feed" class="ui" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg";</script>
+<script src="/agent-flow/static/scene.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// The QR code points phones at /agent-flow. ?join=<url> overrides it; a screen opened on
+// localhost points at the public domain instead.
+const params = new URLSearchParams(location.search);
+const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+const joinUrl = params.get("join") || (local ? "https://kubecon.agentpwned.ai/agent-flow" : location.origin + "/agent-flow");
+$("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
+try {
+  const qr = qrcode(0, "M");
+  qr.addData(joinUrl);
+  qr.make();
+  $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+} catch (e) {
+  $("qrcode").style.display = "none";
+}
+
+// Player colors from the arcade (platform.Players), for feed avatars.
+const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" };
+function feed(cls, nick, text, code, color) {
+  const f = $("feed"), d = document.createElement("div");
+  d.className = "ev " + cls;
+  d.innerHTML = `<div class="av" style="background:${COLORS[color] || "#8a8f94"}">${esc((nick || "?")[0].toUpperCase())}</div><b>${esc(nick)}</b><span>${esc(text)}</span><code>${esc(code || "")}</code>`;
+  f.appendChild(d);
+  while (f.children.length > 3) f.firstChild.remove();
+}
+function toast(html, cls = "") {
+  const t = document.createElement("div");
+  t.className = "toast " + cls;
+  t.innerHTML = html;
+  $("toasts").appendChild(t);
+  while ($("toasts").children.length > 2) $("toasts").firstChild.remove();
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 500); }, 3200);
+}
+const LABELS = { code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
+const QUIET = new Set(["controller", "sandbox"]);
+
+// Drifting sparks behind the map.
+for (let i = 0; i < 28; i++) {
+  const s = document.createElement("div");
+  s.className = "spark";
+  s.style.left = Math.random() * 100 + "vw";
+  s.style.top = 20 + Math.random() * 80 + "vh";
+  s.style.animationDuration = 7 + Math.random() * 9 + "s";
+  s.style.animationDelay = -Math.random() * 12 + "s";
+  document.body.appendChild(s);
+}
+
+// Stats count up to their new value and glow when they change.
+const shown = {};
+function stat(key, value, label, fmt = (v) => v.toLocaleString()) {
+  let el = document.querySelector(`.stat[data-k="${key}"]`);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "stat"; el.dataset.k = key;
+    el.innerHTML = `<b></b>${esc(label)}`;
+    $("stats").appendChild(el);
+  }
+  const b = el.querySelector("b");
+  if (typeof value !== "number") { b.textContent = value; return; }
+  const from = shown[key] ?? value;
+  shown[key] = value;
+  if (from === value) { b.textContent = fmt(value); return; }
+  el.classList.add("bump");
+  setTimeout(() => el.classList.remove("bump"), 900);
+  const t0 = performance.now();
+  (function tick(now) {
+    const f = Math.min(1, (now - t0) / 700), v = Math.round(from + (value - from) * (1 - Math.pow(1 - f, 3)));
+    b.textContent = fmt(v);
+    if (f < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+let lastRequest = 0, lastActive = Date.now();
+// What each component is, for the card shown when someone clicks a station.
+const STATIONS = {
+  gw: ["agentgateway", "/agent-flow/static/agentgateway-icon.svg", "The front door. Every request from a phone, every LLM call and every webhook goes through it. It holds the OpenAI key, so agents never see it.",
+    (s) => [["requests", s.total], ["webhooks", (s.hooks || []).length]]],
+  ctrl: ["kagent-controller", "/agent-flow/static/kagent-icon.svg", "Turns each visitor into a kagent session and talks to their agent over A2A. It reads the agent's CRD to know which model and tools it gets.",
+    (s) => [["agents", s.agents], ["requests", s.total]]],
+  pg: ["postgres", null, "Keeps every session, task and message, so an agent still remembers you after it wakes from a snapshot.", (s) => [["agents", s.agents]]],
+  ate: ["Substrate scheduler", null, "ate-api-server and ate-controller place each agent as an actor on a worker pool, and wake or suspend it on demand.",
+    (s) => [["new actor p50", ms(s.timings?.create)], ["workers", s.substrate?.workers ?? "–"]]],
+  idp: ["ate-idp", null, "Gives every actor its own identity, so each agent can prove who it is to the rest of the platform.", (s) => [["actors", s.substrate?.actors ?? "–"]]],
+  box: ["gVisor sandbox", null, "atelet runs each agent in its own gVisor sandbox: a user-space kernel between the agent and the node. Its tools run in here.",
+    (s) => [["awake now", s.substrate?.running ?? 0], ["run p50", ms(s.timings?.run)]]],
+  egress: ["atenet-egress", null, "Agents can only reach allowed hosts. Here that is agentgateway, for LLM calls and the booth webhook. Everything else is blocked.",
+    (s) => [["webhooks", (s.hooks || []).length]]],
+  rf: ["Snapshot Storage", null, "Idle agents are snapshotted here (rustfs) and use no CPU at all. The next request restores them where they left off.",
+    (s) => [["asleep", s.substrate?.suspended ?? 0], ["snapshot p50", ms(s.timings?.snapshot)], ["restore p50", ms(s.timings?.restore)]]],
+};
+function ms(p) { return p && p.count ? (p.p50 >= 1000 ? (p.p50 / 1000).toFixed(1) + "s" : p.p50 + "ms") : "–"; }
+let lastState = null;
+function stationCard(key) {
+  const st = STATIONS[key], el = $("story");
+  if (!st || !lastState) return;
+  document.body.classList.add("story");
+  storyId = "station:" + key;
+  const [name, icon, text, nums] = st;
+  el.innerHTML = `<header>${icon ? `<img src="${icon}" alt="">` : ""}<b>${esc(name)}</b><small>Agent Substrate component</small><span class="badge ok">Live</span></header>
+    <div class="ask" style="font-size:14px;color:#d1d5d8">${esc(text)}</div>
+    <div class="rows">${nums(lastState).map(([k, v]) => `<div><i></i><span>${esc(k)}: <b>${esc(v)}</b></span></div>`).join("")}</div>
+    <div class="meta">Click another component, or a cube to follow it.</div>`;
+  el.classList.remove("off");
+}
+
+const flow = startFlowScreen($("scene"), {
+  camera: true,
+  onPick(key) { stationCard(key); },
+  onStep(run, step) {
+    lastRequest = Date.now();
+    if (step.stage === "gateway") return feed("", run.nick, LABELS[run.task] ? `asks their agent to ${LABELS[run.task]}` : `asks “${run.ask}”`, "", run.color);
+    if (step.stage === "schedule") toast(`<span>✨</span><span>Welcome <b>${esc(run.nick)}</b>, your agent just got its own gVisor sandbox</span>`);
+    if (QUIET.has(step.stage) || step.text === "tool output") return;
+    feed(step.stage === "error" ? "bad" : "", run.nick, step.text, step.detail, run.color);
+  },
+  onHook(h) {
+    feed("hook", h.name, "webhook received at the booth", "POST ✓");
+    toast(`<span>🔔</span><span><b>${esc(h.name)}</b>'s agent called the booth webhook</span>`, "hook");
+  },
+  onState(s) {
+    const t = s.timings || {}, sub = s.substrate || {};
+    const ms = (p) => (p && p.count ? (p.p50 >= 1000 ? (p.p50 / 1000).toFixed(1) + "s" : p.p50 + "ms") : "–");
+    stat("agents", s.agents, "agents"); stat("runs", s.total, "runs"); stat("tokens", s.tokens || 0, "tokens");
+    stat("awake", sub.running ?? 0, "awake"); stat("asleep", sub.suspended ?? 0, "asleep");
+    stat("restore", ms(t.restore), "restore p50"); stat("snapshot", ms(t.snapshot), "snapshot p50");
+    lastState = s;
+    if (flow?.picked()) stationCard(flow.picked());
+    else story((s.runs || []).find((r) => r.id === flow?.focus()));
+  },
+});
+
+// typeInto types text into el a few characters at a time, continuing from what's shown.
+function typeInto(el, text, html = (t) => esc(t)) {
+  if (el._full === text) return;
+  el._full = text;
+  let n = el._shown && text.startsWith(el._shown) ? el._shown.length : 0;
+  clearInterval(el._timer);
+  el.classList.add("caret");
+  el._timer = setInterval(() => {
+    n = Math.min(text.length, n + 3);
+    el._shown = text.slice(0, n);
+    el.innerHTML = html(el._shown);
+    if (n >= text.length) { clearInterval(el._timer); el.classList.remove("caret"); }
+  }, 22);
+}
+const BADGE = {
+  gateway: ["Routing", "work"], controller: ["Routing", "work"], schedule: ["New actor", "work"], restore: ["Waking up", "work"],
+  sandbox: ["Awake", "work"], llm: ["Thinking", "think"], tool: ["Running tool", "work"], hook: ["Calling webhook", "work"],
+  reply: ["Answered", "ok"], snapshot: ["Answered", "ok"], asleep: ["Asleep", "ok"], error: ["Error", "bad"],
+};
+let storyId = null;
+function story(r) {
+  const el = $("story");
+  document.body.classList.toggle("story", !!r); // one card at a time, like Tessl
+  if (!r) { el.classList.add("off"); return; }
+  if (storyId !== r.id) {
+    storyId = r.id;
+    el.innerHTML = `<header><img src="/agent-flow/static/kagent-icon.svg" alt=""><b>flowbot</b><small id="sWho"></small><span class="badge" id="sBadge"></span></header>
+      <div class="ask" id="sAsk"></div><div class="rows" id="sRows"></div>
+      <div id="sCode" style="display:none"><div class="label">gVisor sandbox · bash</div><pre id="sPre"></pre></div>
+      <div class="answer" id="sAnswer"></div><div class="meta" id="sMeta"></div>`;
+  }
+  el.classList.remove("off");
+  $("sWho").textContent = `${r.nick}'s agent`;
+  const [label, cls] = BADGE[r.stage] || ["Working", "work"];
+  const b = $("sBadge");
+  if (b.textContent !== label) { b.textContent = label; b.className = "badge " + cls; b.animate([{ transform: "scale(1.15)" }, { transform: "scale(1)" }], { duration: 300 }); }
+  $("sAsk").textContent = `“${r.ask || r.task}”`;
+  // Key moments only: where the agent woke up, each tool it ran, and how it ended.
+  const keep = r.steps.filter((x) => ["schedule", "restore", "tool", "hook", "reply", "asleep", "error"].includes(x.stage) && x.text !== "tool output" && x.text !== "restored");
+  const rows = keep.slice(-4).map((x) => `<div><i class="${x.stage === "tool" || x.stage === "hook" ? "o" : ""}"></i><span>${esc(x.text)}${x.detail && x.stage !== "tool" && x.stage !== "hook" ? ` · ${esc(x.detail)}` : ""}</span></div>`).join("");
+  if ($("sRows")._html !== rows) { $("sRows")._html = rows; $("sRows").innerHTML = rows; }
+  // The latest command and its output, typed out.
+  const calls = r.steps.filter((x) => (x.stage === "tool" || x.stage === "hook") && x.text !== "tool output");
+  const outs = r.steps.filter((x) => x.text === "tool output");
+  if (calls.length) {
+    $("sCode").style.display = "";
+    const cmd = (calls.at(-1).detail || "").split("\n").slice(0, 3).join("\n");
+    const out = outs.length >= calls.length ? (outs.at(-1).detail || "").split("\n").slice(0, 7).join("\n") : "";
+    const text = "$ " + cmd + (out ? "\n" + out : "");
+    const cut = 2 + cmd.length; // "$ " + the command, in green; the output after it
+    typeInto($("sPre"), text, (t) => `<span class="cmd">${esc(t.slice(0, cut))}</span>${esc(t.slice(cut))}`);
+  } else $("sCode").style.display = "none";
+  if (r.answer) typeInto($("sAnswer"), r.answer); else { $("sAnswer").textContent = ""; $("sAnswer")._full = ""; $("sAnswer")._shown = ""; }
+  $("sMeta").textContent = r.answer ? `${(r.ms / 1000).toFixed(1)}s · ${r.tokens.toLocaleString()} tokens` : "";
+}
+
+// "Last request" ticker, idle tour and the QR card's rotating ideas.
+const IDEAS = ["“write FizzBuzz and run it”", "“call the booth webhook”", "“what kernel are you on?”", "“roll three dice”", "“a haiku about pods”"];
+let tourI = 0, ideaI = 0;
+setInterval(() => {
+  if (flow.active()) lastActive = Date.now();
+  const ago = Math.round((Date.now() - lastRequest) / 1000);
+  $("since").textContent = !lastRequest ? "waiting for the first request" : ago < 3 ? "request in flight" : `last request ${ago < 60 ? ago + "s" : Math.round(ago / 60) + "m"} ago`;
+  document.body.classList.toggle("idle", Date.now() - lastActive > 12000);
+}, 1000);
+setInterval(() => { if (document.body.classList.contains("idle")) flow.tour(tourI++); }, 3800);
+setInterval(() => {
+  const el = $("askIdea");
+  el.style.opacity = 0;
+  setTimeout(() => { el.textContent = "Try: " + IDEAS[ideaI++ % IDEAS.length]; el.style.opacity = 1; }, 400);
+}, 3500);
+</script>
+</body>
+</html>

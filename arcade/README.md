@@ -7,6 +7,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Duck Hunt | Snapshots: idle agents sleep, suspend and resume | Playable | [docs/duck-hunt.md](docs/duck-hunt.md) |
 | Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
 | Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
+| Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
 | Agent Invaders | Scale and density | Next | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
@@ -24,6 +25,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Duck Hunt phone / big screen (add `?autostart` for kiosk mode) | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
 | Sandbox Escape phone / big screen | http://localhost:8090/sandbox-escape, http://localhost:8090/sandbox-escape/screen |
 | Fork Frenzy phone / big screen | http://localhost:8090/fork-frenzy, http://localhost:8090/fork-frenzy/screen |
+| Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -72,3 +74,25 @@ Each player gets FORKY (`manifests/fork-agent.yaml`, the `forky` Agent on its ow
 4. Teach one clone a new secret, then ask everyone.
 
 Every clone remembers the secrets from before the checkpoint, and only the taught clone knows the new one. On screen, each secret gets a colored dot, so shared memory shows as matching colors. Measured on this cluster: checkpoint about 50 ms, each fork 40 to 100 ms.
+
+## Agent Flow
+
+A booth screen that shows kagent on Agent Substrate working. Visitors scan the QR code, enter a name, and pick a task for their own agent (`manifests/flow-agent.yaml`, the `flowbot` Agent on its own 6-worker `flow` pool):
+
+| Task | What the agent really does |
+|------|----------------------------|
+| Write code | writes `fizz.sh` with its file tool and runs it with bash |
+| Call a webhook | POSTs JSON to the booth webhook (`POST /agent-flow/hook`) with `wget`, through agentgateway |
+| Explore the sandbox | runs `uname -a`, `id` and `ls /` and reports the gVisor kernel |
+| Roll the dice | rolls three dice with `$RANDOM` |
+| Write a haiku | no tools, only the LLM |
+
+The big screen (`/agent-flow/screen`, styled after tessl.io's isometric diagrams, with the kagent logo) is a map of the real components: agentgateway, kagent-controller with postgres, the Substrate control plane (ate-api-server, ate-controller, ate-idp), atelet and the gVisor sandbox, rustfs, and atenet-egress. Every request is a cube with the visitor's name, moved by stages the backend reports as they happen:
+
+- First run: kagent `CreateSession` (a new actor scheduled on the `flow` pool). Later runs: `ResumeSession` (atelet restores the actor from its rustfs snapshot).
+- The prompt goes over A2A streaming (`Kagent.PromptStream`), so each LLM call (the cube leaves the screen toward OpenAI), each tool call (back to the sandbox, with the real command) and each webhook call (to atenet-egress) shows when it happens.
+- After the answer, the backend suspends the session (snapshot to rustfs, worker freed), retrying while kagent settles the finished turn.
+
+The webhook works because agents already reach agentgateway's in-cluster host for LLM calls, and the arcade route on that Gateway matches any host. Measured on this cluster: new actor about 35 ms, snapshot about 275 ms, restore about 150 ms, a whole run 3 to 7 s.
+
+The QR code points at `https://kubecon.agentpwned.ai/agent-flow` when the screen is opened on localhost, otherwise at the screen's own origin. Open `/agent-flow/screen?join=http://<lan-ip>:8090/agent-flow` to point phones somewhere else. Reset the round with `curl -XPOST localhost:8090/admin/agent-flow/api/reset`.
