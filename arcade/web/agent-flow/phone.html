@@ -48,6 +48,23 @@
   .scene svg { display: block; width: 100%; aspect-ratio: 835 / 650; }
   .scene .hint { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--mute); font-size: 12.5px; background: #111114; }
 
+  .agent { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 12px 14px; }
+  .agent .top2 { display: flex; align-items: center; gap: 10px; }
+  .agent .st { font-weight: 600; }
+  .agent .st.sleep { color: #93c5fd; } .agent .st.awake { color: var(--green); }
+  .agent .sub { color: var(--mute); font-size: 12.5px; margin-top: 2px; }
+  .agent .btns { margin-left: auto; display: flex; gap: 6px; }
+  .agent button { padding: 7px 12px; border-radius: 8px; border: 1px solid #3f3f46; background: #27272a; font-size: 13px; }
+  .agent button:not(:disabled):hover { border-color: var(--accentLine); background: var(--accentSoft); }
+  .agent button:disabled { opacity: .4; cursor: default; }
+  .agent .explain { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .life { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 2px 0 8px; }
+  .life div { border: 1px solid var(--line); border-radius: 7px; padding: 2px 7px; font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+  .life div small { display: block; font: 10.5px ui-monospace, monospace; }
+  .life div.done { color: #d4d4d8; border-color: #3f3f46; }
+  .life div.now { color: #fff; border-color: var(--green); background: #12301a; }
+  .life div.blue.now { border-color: #60a5fa; background: #16243a; }
+  .life i { color: #52525b; font-style: normal; font-size: 11px; }
   .empty { text-align: center; padding: 34px 0 18px; }
   .empty b { display: block; font-weight: 500; font-size: 15px; }
   .empty span { color: var(--mute); font-size: 13.5px; }
@@ -128,6 +145,11 @@
           <svg id="scene" viewBox="345 95 835 650" preserveAspectRatio="xMidYMid meet" aria-label="Your request moving through kagent and Agent Substrate"></svg>
           <div class="hint"><span class="dot" id="hintDot"></span><span id="sceneHint">Your request will show up here as a green cube.</span></div>
         </div>
+        <div class="agent hidden" id="agentCard">
+          <div class="top2"><div><div class="st" id="aState"></div><div class="sub" id="aSub"></div></div>
+            <div class="btns"><button id="sleepBtn" type="button">💤 Sleep</button><button id="wakeBtn" type="button">⚡ Wake</button></div></div>
+          <div class="explain" id="aExplain"></div>
+        </div>
         <div class="empty" id="empty"><b>flowbot</b><span>Send a message to start a new conversation.</span></div>
         <div class="msgs" id="msgs" aria-live="polite"></div>
       </div>
@@ -172,12 +194,15 @@ async function startRun(task, ask) {
     window.scrollTo({ top: 0, behavior: "smooth" }); // watch your cube while the agent works
   } catch (e) { showError(e); }
 }
+$("sleepBtn").onclick = () => post("/agent-flow/api/sleep", {}).catch(showError);
+$("wakeBtn").onclick = () => post("/agent-flow/api/wake", {}).then(() => window.scrollTo({ top: 0, behavior: "smooth" })).catch(showError);
 $("askForm").onsubmit = (ev) => { ev.preventDefault(); if ($("ask").value.trim()) startRun("own", $("ask").value); };
 
 function start() {
   $("join").classList.add("hidden");
   $("app").classList.remove("hidden");
   flow = startFlowScreen($("scene"), { me: me.id, compact: true, live: false });
+  setInterval(() => state && render(), 1000); // keeps "asleep for …" ticking
   const connect = () => {
     const es = new EventSource("/agent-flow/api/events");
     es.onmessage = (m) => { state = JSON.parse(m.data); flow.apply(state); render(); };
@@ -198,11 +223,28 @@ function render() {
   document.querySelectorAll("#chips button, #sendBtn").forEach((b) => b.disabled = busy);
   $("ask").placeholder = busy ? "Your agent is working..." : "Ask the agent something...";
 
+  const fl = (state.fleet || {})[me.id];
   const hint = !run ? "Your request will show up here as a green cube."
-    : busy ? (run.steps.at(-1)?.text || "on its way") : "Your agent is asleep in Snapshot Storage. Ask again to wake it.";
+    : busy ? (run.steps.at(-1)?.text || "on its way")
+    : fl && !fl.asleep ? "Your agent is awake and holding a sandbox. Substrate puts it to sleep after 45s idle."
+    : "Your agent is asleep in Snapshot Storage. Ask again to wake it.";
   $("sceneHint").textContent = hint;
   $("hintDot").style.opacity = busy ? 1 : 0.35;
 
+  // Your agent's Substrate state, with Sleep / Wake buttons.
+  const ag = (state.fleet || {})[me.id];
+  $("agentCard").classList.toggle("hidden", !ag);
+  if (ag) {
+    const sleeping = ag.asleep && !ag.busy;
+    $("aState").textContent = ag.busy ? (ag.asleep ? "Waking up…" : "Working…") : sleeping ? "💤 Asleep in Snapshot Storage" : "⚡ Awake in its gVisor sandbox";
+    $("aState").className = "st " + (sleeping ? "sleep" : "awake");
+    $("aSub").textContent = sleeping ? `for ${fmtMs(Date.now() - ag.sleptAt)} · using 0 CPU` + (ag.made?.length ? ` · keeping ${ag.made.join(", ")}` : "")
+      : (ag.node ? `on ${ag.node}` : "") + (ag.made?.length ? ` · ${ag.made.join(", ")} in its workspace` : "");
+    $("sleepBtn").disabled = ag.busy || ag.asleep || busy;
+    $("wakeBtn").disabled = ag.busy || !ag.asleep || busy;
+    $("aExplain").textContent = sleeping ? "Its memory and files are saved as a snapshot. Wake it and it comes back in a fraction of a second, exactly as it was."
+      : "Awake agents hold a sandbox. Put it to sleep, or Substrate does it for you when it's idle.";
+  }
   $("empty").classList.toggle("hidden", mine.length > 0);
   $("msgs").innerHTML = mine.map((r) => {
     const live = !r.done;
@@ -216,6 +258,7 @@ function render() {
     return `<div class="me">${esc(r.ask || r.task)}</div>
       <div class="bot"><div class="av"><img src="/agent-flow/static/kagent-icon.svg" alt=""></div><div class="body">
         <div class="name">flowbot</div>
+        <div class="life">${lifecycle(r).map(([k, v, on], i, all) => `<div class="${on ? (i === all.map((x) => x[2]).lastIndexOf(true) && live ? "now" : "done") : ""}${r.new ? "" : " blue"}">${esc(k)}${v ? `<small>${esc(v)}</small>` : ""}</div>`).join("<i>→</i>")}</div>
         <details data-run="${esc(r.id)}"${open.has(r.id) ? " open" : ""}><summary>${live ? '<span class="dot"></span>' : ""}${esc(sum)}</summary><ul class="steps">${list}</ul></details>
         ${body}</div></div>`;
   }).join("");

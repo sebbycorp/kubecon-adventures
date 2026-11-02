@@ -93,6 +93,17 @@ The big screen (`/agent-flow/screen`, styled after tessl.io's isometric diagrams
 - The prompt goes over A2A streaming (`Kagent.PromptStream`), so each LLM call (the cube leaves the screen toward OpenAI), each tool call (back to the sandbox, with the real command) and each webhook call (to atenet-egress) shows when it happens.
 - After the answer, the backend suspends the session (snapshot to rustfs, worker freed), retrying while kagent settles the finished turn.
 
+### Suspend and resume, on show
+
+Agent Flow makes Substrate's snapshots the headline, with real data only:
+
+- **Lifecycle strip.** The story card and the phone show each run's path with real timings: New actor (or Asleep for N · 0 CPU → Restoring) → Running → Saving → Asleep.
+- **Nothing lost.** The backend remembers the files an agent wrote with `write_file`. After a restore, the screen shows them as kept, and the "Pick up where you left off" task has the agent list `/data/workspace` and continue its work. Files in `/data/workspace` and the conversation survive a snapshot. Tested on this cluster: `/tmp` and background processes do not, so the demo doesn't claim they do.
+- **Density.** "N agents on M sandboxes · K asleep using 0 CPU" from Substrate's summary, with one floor tile per sleeping agent next to Snapshot Storage.
+- **Node hops.** The actor poller records the node an agent slept on. When it wakes on another node, the screen calls it out (seen on this cluster: kagent-worker → kagent-worker2).
+- **Sleep and Wake buttons** on the phone (`POST /agent-flow/api/sleep`, `/api/wake`). A hand-woken agent holds a worker until it is used or put to sleep; after 45 s idle the backend suspends it again ("auto").
+- **New vs restored.** New agents are green, restored ones blue; the stats compare the first-answer time of each.
+
 The webhook works because agents already reach agentgateway's in-cluster host for LLM calls, and the arcade route on that Gateway matches any host. Measured on this cluster: new actor about 35 ms, snapshot about 275 ms, restore about 150 ms, a whole run 3 to 7 s.
 
 The QR code points at `https://kubecon.agentpwned.ai/agent-flow` when the screen is opened on localhost, otherwise at the screen's own origin. Open `/agent-flow/screen?join=http://<lan-ip>:8090/agent-flow` to point phones somewhere else. Reset the round with `curl -XPOST localhost:8090/admin/agent-flow/api/reset`.

@@ -88,6 +88,20 @@
   .caret::after { content: "▍"; color: var(--green); animation: beat 1s steps(2) infinite; }
   #feed { gap: 6px; }
 
+  #density { margin-top: 12px; font-size: 15px; color: var(--fg); }
+  #density b { color: var(--green); font-weight: 600; }
+  #density span { color: var(--mute); }
+  .life { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 10px 0 4px; }
+  .life div { border: 1px solid #2a2d30; border-radius: 7px; padding: 3px 7px; font-size: 11.5px; color: #6f7479; background: #0c0d0e; line-height: 1.3; }
+  .life div small { display: block; font: 10.5px ui-monospace, monospace; color: inherit; opacity: .9; }
+  .life div.done { color: #cfe9d2; border-color: var(--greenDim); }
+  .life div.now { color: #fff; border-color: var(--green); background: #12301a; box-shadow: 0 0 14px #5fd06833; }
+  .life div.blue.done { color: #cfe0fb; border-color: #2c4a73; }
+  .life div.blue.now { border-color: #60a5fa; background: #16243a; box-shadow: 0 0 14px #60a5fa44; }
+  .life i { color: #4a4f54; font-style: normal; font-size: 11px; }
+  .node { font: 11.5px ui-monospace, monospace; color: var(--mute); margin-bottom: 4px; }
+  .node b { color: #60a5fa; font-weight: 500; }
+
   body.idle #qr { animation: invite 2.4s ease-in-out infinite; }
   @keyframes invite { 50% { box-shadow: 0 0 70px #5fd06855; border-color: var(--green); transform: translateY(-3px); } }
 </style>
@@ -97,7 +111,8 @@
 <div id="sweep"></div>
 <div id="vig"></div>
 <div id="title" class="ui"><img src="/agent-flow/static/kagent-logo.svg" alt="kagent"><h1>on Agent Substrate</h1><p>Every cube is someone's real request, live.</p>
-  <div id="live"><i></i><b>LIVE</b><span id="since">waiting for the first request</span></div></div>
+  <div id="live"><i></i><b>LIVE</b><span id="since">waiting for the first request</span></div>
+  <div id="density"></div></div>
 <div id="stats" class="ui"></div>
 <div id="toasts" class="ui" aria-live="polite"></div>
 <div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
@@ -144,7 +159,7 @@ function toast(html, cls = "") {
   while ($("toasts").children.length > 2) $("toasts").firstChild.remove();
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 500); }, 3200);
 }
-const LABELS = { code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
+const LABELS = { resume: "pick up where it left off", code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
 const QUIET = new Set(["controller", "sandbox"]);
 
 // Drifting sparks behind the map.
@@ -218,10 +233,18 @@ function stationCard(key) {
 
 const flow = startFlowScreen($("scene"), {
   camera: true,
+  onMove(m) {
+    if (m.error) return;
+    if (m.kind === "wake") {
+      toast(`<span>⚡</span><span><b>${esc(m.nick)}</b>'s agent woke up in <b>${fmtMs(m.ms)}</b> after ${fmtMs(m.sleptMs)} asleep</span>`);
+      if (m.nodeAfter && m.nodeBefore && m.nodeAfter !== m.nodeBefore) toast(`<span>🛰️</span><span>…on a different node: ${esc(m.nodeBefore)} → <b>${esc(m.nodeAfter)}</b></span>`, "hook");
+    } else toast(`<span>💤</span><span><b>${esc(m.nick)}</b>'s agent ${m.kind === "auto" ? "was idle, so Substrate put it" : "went"} to sleep · snapshot in <b>${fmtMs(m.ms)}</b></span>`);
+  },
   onPick(key) { stationCard(key); },
   onStep(run, step) {
     lastRequest = Date.now();
     if (step.stage === "gateway") return feed("", run.nick, LABELS[run.task] ? `asks their agent to ${LABELS[run.task]}` : `asks “${run.ask}”`, "", run.color);
+    if (step.text === "woke up on a different node") toast(`<span>🛰️</span><span><b>${esc(run.nick)}</b>'s agent woke on a different node: ${esc(step.detail)}</span>`, "hook");
     if (step.stage === "schedule") toast(`<span>✨</span><span>Welcome <b>${esc(run.nick)}</b>, your agent just got its own gVisor sandbox</span>`);
     if (QUIET.has(step.stage) || step.text === "tool output") return;
     feed(step.stage === "error" ? "bad" : "", run.nick, step.text, step.detail, run.color);
@@ -234,7 +257,9 @@ const flow = startFlowScreen($("scene"), {
     const t = s.timings || {}, sub = s.substrate || {};
     const ms = (p) => (p && p.count ? (p.p50 >= 1000 ? (p.p50 / 1000).toFixed(1) + "s" : p.p50 + "ms") : "–");
     stat("agents", s.agents, "agents"); stat("runs", s.total, "runs"); stat("tokens", s.tokens || 0, "tokens");
-    stat("awake", sub.running ?? 0, "awake"); stat("asleep", sub.suspended ?? 0, "asleep");
+    stat("firstNew", ms(t.run_new), "answer · new agent"); stat("firstRestored", ms(t.run_restored), "answer · restored");
+    const workers = (sub.pools || []).reduce((n, p) => n + (p.workers || 0), 0);
+    $("density").innerHTML = `<b>${(sub.actors ?? 0).toLocaleString()}</b> agents on <b>${workers}</b> sandboxes <span>·</span> <b>${(sub.suspended ?? 0).toLocaleString()}</b> asleep using <b>0 CPU</b>`;
     stat("restore", ms(t.restore), "restore p50"); stat("snapshot", ms(t.snapshot), "snapshot p50");
     lastState = s;
     if (flow?.picked()) stationCard(flow.picked());
@@ -259,7 +284,7 @@ function typeInto(el, text, html = (t) => esc(t)) {
 const BADGE = {
   gateway: ["Routing", "work"], controller: ["Routing", "work"], schedule: ["New actor", "work"], restore: ["Waking up", "work"],
   sandbox: ["Awake", "work"], llm: ["Thinking", "think"], tool: ["Running tool", "work"], hook: ["Calling webhook", "work"],
-  reply: ["Answered", "ok"], snapshot: ["Answered", "ok"], asleep: ["Asleep", "ok"], error: ["Error", "bad"],
+  reply: ["Answered", "ok"], snapshot: ["Saving snapshot", "ok"], asleep: ["Asleep", "ok"], error: ["Error", "bad"],
 };
 let storyId = null;
 function story(r) {
@@ -269,6 +294,7 @@ function story(r) {
   if (storyId !== r.id) {
     storyId = r.id;
     el.innerHTML = `<header><img src="/agent-flow/static/kagent-icon.svg" alt=""><b>flowbot</b><small id="sWho"></small><span class="badge" id="sBadge"></span></header>
+      <div class="life" id="sLife"></div><div class="node" id="sNode"></div>
       <div class="ask" id="sAsk"></div><div class="rows" id="sRows"></div>
       <div id="sCode" style="display:none"><div class="label">gVisor sandbox · bash</div><pre id="sPre"></pre></div>
       <div class="answer" id="sAnswer"></div><div class="meta" id="sMeta"></div>`;
@@ -279,8 +305,15 @@ function story(r) {
   const b = $("sBadge");
   if (b.textContent !== label) { b.textContent = label; b.className = "badge " + cls; b.animate([{ transform: "scale(1.15)" }, { transform: "scale(1)" }], { duration: 300 }); }
   $("sAsk").textContent = `“${r.ask || r.task}”`;
+  // The agent's lifecycle for this run, with Substrate's real timings.
+  const life = lifecycle(r), cur = life.map((x) => x[2]).lastIndexOf(true), blue = !r.new;
+  const lifeHtml = life.map(([k, v, on], i) => `<div class="${on ? (i === cur && !r.done ? "now" : "done") : ""}${blue ? " blue" : ""}">${esc(k)}${v ? `<small>${esc(v)}</small>` : ""}</div>`).join("<i>→</i>");
+  if ($("sLife")._html !== lifeHtml) { $("sLife")._html = lifeHtml; $("sLife").innerHTML = lifeHtml; }
+  $("sNode").innerHTML = !r.nodeAfter ? "" : !r.nodeBefore ? `woke on ${esc(r.nodeAfter)}`
+    : r.nodeAfter !== r.nodeBefore ? `slept on ${esc(r.nodeBefore)} · woke on <b>${esc(r.nodeAfter)}</b>` : `slept and woke on ${esc(r.nodeAfter)}`;
   // Key moments only: where the agent woke up, each tool it ran, and how it ended.
-  const keep = r.steps.filter((x) => ["schedule", "restore", "tool", "hook", "reply", "asleep", "error"].includes(x.stage) && x.text !== "tool output" && x.text !== "restored");
+  const keep = r.steps.filter((x) => ["tool", "hook", "error"].includes(x.stage) && x.text !== "tool output"
+    || x.text === "kept its files through the snapshot" || x.text === "woke up on a different node");
   const rows = keep.slice(-4).map((x) => `<div><i class="${x.stage === "tool" || x.stage === "hook" ? "o" : ""}"></i><span>${esc(x.text)}${x.detail && x.stage !== "tool" && x.stage !== "hook" ? ` · ${esc(x.detail)}` : ""}</span></div>`).join("");
   if ($("sRows")._html !== rows) { $("sRows")._html = rows; $("sRows").innerHTML = rows; }
   // The latest command and its output, typed out.

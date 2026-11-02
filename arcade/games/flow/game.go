@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -39,6 +40,8 @@ var Tasks = []Task{
 	{ID: "webhook", Label: "Call a webhook", Blurb: "POSTs to the booth webhook",
 		prompt: "Call the KubeCon booth webhook: POST the JSON {\"name\":\"%s\",\"hello\":\"from my agent\"} to " + HookURL +
 			" with: timeout 5 wget -qO- --header 'Content-Type: application/json' --post-data '<json>' <url>. Then tell me what it answered."},
+	{ID: "resume", Label: "Pick up where you left off", Blurb: "shows what survived its snapshot",
+		prompt: "You may have just woken up from a Substrate snapshot. Run: ls -la /data/workspace. In two short lines, tell me what you made before and that it is still here, then make one small improvement to it. If the folder is empty, say so and write a small hello.txt there."},
 	{ID: "explore", Label: "Explore the sandbox", Blurb: "pokes around its gVisor box",
 		prompt: "Look around your sandbox: run uname -a, id, and ls /. In two short sentences, tell me what kind of machine and kernel you are on."},
 	{ID: "dice", Label: "Roll the dice", Blurb: "rolls 3 dice in bash",
@@ -92,14 +95,58 @@ type Run struct {
 	Done     bool   `json:"done"`
 	Error    string `json:"error,omitempty"`
 	Started  int64  `json:"started"`
+	// The agent's lifecycle around this run, for the screens.
+	New        bool     `json:"new"`                  // a brand-new actor (else restored or already awake)
+	CreateMs   int64    `json:"createMs,omitempty"`   // new actor scheduled and ready
+	SleptMs    int64    `json:"sleptMs,omitempty"`    // how long it slept as a snapshot before this run
+	RestoreMs  int64    `json:"restoreMs,omitempty"`  // snapshot to running
+	SnapshotMs int64    `json:"snapshotMs,omitempty"` // running to snapshot, after the answer
+	NodeBefore string   `json:"nodeBefore,omitempty"` // node it slept on
+	NodeAfter  string   `json:"nodeAfter,omitempty"`  // node it woke up on
+	Kept       []string `json:"kept,omitempty"`       // files it wrote earlier that survived the snapshot
 }
 
 type agent struct {
 	sessionID string
-	asleep    bool // suspended by us after its last run
+	nick      string
+	playerID  string
+	asleep    bool // suspended by us
 	busy      bool
 	nextRun   time.Time
+	sleptAt   time.Time // when it was last snapshotted
+	sleepNode string    // the node it was on when snapshotted
+	node      string    // the node its actor is on now (from the actor poller)
+	state     string    // its Substrate actor state: RUNNING, SUSPENDED, RESUMING, ...
+	made      []string  // files it wrote with kagent's write_file tool
+	awakeAt   time.Time // woken by hand and idle since then (auto-sleep puts it back)
 }
+
+// AgentInfo is one player's agent, for the phone and the big screen.
+type AgentInfo struct {
+	Nick    string   `json:"nick"`
+	State   string   `json:"state"`
+	Node    string   `json:"node,omitempty"`
+	Asleep  bool     `json:"asleep"`
+	Busy    bool     `json:"busy"`
+	SleptAt int64    `json:"sleptAt,omitempty"`
+	Made    []string `json:"made,omitempty"`
+}
+
+// Move is a sleep or wake that is not part of a run: a visitor's button or auto-sleep.
+type Move struct {
+	PlayerID   string `json:"playerId"`
+	Nick       string `json:"nick"`
+	Kind       string `json:"kind"` // sleep, wake, auto
+	Ms         int64  `json:"ms"`
+	SleptMs    int64  `json:"sleptMs,omitempty"`
+	NodeBefore string `json:"nodeBefore,omitempty"`
+	NodeAfter  string `json:"nodeAfter,omitempty"`
+	Error      string `json:"error,omitempty"`
+	At         int64  `json:"at"`
+}
+
+// autoSleep is how long a hand-woken agent may sit idle before Substrate snapshots it again.
+const autoSleep = 45 * time.Second
 
 // Hook is one call to the booth webhook.
 type Hook struct {
@@ -114,6 +161,7 @@ type Game struct {
 	agents  map[string]*agent // by player ID
 	runs    []*Run
 	hooks   []Hook
+	moves   []Move
 	total   int
 	tokens  int64
 	timings *platform.Timings // create, restore, snapshot, run
@@ -126,7 +174,148 @@ func New(p *platform.Platform, k *kagent.Kagent) *Game {
 	return g
 }
 
-func (g *Game) Run(ctx context.Context) { go g.hub.Run(ctx, func() any { return g.Snapshot() }) }
+func (g *Game) Run(ctx context.Context) {
+	go g.hub.Run(ctx, func() any { return g.Snapshot() })
+	go g.runActorPoller(ctx)
+}
+
+// runActorPoller keeps each agent's Substrate actor state and node fresh, and puts
+// hand-woken agents back to sleep after autoSleep idle.
+func (g *Game) runActorPoller(ctx context.Context) {
+	for {
+		c, cancel := context.WithTimeout(ctx, 3*time.Second)
+		states, err := g.k.ActorStates(c)
+		cancel()
+		if err == nil {
+			g.mu.Lock()
+			changed := false
+			for _, a := range g.agents {
+				if st, ok := states[a.sessionID]; ok && (st.State != a.state || st.Node != a.node) {
+					a.state, a.node, changed = st.State, st.Node, true
+				}
+				if !a.awakeAt.IsZero() && !a.busy && !a.asleep && time.Since(a.awakeAt) > autoSleep {
+					a.awakeAt = time.Time{}
+					g.sleepLocked(a, "auto")
+				}
+			}
+			g.mu.Unlock()
+			if changed {
+				g.hub.Poke()
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// Sleep snapshots the player's agent now, from the phone's button.
+func (g *Game) Sleep(pl platform.Player) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	a, ok := g.agents[pl.ID]
+	switch {
+	case !ok || a.sessionID == "":
+		return errors.New("ask your agent something first")
+	case a.busy:
+		return errors.New("your agent is busy")
+	case a.asleep:
+		return errors.New("your agent is already asleep")
+	}
+	a.awakeAt = time.Time{}
+	g.sleepLocked(a, "sleep")
+	return nil
+}
+
+// sleepLocked suspends an idle, awake agent in the background and records the move.
+func (g *Game) sleepLocked(a *agent, kind string) {
+	a.busy = true
+	sid, node := a.sessionID, a.node
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		t := time.Now()
+		err := suspendSettled(ctx, g.k, sid)
+		ms := time.Since(t).Milliseconds()
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		a.busy = false
+		m := Move{PlayerID: a.playerID, Nick: a.nick, Kind: kind, Ms: ms, NodeBefore: node}
+		if err != nil {
+			m.Error = err.Error()
+		} else {
+			a.asleep, a.sleptAt, a.sleepNode = true, time.Now(), node
+			g.timings.Record("snapshot", ms)
+		}
+		g.moveLocked(m)
+	}()
+	g.hub.Poke()
+}
+
+// Wake restores the player's agent from its snapshot, from the phone's button. It then
+// stays awake (holding a worker) until it is used, put to sleep, or auto-sleeps.
+func (g *Game) Wake(pl platform.Player) error {
+	g.mu.Lock()
+	a, ok := g.agents[pl.ID]
+	switch {
+	case !ok || a.sessionID == "":
+		g.mu.Unlock()
+		return errors.New("ask your agent something first")
+	case a.busy:
+		g.mu.Unlock()
+		return errors.New("your agent is busy")
+	case !a.asleep:
+		g.mu.Unlock()
+		return errors.New("your agent is already awake")
+	}
+	a.busy = true
+	sid, before, slept := a.sessionID, a.sleepNode, time.Since(a.sleptAt).Milliseconds()
+	g.mu.Unlock()
+	g.hub.Poke()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		t := time.Now()
+		err := g.k.Resume(ctx, sid)
+		ms := time.Since(t).Milliseconds()
+		after := g.nodeOf(ctx, sid)
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		a.busy = false
+		m := Move{PlayerID: a.playerID, Nick: a.nick, Kind: "wake", Ms: ms, SleptMs: slept, NodeBefore: before, NodeAfter: after}
+		if err != nil {
+			m.Error = err.Error()
+		} else {
+			a.asleep, a.awakeAt = false, time.Now()
+			if after != "" {
+				a.node = after
+			}
+			g.timings.Record("restore", ms)
+		}
+		g.moveLocked(m)
+	}()
+	return nil
+}
+
+// nodeOf asks Substrate which node a session's actor is on now.
+func (g *Game) nodeOf(ctx context.Context, sid string) string {
+	states, err := g.k.ActorStates(ctx)
+	if err != nil {
+		return ""
+	}
+	return states[sid].Node
+}
+
+func (g *Game) moveLocked(m Move) {
+	m.At = time.Now().UnixMilli()
+	g.moves = append(g.moves, m)
+	if n := len(g.moves); n > 30 {
+		g.moves = g.moves[n-30:]
+	}
+	g.hub.Poke()
+}
 
 const maxAsk = 200
 
@@ -177,7 +366,7 @@ func (g *Game) Start(pl platform.Player, taskID, ask string) error {
 	g.mu.Lock()
 	a, ok := g.agents[pl.ID]
 	if !ok {
-		a = &agent{}
+		a = &agent{nick: pl.Nick, playerID: pl.ID}
 		g.agents[pl.ID] = a
 	}
 	switch {
@@ -188,7 +377,7 @@ func (g *Game) Start(pl platform.Player, taskID, ask string) error {
 		g.mu.Unlock()
 		return errors.New("give your agent a second")
 	}
-	a.busy = true
+	a.busy, a.awakeAt = true, time.Time{}
 	r := &Run{ID: platform.NewID(), PlayerID: pl.ID, Nick: pl.Nick, Color: pl.Color, Task: task.ID, Ask: ask, Steps: []Step{}, Started: time.Now().UnixMilli()}
 	g.runs = append(g.runs, r)
 	if n := len(g.runs); n > maxRuns {
@@ -196,6 +385,10 @@ func (g *Game) Start(pl platform.Player, taskID, ask string) error {
 	}
 	g.total++
 	sid, asleep := a.sessionID, a.asleep
+	if asleep {
+		r.SleptMs, r.NodeBefore = time.Since(a.sleptAt).Milliseconds(), a.sleepNode
+		r.Kept = slices.Clone(a.made)
+	}
 	g.stepLocked(r, StageGateway, "in through agentgateway", task.Label)
 	g.mu.Unlock()
 
@@ -217,19 +410,30 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 			if sid, err = g.k.CreateSession(ctx, "flow-"+pl.Nick); err != nil {
 				return err
 			}
-			g.timings.Record("create", time.Since(t).Milliseconds())
+			ms := time.Since(t).Milliseconds()
+			g.timings.Record("create", ms)
 			g.mu.Lock()
-			a.sessionID = sid
+			a.sessionID, r.New, r.CreateMs = sid, true, ms
 			g.mu.Unlock()
 		} else if asleep {
-			g.step(r, StageRestore, "atelet restores your agent from Snapshot Storage", "")
+			g.step(r, StageRestore, "atelet restores your agent from Snapshot Storage", "slept "+platform.FmtDur(r.SleptMs)+", using no CPU")
 			t := time.Now()
 			if err := g.k.Resume(ctx, sid); err != nil {
 				return err
 			}
 			ms := time.Since(t).Milliseconds()
+			after := g.nodeOf(ctx, sid)
 			g.timings.Record("restore", ms)
+			g.mu.Lock()
+			r.RestoreMs, r.NodeAfter, a.asleep = ms, after, false
+			g.mu.Unlock()
 			g.step(r, StageRestore, "restored", platform.FmtDur(ms))
+			if r.NodeBefore != "" && after != "" && after != r.NodeBefore {
+				g.step(r, StageRestore, "woke up on a different node", r.NodeBefore+" → "+after)
+			}
+			if len(r.Kept) > 0 {
+				g.step(r, StageSandbox, "kept its files through the snapshot", strings.Join(r.Kept, ", "))
+			}
 		}
 		g.step(r, StageSandbox, "your agent is awake in its gVisor sandbox", "")
 
@@ -247,6 +451,9 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 					if p, ok := e.Tool.Args["path"].(string); ok && cmd == "" {
 						cmd = p
 					}
+				}
+				if e.Tool.Name == "write_file" && cmd != "" {
+					g.remember(a, path.Base(cmd))
 				}
 				stage := StageTool
 				if strings.Contains(cmd, "/agent-flow/hook") {
@@ -267,6 +474,11 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 		}
 		ms := time.Since(t0).Milliseconds()
 		g.timings.Record("run", ms)
+		if r.New {
+			g.timings.Record("run_new", ms)
+		} else if r.RestoreMs > 0 {
+			g.timings.Record("run_restored", ms)
+		}
 		g.mu.Lock()
 		r.Answer, r.Ms = clip(strings.TrimSpace(reply.Text), 600), ms
 		g.tokens += r.Tokens
@@ -297,7 +509,7 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 	} else {
 		ms := time.Since(t).Milliseconds()
 		g.timings.Record("snapshot", ms)
-		a.asleep = true
+		a.asleep, a.sleptAt, a.sleepNode, r.SnapshotMs = true, time.Now(), a.node, ms
 		g.stepLocked(r, StageAsleep, "asleep as a snapshot, using no CPU", platform.FmtDur(ms))
 	}
 	r.Done, a.busy = true, false
@@ -335,6 +547,18 @@ func (g *Game) stepLocked(r *Run, stage, text, detail string) {
 	g.hub.Poke()
 }
 
+// remember notes a file the agent wrote, to show it survived the agent's next snapshot.
+func (g *Game) remember(a *agent, name string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !slices.Contains(a.made, name) {
+		a.made = append(a.made, name)
+		if len(a.made) > 6 {
+			a.made = a.made[1:]
+		}
+	}
+}
+
 func (g *Game) addTokens(r *Run, n int64) {
 	g.mu.Lock()
 	r.Tokens += n
@@ -370,7 +594,7 @@ func (g *Game) Reset(ctx context.Context) (int, error) {
 	}
 	g.timings.Reset()
 	g.mu.Lock()
-	g.agents, g.runs, g.hooks, g.total, g.tokens = map[string]*agent{}, nil, nil, 0, 0
+	g.agents, g.runs, g.hooks, g.moves, g.total, g.tokens = map[string]*agent{}, nil, nil, nil, 0, 0
 	g.mu.Unlock()
 	g.hub.Poke()
 	return len(ids), nil
@@ -387,6 +611,8 @@ type State struct {
 	Tasks     []Task                          `json:"tasks"`
 	Runs      []Run                           `json:"runs"`
 	Hooks     []Hook                          `json:"hooks"`
+	Moves     []Move                          `json:"moves"`
+	Fleet     map[string]AgentInfo            `json:"fleet"` // by player ID
 	Agents    int                             `json:"agents"`
 	Total     int                             `json:"total"`
 	Tokens    int64                           `json:"tokens"`
@@ -398,8 +624,18 @@ type State struct {
 func (g *Game) Snapshot() State {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
-		Substrate: g.p.Substrate(), Now: time.Now().UnixMilli()}
+	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
+		Substrate: g.p.Substrate(), Now: time.Now().UnixMilli(), Fleet: map[string]AgentInfo{}}
+	for id, a := range g.agents {
+		if a.sessionID == "" {
+			continue
+		}
+		info := AgentInfo{Nick: a.nick, State: a.state, Node: a.node, Asleep: a.asleep, Busy: a.busy, Made: slices.Clone(a.made)}
+		if a.asleep {
+			info.SleptAt = a.sleptAt.UnixMilli()
+		}
+		s.Fleet[id] = info
+	}
 	for _, r := range g.runs {
 		cp := *r
 		cp.Steps = slices.Clone(r.Steps)

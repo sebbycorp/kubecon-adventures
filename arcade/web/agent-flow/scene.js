@@ -229,6 +229,23 @@ function createScene(svg, opts = {}) {
     }
   }
 
+  // wall shows every sleeping agent in Substrate as one tile on the floor beside Snapshot
+  // Storage: the density story (many agents, few sandboxes, sleepers use no CPU).
+  const wallG = el("g", {}, L.shadow);
+  let wallN = -1;
+  function wall(n) {
+    n = Math.min(n, 189);
+    if (n === wallN) return;
+    const grew = n > wallN && wallN >= 0;
+    wallN = n;
+    wallG.innerHTML = "";
+    for (let i = 0; i < n; i++) {
+      const x = 17.55 + (i % 9) * 0.21, y = 8.9 + Math.floor(i / 9) * 0.21, d = 0.15;
+      const t = el("polygon", { points: pts([P(x, y), P(x + d, y), P(x + d, y + d), P(x, y + d)]), fill: "var(--green)", opacity: 0.32 }, wallG);
+      if (grew && i === n - 1) t.animate([{ opacity: 1 }, { opacity: 0.32 }], { duration: 1600 });
+    }
+  }
+
   // machines animates the moving parts from what is happening right now.
   const M = { hookZ: 2.6, trolley: 14.15, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
   const ease = (cur, want, dt, k = 5) => cur + (want - cur) * (1 - Math.exp(-dt * k));
@@ -531,7 +548,30 @@ function createScene(svg, opts = {}) {
   svg.appendChild(L.cubes); // cubes on top: above the labels and click targets, so a cube can be picked
   L.front = el("g", { "pointer-events": "none" }, svg); // scenery in front of the cubes (the gate's near pillar)
   svg.appendChild(L.fx); // bubbles stay on top of everything
-  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot };
+  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot, wall };
+}
+
+function fmtMs(ms) {
+  if (ms == null) return "–";
+  if (ms < 1000) return ms + "ms";
+  if (ms < 60000) return (ms / 1000).toFixed(1) + "s";
+  return Math.floor(ms / 60000) + "m " + Math.round((ms % 60000) / 1000) + "s";
+}
+
+// lifecycle lists the stages an agent went through for a run, with real timings, for the
+// strip on the story card and the phone: [label, detail, reached].
+function lifecycle(r) {
+  const at = (stage) => r.steps.some((x) => x.stage === stage);
+  const out = [];
+  if (r.new) out.push(["New actor", fmtMs(r.createMs), true]);
+  else if (r.restoreMs || at("restore")) {
+    out.push(["Asleep", fmtMs(r.sleptMs) + " · 0 CPU", true]);
+    out.push(["Restoring", r.restoreMs ? fmtMs(r.restoreMs) : "…", true]);
+  }
+  out.push(["Running", r.answer ? fmtMs(r.ms) : "…", at("sandbox") || at("llm")]);
+  out.push(["Saving", r.snapshotMs ? fmtMs(r.snapshotMs) : "", at("snapshot")]);
+  out.push(["Asleep", "0 CPU", at("asleep") && !!r.snapshotMs]);
+  return out;
 }
 
 // shapeOf picks one of the 12 agent shapes from a player ID, so a visitor keeps theirs.
@@ -546,14 +586,14 @@ function shapeOf(id) {
 // stream to the caller, which feeds states in through the returned apply.
 // With camera, the view zooms in and follows the newest live request (or the idle tour).
 // onPick(key) is called when a station is clicked; clicking a cube follows that request.
-function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, camera, live = true }) {
+function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, compact, camera, live = true }) {
   let picked = null, pickedUntil = 0, pinned = null;
   const sc = createScene(svg, { compact, me, onPick: onPick && ((key) => { picked = key; pickedUntil = Date.now() + 9000; sc.ripple(key); sc.flash(key); onPick(key); }) });
   const VW = 1360, VH = 762, cam = { x: 700, y: 410 }; // the whole map, with room to breathe
   let focusId = null, focusUntil = 0, tourAt = null;
   const cubes = new Map(); // run ID -> {g, s, target, nick, stage, bad}
   const seenSteps = new Map(); // run ID -> steps already announced
-  let seenHook = Date.now() - 2000;
+  let seenHook = Date.now() - 2000, seenMove = Date.now() - 2000;
   let firstState = true;
 
   function apply(st) {
@@ -606,6 +646,17 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, ca
       if (live.length) { focusId = live[0][0]; focusUntil = 0; } else if (!fc) focusId = null;
     }
     sc.awake(st.substrate?.running || 0);
+    sc.wall(st.substrate?.suspended || 0);
+    // Sleeps and wakes from the phone's buttons (and auto-sleep): the snapshot orb moves
+    // between the sandbox and Snapshot Storage with the real timing.
+    for (const m of st.moves || []) {
+      if (m.at <= seenMove) continue;
+      seenMove = m.at;
+      if (me && m.playerId !== me) continue;
+      if (!m.error && m.kind === "wake") { sc.orb([16.6, 11.1], [13, 9]); sc.ripple("box"); sc.bubble([18.6, 10.6, 1.2], "restored in " + fmtMs(m.ms)); }
+      else if (!m.error) { sc.orb([13, 9], [16.6, 11.1]); sc.bubble([18.6, 10.6, 1.2], "snapshot in " + fmtMs(m.ms)); }
+      onMove && onMove(m);
+    }
     onState && onState(st);
   }
 
@@ -618,7 +669,7 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, ca
       case "hook": sc.bubble([13, 4, 2.2], "POST /agent-flow/hook", "code"); break;
       case "llm": sc.bubble([13, 1, 1.4], "→ LLM"); break;
       case "schedule": sc.bubble([7, 9, 2.6], "new agent actor"); break;
-      case "restore": if (d && d !== "Snapshot Storage") sc.bubble([18.6, 10.6, 1.2], "restored in " + d); break;
+      case "restore": if (step.text === "restored") sc.bubble([18.6, 10.6, 1.2], "restored in " + d); break;
       case "asleep": if (d) sc.bubble([18.6, 10.6, 1.2], "snapshot in " + d); break;
       case "reply": sc.bubble([2, 4, 3.0], "✓ answered in " + d); break;
       case "error": sc.bubble([2, 4, 3.0], "error", "bad"); break;

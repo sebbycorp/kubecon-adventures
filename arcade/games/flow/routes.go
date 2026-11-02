@@ -54,6 +54,12 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 		}
 		platform.Result(w, nil, g.Start(p, req.Task, req.Ask))
 	}))
+	mux.HandleFunc("POST /agent-flow/api/sleep", g.p.Players.WithPlayer(func(w http.ResponseWriter, r *http.Request, p platform.Player) {
+		platform.Result(w, nil, g.Sleep(p))
+	}))
+	mux.HandleFunc("POST /agent-flow/api/wake", g.p.Players.WithPlayer(func(w http.ResponseWriter, r *http.Request, p platform.Player) {
+		platform.Result(w, nil, g.Wake(p))
+	}))
 	// The booth webhook agents call. Anyone can call it; only a cleaned name is kept.
 	mux.HandleFunc("POST /agent-flow/hook", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Name string }
