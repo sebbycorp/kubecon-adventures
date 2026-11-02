@@ -5,5 +5,6 @@ KubeCon demo and lab builds. Each folder is a self-contained component.
 | Component | Description |
 |-----------|-------------|
 | [vault](vault/) | HashiCorp Vault in Docker with persistent file storage and the web UI |
+| [tunnel](tunnel/) | Cloudflare Tunnel giving the arcade a public HTTPS address |
 
 Agent instructions live in [AGENTS.md](AGENTS.md) (`CLAUDE.md` imports it).

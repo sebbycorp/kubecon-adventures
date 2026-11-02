@@ -1,0 +1,46 @@
+# cloudflared for the remotely managed "kubecon-arcade" tunnel. Its routes live in Cloudflare
+# (set by setup.sh); the token comes from the "tunnel" Secret (also created by setup.sh).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: cloudflared
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+      - name: cloudflared
+        image: cloudflare/cloudflared:2026.10.1
+        args: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+        env:
+        - name: TUNNEL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: tunnel
+              key: token
+        ports:
+        - containerPort: 2000
+          name: metrics
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+          initialDelaySeconds: 20
+          failureThreshold: 6
+        resources:
+          requests:
+            cpu: 20m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
