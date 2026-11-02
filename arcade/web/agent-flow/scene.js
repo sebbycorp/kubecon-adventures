@@ -141,7 +141,7 @@ function createScene(svg, opts = {}) {
     el("polyline", { points: pts([a, b, c]), fill: "none", stroke: "var(--green)", opacity: 0.35, "stroke-width": 1.5, filter: "url(#glow)" }, L.island);
   }
   const shadow = (x, y, w, d, k = 0.35) => el("polygon", { points: pts([P(x + k, y + k), P(x + w + k, y + k), P(x + w + k, y + d + k), P(x + k, y + d + k)]), fill: "#000", opacity: 0.55, filter: "url(#soft)" }, L.shadow);
-  for (const [x, y, w, d] of [[1.45, 3.05, 0.6, 1.9], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.8, 7.8, 0.32, 0.32], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
+  for (const [x, y, w, d] of [[1.63, 3.2, 0.24, 0.26], [1.63, 4.54, 0.24, 0.26], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.5, 8.75, 0.5, 0.5], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
   belts();
   const ORB = {};
   for (const n of NODES.slice(1, -1)) ORB[n.key] = orbit(...n.at, n.key === "box" ? 2.6 : 1.9);
@@ -154,7 +154,6 @@ function createScene(svg, opts = {}) {
 
   // Every component is its own kind of machine:
   // agentgateway, a scanner gate: pillars here, its lit top beam and scan line in machines().
-  box(1.45, 3.05, 0.6, 1.9, 0.08); // base plate the belt runs over
 
   // kagent-controller, a card reader: a dock on the belt and a block with a slot that takes a session card.
   box(6.3, 3.3, 1.4, 1.4, 0.12);
@@ -173,7 +172,22 @@ function createScene(svg, opts = {}) {
   const idp = el("circle", { cx: P(4.9, 11, 0.45)[0], cy: P(4.9, 11, 0.45)[1], r: 3.5, fill: "var(--greenDim)" }, L.obj);
   // atelet + gVisor, a glass cage on a platform, with a crane that reaches in.
   box(11.6, 8.4, 2.8, 1.2, 0.15);
-  box(14.8, 7.8, 0.32, 0.32, 3.2); box(12.4, 7.8, 2.7, 0.32, 0.3, L.obj, { z: 3.2 });
+  // A tower crane beside the cage: footing, lattice mast, cab, peak with tie cables, and a
+  // jib over the cage balanced by a counterweight (its trolley and claw move in machines()).
+  box(14.5, 8.75, 0.5, 0.5, 0.18);
+  box(14.6, 8.85, 0.3, 0.3, 3.1, L.obj, { z: 0.18 });
+  for (let z = 0.18; z < 3.1; z += 0.48) { // lattice bracing on the two visible faces
+    const q = [[P(14.6, 9.15, z), P(14.9, 9.15, z + 0.48)], [P(14.9, 9.15, z), P(14.6, 9.15, z + 0.48)], [P(14.9, 8.85, z), P(14.9, 9.15, z + 0.48)], [P(14.9, 9.15, z), P(14.9, 8.85, z + 0.48)]];
+    for (const [a, b] of q) el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "#5d6166" }, L.obj);
+  }
+  box(14.55, 8.8, 0.4, 0.4, 0.32, L.obj, { z: 3.0, f1: "#1b1c1d" }); // cab
+  box(11.75, 8.92, 4.4, 0.16, 0.16, L.obj, { z: 3.32 }); // jib and counter-jib
+  box(15.55, 8.8, 0.5, 0.4, 0.42, L.obj, { z: 3.48, f1: "#1b1c1d" }); // counterweight
+  box(14.67, 8.92, 0.16, 0.16, 0.7, L.obj, { z: 3.48 }); // peak
+  {
+    const peak = P(14.75, 9, 4.18);
+    for (const end of [P(11.8, 9, 3.48), P(15.95, 9, 3.48)]) el("line", { x1: peak[0], y1: peak[1], x2: end[0], y2: end[1], stroke: "#9a9fa4" }, L.obj);
+  }
   const cage = el("g", { fill: "none", "stroke-dasharray": "5 5" }, L.obj);
   {
     const [x0, y0, x1, y1, z0, z1] = [11.7, 8.3, 14.3, 9.7, 0.15, 1.6];
@@ -216,7 +230,7 @@ function createScene(svg, opts = {}) {
   }
 
   // machines animates the moving parts from what is happening right now.
-  const M = { hookZ: 2.2, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
+  const M = { hookZ: 2.6, trolley: 14.15, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
   const ease = (cur, want, dt, k = 5) => cur + (want - cur) * (1 - Math.exp(-dt * k));
   function machines(glow, dt) {
     dyn.innerHTML = "";
@@ -226,12 +240,18 @@ function createScene(svg, opts = {}) {
     // The gate is one solid Π-shaped frame (no overlapping boxes): the inner face of the
     // far pillar, the front face, the beam's top and the near pillar's outer side.
     {
-      const [x0, x1, ya, yb, yc, yd, zb, zt, z0] = [1.63, 1.87, 3.22, 3.46, 4.54, 4.78, 2.1, 2.34, 0.08];
-      const st = M.gate > 0.5 ? G : "#b9bec2", F = (q, fill) => el("polygon", { points: pts(q), fill, stroke: st, "stroke-linejoin": "round" }, dyn);
+      // The pillars stand on the floor either side of the belt, which runs through the arch.
+      // The near pillar is drawn above the cubes so they visibly pass behind it.
+      const [x0, x1, ya, yb, yc, yd, zb, zt, z0] = [1.63, 1.87, 3.2, 3.42, 4.58, 4.8, 2.1, 2.34, 0];
+      const st = M.gate > 0.5 ? G : "#b9bec2";
+      const F = (q, fill, g = dyn) => el("polygon", { points: pts(q), fill, stroke: st, "stroke-linejoin": "round" }, g);
       F([P(x0, yb, z0), P(x1, yb, z0), P(x1, yb, zb), P(x0, yb, zb)], "#0e0f10");
-      F([P(x1, ya, z0), P(x1, ya, zt), P(x1, yd, zt), P(x1, yd, z0), P(x1, yc, z0), P(x1, yc, zb), P(x1, yb, zb), P(x1, yb, z0)], "#141517");
+      F([P(x1, ya, z0), P(x1, ya, zt), P(x1, yd, zt), P(x1, yd, zb), P(x1, yb, zb), P(x1, yb, z0)], "#141517");
       F([P(x0, ya, zt), P(x1, ya, zt), P(x1, yd, zt), P(x0, yd, zt)], M.gate > 0.5 ? "#1a3320" : "url(#topface)");
-      F([P(x0, yd, z0), P(x1, yd, z0), P(x1, yd, zt), P(x0, yd, zt)], "#0c0d0e");
+      F([P(x0, yd, zb), P(x1, yd, zb), P(x1, yd, zt), P(x0, yd, zt)], "#0c0d0e");
+      L.front.innerHTML = "";
+      F([P(x1, yc, z0), P(x1, yc, zb), P(x1, yd, zb), P(x1, yd, z0)], "#141517", L.front);
+      F([P(x0, yd, z0), P(x1, yd, z0), P(x1, yd, zb), P(x0, yd, zb)], "#0c0d0e", L.front);
       // A lit strip along the inside of the beam, brighter while a cube is scanned.
       const [a, b] = [P(x1, yb + 0.04, zb - 0.06), P(x1, yc - 0.04, zb - 0.06)];
       el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 2.5, "stroke-linecap": "round", opacity: (0.45 + 0.55 * M.gate).toFixed(2), filter: M.gate > 0.3 ? "url(#glow)" : null }, dyn);
@@ -267,12 +287,24 @@ function createScene(svg, opts = {}) {
     // ate-idp: a badge pops out of the kiosk for a new actor.
     M.badge = ease(M.badge, glow.idp ? 0.6 : 0.08, dt, 6);
     box(4.38, 10.57, 0.45, 0.06, 0.5, dyn, { z: 0.6 + M.badge - 0.45, st: glow.idp ? G : grey, f1: "#1b1c1d" });
-    // Sandbox crane: the hook lowers into the glass cage while the agent works.
-    M.hookZ = ease(M.hookZ, glow.box ? 0.95 : 2.2, dt, 4);
+    // Sandbox crane: the trolley rolls out over the agent, then the claw drops onto it;
+    // when the agent is done the claw lifts and the trolley parks by the mast.
+    M.trolley = ease(M.trolley, glow.box ? 13.0 : 14.15, dt, 3);
+    const over = Math.abs(M.trolley - 13.0) < 0.15;
+    M.hookZ = ease(M.hookZ, glow.box && over ? 0.75 : 2.6, dt, 4);
     {
-      const [a, b] = P(13.2, 8.05, 3.2), [c, d] = P(13.2, 8.05, M.hookZ + 0.5);
-      el("line", { x1: a, y1: b, x2: c, y2: d, stroke: grey }, dyn);
-      box(12.95, 7.8, 0.5, 0.5, 0.5, dyn, { z: M.hookZ, st: glow.box ? G : grey });
+      const tx = M.trolley, st = glow.box ? G : grey;
+      box(tx - 0.2, 8.86, 0.4, 0.28, 0.12, dyn, { z: 3.2, st }); // trolley under the jib
+      for (const dy of [-0.06, 0.06]) {
+        const [a, b] = P(tx, 9 + dy, 3.2), [c, d] = P(tx, 9 + dy, M.hookZ + 0.42);
+        el("line", { x1: a, y1: b, x2: c, y2: d, stroke: grey }, dyn);
+      }
+      box(tx - 0.18, 8.82, 0.36, 0.36, 0.22, dyn, { z: M.hookZ + 0.2, st, f1: glow.box ? "#1a3320" : undefined }); // claw head
+      const open = glow.box && over ? 0.12 : 0.24; // the claws close on the agent
+      for (const dx of [-1, 1]) {
+        const [a, b] = P(tx + dx * 0.16, 9, M.hookZ + 0.2), [c, d] = P(tx + dx * open, 9, M.hookZ - 0.05);
+        el("line", { x1: a, y1: b, x2: c, y2: d, stroke: st, "stroke-width": 2, "stroke-linecap": "round" }, dyn);
+      }
     }
     cage.setAttribute("stroke", glow.box ? "#5fd068" : "#6b7f70");
     // Egress: the barrier arm lifts and its light turns green as traffic goes out.
@@ -406,25 +438,107 @@ function createScene(svg, opts = {}) {
   const m = el("feMerge", {}, f);
   el("feMergeNode", { in: "b" }, m); el("feMergeNode", { in: "SourceGraphic" }, m);
 
-  // drawCube draws a request. With opts.me set (the phone), other people's cubes are dimmed.
-  function drawCube(g, x, y, nick, bad, other, flag) {
+  // Each visitor's agent has one of 12 shapes (picked from their player ID); its colour
+  // says how it woke up: green for a brand-new agent, blue for one restored from a snapshot.
+  const PALETTES = {
+    new: { st: "#5fd068", f1: "#1a3320", f2: "#122016", f3: "#0f1a12", text: "#cfe9d2", tag: "new" },
+    restored: { st: "#60a5fa", f1: "#16243a", f2: "#101b2c", f3: "#0c1422", text: "#cfe0fb", tag: "restored" },
+    other: { st: "#4d5a50", f1: "#161917", f2: "#121413", f3: "#0e100f", text: "#9aa3a0", tag: "" },
+    bad: { st: "#ff6b6b", f1: "#3a1a1a", f2: "#2a1212", f3: "#1f0e0e", text: "#ffd0d0", tag: "" },
+  };
+  function agentShape(g, x, y, s, shape, pal) {
+    const h = s / 2, fill = { st: pal.st, f1: pal.f1, f2: pal.f2, f3: pal.f3 };
+    const B = (dx, dy, w, d, ht, z = 0) => box(x + dx, y + dy, w, d, ht, g, { ...fill, z });
+    const poly = (q, f) => el("polygon", { points: pts(q), fill: f, stroke: pal.st, "stroke-linejoin": "round" }, g);
+    const drum = (r, ht, z = 0) => {
+      const [px, py] = P(x, y, z), rx = r * S * 1.2247, ry = r * S * 0.7071;
+      el("path", { d: `M${px - rx},${py} v${-ht * S} a${rx},${ry} 0 0 0 ${2 * rx},0 v${ht * S} a${rx},${ry} 0 0 1 ${-2 * rx},0`, fill: pal.f2, stroke: pal.st }, g);
+      return el("ellipse", { cx: px, cy: py - ht * S, rx, ry, fill: pal.f1, stroke: pal.st }, g);
+    };
+    switch (shape) {
+      case 1: B(-h * 0.7, -h * 0.7, s * 0.7, s * 0.7, s * 1.5); return s * 1.5; // tower
+      case 2: B(-h * 1.3, -h * 1.3, s * 1.3, s * 1.3, s * 0.42); return s * 0.42; // slab
+      case 3: drum(h, s * 0.8); return s * 0.8; // drum
+      case 4: { // pyramid
+        const t = [x, y, s * 1.15];
+        poly([P(x + h, y - h), P(x + h, y + h), P(...t)], pal.f2);
+        poly([P(x + h, y + h), P(x - h, y + h), P(...t)], pal.f3);
+        return s * 1.15;
+      }
+      case 5: { // hexagonal prism
+        const ht = s * 0.7, pt = (k, z) => P(x + Math.cos(k) * h * 1.08, y + Math.sin(k) * h * 1.08, z);
+        const A = [0, 1, 2, 3, 4, 5].map((i) => (i * Math.PI) / 3 + Math.PI / 6);
+        A.forEach((a, i) => {
+          const b = A[(i + 1) % 6], m = (a + b) / 2 + (i === 5 ? Math.PI : 0);
+          if (Math.cos(m) + Math.sin(m) > 0) poly([pt(a, 0), pt(b, 0), pt(b, ht), pt(a, ht)], Math.cos(m) > Math.sin(m) ? pal.f2 : pal.f3);
+        });
+        poly(A.map((a) => pt(a, ht)), pal.f1);
+        return ht;
+      }
+      case 6: B(-h, -h, s, s, s * 0.55); B(-h * 0.6, -h * 0.6, s * 0.6, s * 0.6, s * 0.5, s * 0.55); return s * 1.05; // stacked
+      case 7: { // diamond
+        const zm = s * 0.55, top = P(x, y, s * 1.15), bot = P(x, y, 0.02);
+        const E = [P(x + h, y, zm), P(x, y + h, zm), P(x - h, y, zm), P(x, y - h, zm)];
+        poly([E[3], E[0], bot], pal.f3); poly([E[0], E[1], bot], pal.f2); poly([E[1], E[2], bot], pal.f3);
+        poly([E[3], E[0], top], pal.f1); poly([E[1], E[2], top], pal.f1); poly([E[0], E[1], top], pal.f2);
+        return s * 1.15;
+      }
+      case 8: { // robot head with an antenna
+        B(-h * 0.9, -h * 0.9, s * 0.9, s * 0.9, s * 0.85);
+        const [a, b] = P(x, y, s * 0.85), [c, d] = P(x, y, s * 1.25);
+        el("line", { x1: a, y1: b, x2: c, y2: d, stroke: pal.st }, g);
+        el("circle", { cx: c, cy: d, r: s * 5, fill: pal.st }, g);
+        const [e1, e2] = [P(x - h * 0.3, y + h * 0.9, s * 0.55), P(x + h * 0.3, y + h * 0.9, s * 0.55)];
+        for (const [ex, ey] of [e1, e2]) el("circle", { cx: ex, cy: ey, r: s * 3.2, fill: pal.st }, g);
+        return s * 1.25;
+      }
+      case 9: { // capsule
+        drum(h * 0.85, s * 0.75);
+        const [px, py] = P(x, y, s * 0.75), rx = h * 0.85 * S * 1.2247;
+        el("path", { d: `M${px - rx},${py} a${rx},${rx * 0.9} 0 0 1 ${2 * rx},0 a${rx},${rx * 0.58} 0 0 1 ${-2 * rx},0`, fill: pal.f1, stroke: pal.st }, g);
+        return s * 1.3;
+      }
+      case 10: B(-h, -h, s * 0.5, s, s * 0.95); B(-h + s * 0.5, -h + s * 0.5, s * 0.5, s * 0.5, s * 0.5); return s * 0.95; // L-block
+      case 11: { // sphere
+        const [cx, cy] = P(x, y, h * 1.05), r = h * S * 1.15;
+        el("circle", { cx, cy, r, fill: pal.f1, stroke: pal.st }, g);
+        el("ellipse", { cx, cy, rx: r, ry: r * 0.32, fill: "none", stroke: pal.st, opacity: 0.6 }, g);
+        el("circle", { cx: cx - r * 0.35, cy: cy - r * 0.4, r: r * 0.18, fill: pal.st, opacity: 0.35 }, g);
+        return s * 1.1;
+      }
+      default: B(-h, -h, s, s, s); return s; // cube
+    }
+  }
+  // drawCube draws a request as its agent's shape. With opts.me set (the phone), other
+  // people's agents are dimmed.
+  function drawCube(g, x, y, nick, bad, other, flag, shape = 0, kind = "new") {
     g.innerHTML = "";
-    const st = bad ? "#ff6b6b" : other ? "#4d5a50" : "var(--green)";
+    const pal = PALETTES[bad ? "bad" : other ? "other" : kind === "restored" ? "restored" : "new"];
     const sz = opts.compact && !other ? 0.9 : 0.64;
-    box(x - sz / 2, y - sz / 2, sz, sz, sz, g, { st, f1: bad ? "#3a1a1a" : other ? "#161917" : "#1a3320", f2: bad ? "#2a1212" : other ? "#121413" : "#122016", f3: bad ? "#1f0e0e" : other ? "#0e100f" : "#0f1a12" });
+    const top = agentShape(g, x, y, sz, shape, pal);
     if (flag && !other) {
-      // A small flag on the cube while its agent runs a tool, like Tessl's issue markers.
-      const [fx, fy] = P(x + sz / 2 - 0.05, y - sz / 2 + 0.05, sz), h = 18 * (opts.compact ? 1.8 : 1);
+      // A small flag on the agent while it runs a tool, like Tessl's issue markers.
+      const [fx, fy] = P(x + sz / 2 - 0.05, y - sz / 2 + 0.05, top), h = 18 * (opts.compact ? 1.8 : 1);
       el("line", { x1: fx, y1: fy, x2: fx, y2: fy - h, stroke: "#f59e0b", "stroke-width": 1.5 }, g);
       el("path", { d: `M${fx},${fy - h} l${h * 0.6},${h * 0.22} l${-h * 0.6},${h * 0.22}z`, fill: "#f59e0b" }, g);
     }
     if (other && opts.compact) return;
-    const [a, b] = P(x, y, sz + 0.45);
-    el("text", { x: a, y: b, fill: bad ? "#ffd0d0" : "#cfe9d2", "font-size": opts.compact ? 24 : 11, "font-weight": opts.compact ? 600 : 400, "text-anchor": "middle", "font-family": "ui-monospace,monospace" }, g).textContent = opts.compact ? "you" : nick;
+    const [a, b] = P(x, y, top + 0.45), k = opts.compact ? 2.2 : 1;
+    el("text", { x: a, y: b, fill: pal.text, "font-size": 11 * k, "font-weight": opts.compact ? 600 : 500, "text-anchor": "middle", "font-family": "ui-monospace,monospace" }, g).textContent = opts.compact ? "you" : nick;
+    if (pal.tag) el("text", { x: a, y: b - 12 * k, fill: pal.st, "font-size": 9 * k, "text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "letter-spacing": "0.06em" }, g).textContent = pal.tag.toUpperCase();
   }
 
   svg.appendChild(L.cubes); // cubes on top: above the labels and click targets, so a cube can be picked
+  L.front = el("g", { "pointer-events": "none" }, svg); // scenery in front of the cubes (the gate's near pillar)
+  svg.appendChild(L.fx); // bubbles stay on top of everything
   return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot };
+}
+
+// shapeOf picks one of the 12 agent shapes from a player ID, so a visitor keeps theirs.
+function shapeOf(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 12;
 }
 
 // startFlowScreen wires the scene to the backend's live state.
@@ -459,6 +573,8 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, ca
       c.target = DIST[NODE[node]];
       c.final = DONE.has(r.stage);
       c.flag = r.stage === "tool" || r.stage === "hook";
+      c.kind = r.steps.some((x) => x.stage === "restore") ? "restored" : "new";
+      c.shape = shapeOf(r.playerId);
       c.started = r.started;
       c.bad = r.stage === "error";
       if (c.stage !== r.stage && !c.other) {
@@ -519,7 +635,7 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, ca
       const d = c.target - c.s;
       c.s += Math.sign(d) * Math.min(Math.abs(d), speed * dt);
       const [x, y] = posAt(c.s);
-      sc.drawCube(c.g, x, y, c.nick, c.bad, c.other, c.flag);
+      sc.drawCube(c.g, x, y, c.nick, c.bad, c.other, c.flag, c.shape, c.kind);
       if (id === focusId) c.pos = P(x, y);
       if (Math.abs(d) > 0.05 && !c.other && now - (c.trailAt || 0) > 45) { c.trailAt = now; sc.trail(x, y); }
       if (c.target === DIST[NODE.llm] && !c.other) glow.llm = true;

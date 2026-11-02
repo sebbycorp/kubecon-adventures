@@ -222,7 +222,7 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 			a.sessionID = sid
 			g.mu.Unlock()
 		} else if asleep {
-			g.step(r, StageRestore, "atelet restores your agent from Snapshot Storage", "Snapshot Storage")
+			g.step(r, StageRestore, "atelet restores your agent from Snapshot Storage", "")
 			t := time.Now()
 			if err := g.k.Resume(ctx, sid); err != nil {
 				return err

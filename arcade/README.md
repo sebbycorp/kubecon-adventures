@@ -77,7 +77,7 @@ Every clone remembers the secrets from before the checkpoint, and only the taugh
 
 ## Agent Flow
 
-A booth screen that shows kagent on Agent Substrate working. Visitors scan the QR code, enter a name, and pick a task for their own agent (`manifests/flow-agent.yaml`, the `flowbot` Agent on its own 6-worker `flow` pool):
+A booth screen that shows kagent on Agent Substrate working. Visitors scan the QR code, enter a name, and pick a task for their own agent (`manifests/flow-agent.yaml`, the `flowbot` Agent on its own 12-worker `flow` pool):
 
 | Task | What the agent really does |
 |------|----------------------------|

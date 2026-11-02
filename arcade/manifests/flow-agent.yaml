@@ -10,7 +10,7 @@ metadata:
     kagent.dev/worker-pool-name: flow
     kagent.dev/worker-pool-namespace: kagent
 spec:
-  replicas: 6
+  replicas: 12
   sandboxClasses:
   - name: gvisor
     configRef:
