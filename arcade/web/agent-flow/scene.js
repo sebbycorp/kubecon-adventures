@@ -377,7 +377,7 @@ function createScene(svg, opts = {}) {
     }
   }
 
-  label("gw", 3.4, 5.8, 0, "agentgateway", "front door · prompt guard · limits", window.AGW_ICON);
+  label("gw", 1.75, 4, 3.45, "agentgateway", "front door · prompt guard · limits", window.AGW_ICON);
   label("ctrl", 7.2, 2.6, 3.6, "kagent-controller", "sessions · A2A · agent CRDs", window.KAGENT_ICON, "kagent");
   label("pg", 10.2, 6.6, 1.4, "postgres", "chat history");
   label("ate", 7, 9, 2.0, "ate-api-server + controller", "schedules agent actors", null, "Substrate");
