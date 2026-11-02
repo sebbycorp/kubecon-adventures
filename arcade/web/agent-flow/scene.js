@@ -214,11 +214,9 @@ function createScene(svg, opts = {}) {
   // atenet-egress, a boom barrier across the belt (its arm and light in machines()).
   box(11.75, 3.85, 0.35, 0.35, 1.0);
   box(14.2, 3.95, 0.14, 0.14, 0.82); // rest post the arm drops onto
-  // The LLM: a sleek monolith on a round plinth, with a ring floating above it that spins
-  // and glows while a call is in flight (drawn in machines()).
-  const TW = { x: 14.4, y: -2.4, h: 2.1 };
-  disc(TW.x, TW.y, 0.62, 0.12);
-  box(TW.x - 0.26, TW.y - 0.26, 0.52, 0.52, TW.h, L.obj, { z: 0.12, f1: "#1d1f22", f2: "#121315", f3: "#0d0e10" });
+  // The LLM is outside the cluster: the belt leaves the platform through a slim exit portal
+  // at its edge (its glow and chevrons are drawn in machines()).
+  const TW = { x: 13, y: 0.55, w: 0.8, h: 1.5 }; // portal centre on the belt, half-width, height
   const awakeG = el("g", {}, L.obj);
   // awake draws one small cube on the sandbox platform per actor running in Substrate right now.
   let awakeN = -1;
@@ -353,24 +351,23 @@ function createScene(svg, opts = {}) {
     // Snapshot Storage: the top drawer slides out while a snapshot is saved or restored.
     M.drawer = ease(M.drawer, glow.rf ? 0.55 : 0, dt, 5);
     if (M.drawer > 0.02) box(15.95, 10.3 + M.drawer, 1.1, 1.0, 0.4, dyn, { z: 0.96, st: G, f1: "#1a3320" });
-    // LLM monolith: light seams down its faces and a floating ring that spins, glows and
-    // sends out pulses while a call is in flight.
-    M.ring += dt * (glow.llm ? 2.2 : 0.35);
+    // LLM exit portal: a slim frame across the belt whose opening glows, brighter with
+    // chevrons streaming in while a call is out.
     M.llm = ease(M.llm, glow.llm ? 1 : 0, dt, 5);
+    M.ring += dt * (glow.llm ? 1.6 : 0.4);
     {
-      const on = M.llm, c = on > 0.5 ? G : "#6b7280", z0 = 0.2, z1 = 0.12 + TW.h - 0.15;
-      for (const [x, y] of [[TW.x + 0.26, TW.y], [TW.x, TW.y + 0.26]]) { // seams on the two faces we see
-        const [a, b] = P(x, y, z0), [d, e] = P(x, y, z1);
-        el("line", { x1: a, y1: b, x2: d, y2: e, stroke: c, "stroke-width": 2, opacity: 0.35 + 0.65 * on, filter: on > 0.3 ? "url(#glow)" : null }, dyn);
+      const on = M.llm, { x, y, w, h } = TW, fr = 0.1;
+      const c = on > 0.5 ? G : "#9a9fa4";
+      const q = (x0, x1, z0, z1) => [P(x0, y, z0), P(x1, y, z0), P(x1, y, z1), P(x0, y, z1)];
+      el("polygon", { points: pts(q(x - w, x + w, 0, h)), fill: "url(#portalglow)", opacity: (0.35 + 0.65 * on).toFixed(2) }, dyn);
+      for (let i = 0; i < 3; i++) { // chevrons moving through the opening
+        const k = (M.ring + i / 3) % 1, z = 0.25 + 0.25 * i, op = on * Math.sin(Math.PI * k);
+        if (op < 0.05) continue;
+        const [a, b] = P(x - 0.25, y + 0.6 - k * 0.9, z), [m, n] = P(x, y + 0.45 - k * 0.9, z), [d, e] = P(x + 0.25, y + 0.6 - k * 0.9, z);
+        el("polyline", { points: `${a},${b} ${m},${n} ${d},${e}`, fill: "none", stroke: G, "stroke-width": 2.5, opacity: op.toFixed(2) }, dyn);
       }
-      const [rx0, ry0] = P(TW.x, TW.y, TW.h + 0.75), rx = 0.62 * S * 1.2247, ry = 0.62 * S * 0.7071;
-      const bob = Math.sin(now / 900) * 3;
-      el("ellipse", { cx: rx0, cy: ry0 + bob, rx, ry, fill: "none", stroke: "#2b2f33", "stroke-width": 5 }, dyn);
-      el("ellipse", { cx: rx0, cy: ry0 + bob, rx, ry, fill: "none", stroke: c, "stroke-width": 3, "stroke-dasharray": `${rx * 1.4} ${rx * 0.9}`, "stroke-dashoffset": (-M.ring * rx).toFixed(1), opacity: 0.5 + 0.5 * on, filter: on > 0.3 ? "url(#glow)" : null }, dyn);
-      if (on > 0.3) for (let i = 0; i < 2; i++) { // pulses rising off the ring
-        const k = ((M.ring * 0.5 + i * 0.5) % 1);
-        el("ellipse", { cx: rx0, cy: ry0 + bob - k * 26, rx: rx * (1 + k * 0.6), ry: ry * (1 + k * 0.6), fill: "none", stroke: G, opacity: ((1 - k) * on * 0.7).toFixed(2) }, dyn);
-      }
+      const frame = [P(x - w - fr, y, 0), P(x - w - fr, y, h + fr), P(x + w + fr, y, h + fr), P(x + w + fr, y, 0), P(x + w, y, 0), P(x + w, y, h), P(x - w, y, h), P(x - w, y, 0)];
+      el("polygon", { points: pts(frame), fill: "#141517", stroke: c, "stroke-linejoin": "round", filter: on > 0.5 ? "url(#glow)" : null }, dyn);
     }
   }
 
@@ -381,15 +378,15 @@ function createScene(svg, opts = {}) {
   label("idp", 4.6, 11.8, -0.9, "ate-idp", "gives each agent an identity");
   label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
   label("rf", 19.0, 9.2, 1.0, "Snapshot Storage", "sleeping agents (rustfs)");
-  label("egress", 15, 2, 1.5, "atenet-egress", "only allowed hosts go out", null, "egress");
-  label("llm", 8.5, -3.9, 0, "OpenAI", "LLM calls via agentgateway", window.OPENAI_ICON, "LLM");
+  label("egress", 16.6, 5.2, 0.3, "atenet-egress", "agentgateway · per-agent allowlist", window.AGW_ICON, "egress");
+  label("llm", 13, 0.55, 2.4, "OpenAI", "LLM calls via agentgateway", window.OPENAI_ICON, "LLM");
   {
     const [c, d] = P(-6, 4);
     el("text", { x: c - 10, y: d + 34, fill: "#6d7277", "font-size": 12, "font-family": "ui-monospace,monospace" }, L.lab).textContent = "← phones";
   }
 
   // Click targets over each machine (the labels are clickable too).
-  const SPOTS = { llm: [14.4, -2.4], gw: [2, 4], ctrl: [8.6, 3], pg: [9.4, 5.6], ate: [7, 9], idp: [4.6, 10.6], box: [13, 9], egress: [12.6, 4], rf: [16.5, 10.8] };
+  const SPOTS = { llm: [13, 0.55], gw: [2, 4], ctrl: [8.6, 3], pg: [9.4, 5.6], ate: [7, 9], idp: [4.6, 10.6], box: [13, 9], egress: [12.6, 4], rf: [16.5, 10.8] };
   if (opts.onPick) {
     const hit = el("g", {}, svg);
     for (const [key, at] of Object.entries(SPOTS)) {
@@ -466,6 +463,7 @@ function createScene(svg, opts = {}) {
   };
   const cc = el("clipPath", { id: "cardclip" }, defs);
   el("polygon", { points: pts([P(8.3, 2.75, 0.9), P(9.5, 2.75, 0.9), P(9.5, 2.75, 9), P(8.3, 2.75, 9)]) }, cc);
+  grad("portalglow", [[0, "#5fd06855"], [1, "#5fd06808"]]);
   grad("topface", [[0, "#24262a"], [1, "#16171a"]], 1, 1);
   grad("slabfront", [[0, "#15171a"], [1, "#0a0b0c"]]);
   grad("slabside", [[0, "#111316"], [1, "#08090a"]]);
