@@ -1,0 +1,103 @@
+# agentgateway policies for Agent Flow. flowbot gets its own LLM route (/flow/v1) so these
+# policies apply to it alone; the other games keep the plain /v1 route in llm.yaml.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openai-flow
+  namespace: agentgateway-system
+spec:
+  parentRefs:
+  - name: arcade
+  # Only the in-cluster name, like the main LLM route: the public tunnel can't reach it.
+  hostnames:
+  - arcade.agentgateway-system.svc.cluster.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /flow/v1/chat/completions
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /v1/chat/completions
+    backendRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: openai
+---
+# The LLM guard: reject jailbreaks, requests to reveal credentials and pasted API keys
+# before they reach OpenAI, and cap how fast flow agents may spend tokens.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: flow-llm-guard
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai-flow
+  backend:
+    ai:
+      promptGuard:
+        request:
+        - scope: [Messages] # the visitor's words and the agent's replies, not the system prompt or tool output
+          regex:
+            action: Reject
+            matches:
+            - '(?i)\bignore\s+(all\s+|any\s+|your\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions|rules|prompts?)'
+            - '(?i)\b(reveal|print|show|leak|dump|expose|give\s+me|tell\s+me|send\s+me)\b[^.]{0,40}\b(api[\s_-]?keys?|openai[\s_-]?keys?|secret[\s_-]?keys?|access[\s_-]?tokens?|passwords?|credentials)\b'
+            - 'sk-[A-Za-z0-9_-]{20,}'
+          response:
+            statusCode: 403
+            message: 'Blocked by agentgateway prompt guard: this request asked for secrets or tried to override the agent''s rules.'
+  traffic:
+    rateLimit:
+      local:
+      - tokens: 200000
+        unit: Minutes
+      - requests: 300
+        unit: Minutes
+---
+# The public front door: a request budget per visitor, keyed on the client IP Cloudflare
+# passes through (requests without it, from the LAN, share one bucket).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: front-door
+  namespace: arcade
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: arcade
+  traffic:
+    rateLimit:
+      local:
+      - requests: 300
+        unit: Minutes
+        key: 'request.headers["cf-connecting-ip"]'
+---
+# LLM calls only from inside the cluster (the sandboxes reach it through atenet-egress). Without
+# this, anyone on the LAN could reach the LLM routes through host port 8090 by faking the Host.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: llm-in-cluster-only
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai-flow
+  traffic:
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+        - 'source.address.startsWith("10.244.")'

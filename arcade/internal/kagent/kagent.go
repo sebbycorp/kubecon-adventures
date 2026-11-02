@@ -270,6 +270,16 @@ func replyFromTask(task *a2atype.Task) (Reply, error) {
 	var err error
 	reply := Reply{Task: task, Usage: taskUsage(task)}
 	if task.Status.State != a2atype.TaskStateCompleted {
+		// Keep the runtime's reason (for example an upstream 403 from a gateway policy).
+		var why strings.Builder
+		if m := task.Status.Message; m != nil {
+			for _, part := range m.Parts {
+				why.WriteString(part.Text())
+			}
+		}
+		if why.Len() > 0 {
+			return reply, fmt.Errorf("task ended in %s: %s", task.Status.State, why.String())
+		}
 		return reply, fmt.Errorf("task ended in %s", task.Status.State)
 	}
 	var out strings.Builder

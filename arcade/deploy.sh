@@ -34,7 +34,7 @@ k apply -f manifests/fork-agent.yaml
 k -n kagent wait agent/forky --for=condition=Ready --timeout 5m
 
 echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
-k apply -f manifests/flow-agent.yaml
+k apply -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
 
 echo "==> arcade image"
@@ -45,7 +45,13 @@ docker push -q "$IMAGE"
 echo "==> arcade app"
 k delete namespace duck-hunt --ignore-not-found --wait=false   # pre-arcade name
 k apply -f manifests/atelet-metrics.yaml
-sed "s|image: IMAGE.*|image: $IMAGE|" manifests/app.yaml | k apply -f -
+# Cluster facts for Agent Flow's hints. The kind nodes share this host, so its CPU and RAM
+# are the real capacity (each node reports all of it).
+NODES=$(k get nodes --no-headers | wc -l)
+CPUS=$(nproc)
+MEMGIB=$(free -g | awk '/Mem:/{print $2}')
+sed -e "s|image: IMAGE.*|image: $IMAGE|" -e "s|\"NODES\"|\"$NODES\"|" -e "s|\"CPUS\"|\"$CPUS\"|" -e "s|\"MEMGIB\"|\"$MEMGIB\"|" \
+  manifests/app.yaml | k apply -f -
 k -n arcade rollout status deploy/arcade --timeout 3m
 
 echo "==> host port 8090 -> arcade Gateway"

@@ -32,6 +32,22 @@ spec:
     snapshotPolicy:
       location: s3://ate-snapshots/agent-flow/
 ---
+# flowbot's model goes through its own agentgateway route (/flow/v1), where the prompt guard
+# and token budget in flow-policies.yaml apply. The key is a placeholder: agentgateway adds
+# the real one.
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: flow-model
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: gpt-4.1-mini
+  apiKeySecret: duck-llm
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://arcade.agentgateway-system.svc.cluster.local/flow/v1
+---
 apiVersion: api.kagent.dev/v1alpha3
 kind: Agent
 metadata:
@@ -44,7 +60,7 @@ spec:
     inline:
       description: A KubeCon booth visitor's own agent; does small tasks in its gVisor sandbox
       modelConfig:
-        name: duck-model
+        name: flow-model
       systemPrompt: |
         You are a friendly AI agent at a KubeCon booth, running in your own gVisor sandbox on
         Kubernetes. A visitor picked a small task for you on their phone. Do it for real with

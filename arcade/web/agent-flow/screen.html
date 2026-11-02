@@ -55,6 +55,7 @@
 
   #toasts { left: 50%; top: 26px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
   .toast { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 10px; border: 1px solid var(--greenDim); background: #0f1a12e8; box-shadow: 0 0 24px #5fd06822; font-size: 13px; animation: pop .5s cubic-bezier(.2, 1.6, .4, 1); }
+  .toast.bad { border-color: #ef4444; background: #2a1010f0; box-shadow: 0 0 28px #ef444444; }
   .toast.hook { border-color: #a78bfa; background: #1a1430f0; box-shadow: 0 0 40px #7c3aed44; }
   .toast b { font-weight: 600; }
   .toast.out { animation: fade .5s forwards; }
@@ -89,6 +90,8 @@
   #feed { gap: 6px; }
 
   #density { margin-top: 12px; font-size: 15px; color: var(--fg); }
+  #hint { margin-top: 6px; max-width: 470px; font-size: 12.5px; line-height: 1.45; color: var(--mute); min-height: 2.9em; transition: opacity .6s; }
+  #hint b { color: #cfe9d2; font-weight: 600; }
   #density b { color: var(--green); font-weight: 600; }
   #density span { color: var(--mute); }
   .life { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 10px 0 4px; }
@@ -112,7 +115,7 @@
 <div id="vig"></div>
 <div id="title" class="ui"><img src="/agent-flow/static/kagent-logo.svg" alt="kagent"><h1>on Agent Substrate</h1><p>Every cube is someone's real request, live.</p>
   <div id="live"><i></i><b>LIVE</b><span id="since">waiting for the first request</span></div>
-  <div id="density"></div></div>
+  <div id="density"></div><div id="hint"></div></div>
 <div id="stats" class="ui"></div>
 <div id="toasts" class="ui" aria-live="polite"></div>
 <div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
@@ -159,7 +162,7 @@ function toast(html, cls = "") {
   while ($("toasts").children.length > 2) $("toasts").firstChild.remove();
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 500); }, 3200);
 }
-const LABELS = { resume: "pick up where it left off", code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
+const LABELS = { jailbreak: "steal the OpenAI key", resume: "pick up where it left off", code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
 const QUIET = new Set(["controller", "sandbox"]);
 
 // Drifting sparks behind the map.
@@ -201,8 +204,8 @@ function stat(key, value, label, fmt = (v) => v.toLocaleString()) {
 let lastRequest = 0, lastActive = Date.now();
 // What each component is, for the card shown when someone clicks a station.
 const STATIONS = {
-  gw: ["agentgateway", "/agent-flow/static/agentgateway-icon.svg", "The front door. Every request from a phone, every LLM call and every webhook goes through it. It holds the OpenAI key, so agents never see it.",
-    (s) => [["requests", s.total], ["webhooks", (s.hooks || []).length]]],
+  gw: ["agentgateway", "/agent-flow/static/agentgateway-icon.svg", "Every phone request, LLM call and webhook goes through it. It holds the OpenAI key (agents only have a placeholder) and enforces these policies: a prompt guard that rejects jailbreaks and requests for secrets, a token budget for flow agents, a per-visitor request limit, and LLM calls only from inside the cluster.",
+    (s) => [["blocked by prompt guard", s.blocked || 0], ["rate limited", s.limited || 0], ["webhooks", (s.hooks || []).length]]],
   ctrl: ["kagent-controller", "/agent-flow/static/kagent-icon.svg", "Turns each visitor into a kagent session and talks to their agent over A2A. It reads the agent's CRD to know which model and tools it gets.",
     (s) => [["agents", s.agents], ["requests", s.total]]],
   pg: ["postgres", null, "Keeps every session, task and message, so an agent still remembers you after it wakes from a snapshot.", (s) => [["agents", s.agents]]],
@@ -246,6 +249,8 @@ const flow = startFlowScreen($("scene"), {
   onStep(run, step) {
     lastRequest = Date.now();
     if (step.stage === "gateway") return feed("", run.nick, LABELS[run.task] ? `asks their agent to ${LABELS[run.task]}` : `asks “${run.ask}”`, "", run.color);
+    if (step.text.includes("blocked by agentgateway")) toast(`<span>🛡️</span><span>agentgateway's prompt guard <b>blocked</b> ${esc(run.nick)}'s request before it reached the LLM</span>`, "bad");
+    if (step.text.includes("rate limited by agentgateway")) toast(`<span>🛡️</span><span>agentgateway <b>rate limited</b> ${esc(run.nick)}'s agent</span>`, "bad");
     if (step.text === "woke up on a different node") toast(`<span>🛰️</span><span><b>${esc(run.nick)}</b>'s agent woke on a different node: ${esc(step.detail)}</span>`, "hook");
     if (step.stage === "schedule") toast(`<span>✨</span><span>Welcome <b>${esc(run.nick)}</b>, your agent just got its own gVisor sandbox</span>`);
     if (QUIET.has(step.stage) || step.text === "tool output") return;
@@ -286,7 +291,7 @@ function typeInto(el, text, html = (t) => esc(t)) {
 const BADGE = {
   gateway: ["Routing", "work"], controller: ["Routing", "work"], schedule: ["New actor", "work"], restore: ["Waking up", "work"],
   sandbox: ["Awake", "work"], llm: ["Thinking", "think"], tool: ["Running tool", "work"], hook: ["Calling webhook", "work"],
-  reply: ["Answered", "ok"], snapshot: ["Saving snapshot", "ok"], asleep: ["Asleep", "ok"], error: ["Error", "bad"],
+  reply: ["Answered", "ok"], snapshot: ["Saving snapshot", "ok"], asleep: ["Asleep", "ok"], error: ["Error", "bad"], blocked: ["Blocked by agentgateway", "bad"],
 };
 let storyId = null;
 function story(r) {
@@ -303,7 +308,7 @@ function story(r) {
   }
   el.classList.remove("off");
   $("sWho").textContent = `${r.nick}'s agent`;
-  const [label, cls] = BADGE[r.stage] || ["Working", "work"];
+  const [label, cls] = BADGE[r.policy === "blocked" ? "blocked" : r.stage] || ["Working", "work"];
   const b = $("sBadge");
   if (b.textContent !== label) { b.textContent = label; b.className = "badge " + cls; b.animate([{ transform: "scale(1.15)" }, { transform: "scale(1)" }], { duration: 300 }); }
   $("sAsk").textContent = `“${r.ask || r.task}”`;
@@ -332,6 +337,31 @@ function story(r) {
   if (r.answer) typeInto($("sAnswer"), r.answer); else { $("sAnswer").textContent = ""; $("sAnswer")._full = ""; $("sAnswer")._shown = ""; }
   $("sMeta").textContent = r.answer ? `${(r.ms / 1000).toFixed(1)}s · ${r.tokens.toLocaleString()} tokens` : "";
 }
+
+// Quiet hints under the headline, one at a time: how big the cluster is, how lazy agents
+// are, and roughly what Substrate saves. All from live data except the stated pod price.
+const HINTS = [
+  (s, c, w) => w && c.nodes ? `<b>${w}</b> gVisor sandboxes (${flowWorkers(s)} for Agent Flow) on <b>${c.nodes}</b> Kubernetes nodes, all on one <b>${c.hostCpus}-CPU, ${c.hostMemGiB} GiB</b> machine.` : "",
+  (s) => { const sub = s.substrate || {}; if (!sub.actors) return "";
+    const pct = Math.round((100 * (sub.suspended || 0)) / sub.actors), run = s.timings?.run;
+    return `Agents are lazy: <b>${pct}%</b> are asleep right now.${run?.count ? ` A visit keeps one busy for about <b>${fmtMs(run.p50)}</b>, then it sleeps for free.` : ""}`; },
+  (s, c, w) => { const a = s.substrate?.actors || 0; if (!a || !w) return "";
+    const perDay = Math.max(0, a - w) * 24 * c.podHourUsd;
+    return `One always-on pod per agent would mean <b>${a}</b> pods. Substrate runs <b>${w}</b> sandboxes: about <b>$${perDay.toFixed(2)}/day</b> saved (est. at $${c.podHourUsd}/pod-hour).`; },
+  (s, c, w) => { const a = s.substrate?.actors || 0; return a && w ? `That's <b>${(a / w).toFixed(1)}</b> agents per sandbox. Idle ones wait in Snapshot Storage, not in memory.` : ""; },
+  (s) => { const t = s.timings || {}; return t.restore?.count ? `Waking an agent takes about <b>${fmtMs(t.restore.p50)}</b>; putting one to sleep about <b>${fmtMs(t.snapshot?.p50)}</b>.` : ""; },
+];
+function flowWorkers(s) { return (s.substrate?.pools || []).find((p) => p.name === "flow")?.workers ?? 0; }
+let hintI = 0;
+setInterval(() => {
+  if (!lastState) return;
+  const s = lastState, c = s.cluster || {}, w = (s.substrate?.pools || []).reduce((n, p) => n + (p.workers || 0), 0);
+  let html = "";
+  for (let tries = 0; tries < HINTS.length && !html; tries++) html = HINTS[hintI++ % HINTS.length](s, c, w);
+  const el = $("hint");
+  el.style.opacity = 0;
+  setTimeout(() => { el.innerHTML = html; el.style.opacity = 1; }, 600);
+}, 7000);
 
 // "Last request" ticker, idle tour and the QR card's rotating ideas.
 const IDEAS = ["“write FizzBuzz and run it”", "“call the booth webhook”", "“what kernel are you on?”", "“roll three dice”", "“a haiku about pods”"];

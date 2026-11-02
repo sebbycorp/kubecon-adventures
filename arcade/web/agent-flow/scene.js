@@ -264,7 +264,7 @@ function createScene(svg, opts = {}) {
   }
 
   // machines animates the moving parts from what is happening right now.
-  const M = { hookZ: 2.6, trolley: 14.15, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
+  const M = { alarmUntil: 0, hookZ: 2.6, trolley: 14.15, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
   const ease = (cur, want, dt, k = 5) => cur + (want - cur) * (1 - Math.exp(-dt * k));
   function machines(glow, dt) {
     dyn.innerHTML = "";
@@ -272,18 +272,20 @@ function createScene(svg, opts = {}) {
     // agentgateway is a security speed gate: two cabinets either side of the lane with glass
     // flaps that slide back as a request arrives, status screens, an LED strip, and a
     // scanner arch overhead. The near cabinet and its flap are drawn in front of the cubes.
-    M.gate = ease(M.gate, glow.gate ? 1 : 0, dt, glow.gate ? 7 : 3);
+    const alarm = now < M.alarmUntil; // agentgateway just blocked a request: shut, and flash red
+    M.gate = ease(M.gate, glow.gate && !alarm ? 1 : 0, dt, glow.gate ? 7 : 3);
     {
-      const open = M.gate, ok = open > 0.5, state = ok ? G : "#f59e0b";
+      const open = M.gate, ok = open > 0.5;
+      const state = alarm ? (Math.sin(now / 90) > 0 ? "#ef4444" : "#7f1d1d") : ok ? G : "#f59e0b";
       L.front.innerHTML = "";
       const cab = (y, g) => {
         box(1.3, y, 0.9, 0.5, 1.0, g, { f1: "#1b1c1e" });
         const scr = [P(1.55, y + 0.12, 1.0), P(1.95, y + 0.12, 1.0), P(1.95, y + 0.38, 1.0), P(1.55, y + 0.38, 1.0)];
-        el("polygon", { points: pts(scr), fill: ok ? "#12301a" : "#2a1c0b", stroke: state, filter: "url(#glow)" }, g);
+        el("polygon", { points: pts(scr), fill: alarm ? "#3a1010" : ok ? "#12301a" : "#2a1c0b", stroke: state, filter: "url(#glow)" }, g);
       };
       const flap = (y0, y1, g) => {
         if (Math.abs(y1 - y0) < 0.02) return;
-        el("polygon", { points: pts([P(1.75, y0, 0.3), P(1.75, y1, 0.3), P(1.75, y1, 0.9), P(1.75, y0, 0.9)]), fill: ok ? "#5fd068" : "#f59e0b", "fill-opacity": 0.16, stroke: state, "stroke-opacity": 0.8 }, g);
+        el("polygon", { points: pts([P(1.75, y0, 0.3), P(1.75, y1, 0.3), P(1.75, y1, 0.9), P(1.75, y0, 0.9)]), fill: alarm ? "#ef4444" : ok ? "#5fd068" : "#f59e0b", "fill-opacity": alarm ? 0.3 : 0.16, stroke: state, "stroke-opacity": 0.8 }, g);
       };
       cab(2.9, dyn);
       const [l1, l2] = [P(1.4, 3.4, 0.72), P(2.1, 3.4, 0.72)]; // LED strip facing the lane
@@ -375,7 +377,7 @@ function createScene(svg, opts = {}) {
     }
   }
 
-  label("gw", -0.4, 6.6, 0.2, "agentgateway", "front door · auth · webhooks", window.AGW_ICON);
+  label("gw", 3.4, 5.8, 0, "agentgateway", "front door · prompt guard · limits", window.AGW_ICON);
   label("ctrl", 7.2, 2.6, 3.6, "kagent-controller", "sessions · A2A · agent CRDs", window.KAGENT_ICON, "kagent");
   label("pg", 10.2, 6.6, 1.4, "postgres", "chat history");
   label("ate", 7, 9, 2.0, "ate-api-server + controller", "schedules agent actors", null, "Substrate");
@@ -573,7 +575,8 @@ function createScene(svg, opts = {}) {
   svg.appendChild(L.cubes); // cubes on top: above the labels and click targets, so a cube can be picked
   L.front = el("g", { "pointer-events": "none" }, svg); // scenery in front of the cubes (the gate's near pillar)
   svg.appendChild(L.fx); // bubbles stay on top of everything
-  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot, wall };
+  const alarm = () => { M.alarmUntil = performance.now() + 3000; };
+  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot, wall, alarm };
 }
 
 function fmtMs(ms) {
@@ -697,7 +700,10 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, com
       case "restore": if (step.text === "restored") sc.bubble([18.6, 10.6, 1.2], "restored in " + d); break;
       case "asleep": if (d) sc.bubble([18.6, 10.6, 1.2], "snapshot in " + d); break;
       case "reply": sc.bubble([2, 4, 3.0], "✓ answered in " + d); break;
-      case "error": sc.bubble([2, 4, 3.0], "error", "bad"); break;
+      case "error":
+        if (step.text.includes("agentgateway")) { sc.alarm(); sc.bubble([2, 4, 2.6], step.text.includes("rate") ? "429 · rate limited" : "403 · blocked by prompt guard", "bad"); }
+        else sc.bubble([2, 4, 3.0], "error", "bad");
+        break;
     }
   }
 

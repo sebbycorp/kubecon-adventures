@@ -104,6 +104,24 @@ Agent Flow makes Substrate's snapshots the headline, with real data only:
 - **Sleep and Wake buttons** on the phone (`POST /agent-flow/api/sleep`, `/api/wake`). A hand-woken agent holds a worker until it is used or put to sleep; after 45 s idle the backend suspends it again ("auto").
 - **New vs restored.** New agents are green, restored ones blue; the stats compare the first-answer time of each.
 
+### agentgateway policies
+
+`manifests/flow-policies.yaml` (applied by `deploy.sh`) gives flowbot its own LLM route, `/flow/v1` through the `flow-model` ModelConfig, so these policies don't change the other games:
+
+| Policy | Target | What it does |
+|--------|--------|--------------|
+| `flow-llm-guard` | `openai-flow` route | Prompt guard (regex, `Reject`, 403): jailbreaks ("ignore previous instructions"), requests to reveal keys, tokens, passwords or credentials, and pasted `sk-…` keys. Scope is `Messages`, so the system prompt and tool output aren't scanned. Plus a local budget of 200k tokens and 300 requests a minute. |
+| `front-door` | `arcade` route | 300 requests a minute per visitor, keyed on Cloudflare's `cf-connecting-ip` (LAN requests share one bucket). |
+| `llm-in-cluster-only` | `openai` and `openai-flow` routes | LLM calls only from pod IPs (`10.244.0.0/16`). Before this, anyone on the LAN could reach the LLM routes through host port 8090 by faking the Host header. |
+
+Agents only ever hold the placeholder key `via-agentgateway`; agentgateway adds the real one. Every LLM call reaches agentgateway from atenet-egress, the sandboxes' only way out.
+
+kagent reports a guard rejection as `OpenAI API error: 403 Forbidden` (without the guard's message), so the backend treats a 403 from flowbot's LLM route as a block. The blocked prompt stays in the session's history, where the guard would reject every later call, so the backend deletes that visitor's session and the next request starts a fresh agent. The phone's "Try to steal the key" task triggers it on purpose; the big screen's gate flashes red and a toast names the visitor.
+
+### Hints
+
+A line under the headline rotates through facts from live data: sandboxes per pool, the share of agents asleep, run time vs sleep, agents per sandbox, and a savings estimate (agents minus sandboxes, times 24 hours, times an assumed $0.02 per always-on pod-hour; override with `POD_HOUR_USD`). `deploy.sh` measures the node count and this host's CPUs and RAM; the kind nodes share one machine, so the host's numbers are the real capacity.
+
 The webhook works because agents already reach agentgateway's in-cluster host for LLM calls, and the arcade route on that Gateway matches any host. Measured on this cluster: new actor about 35 ms, snapshot about 275 ms, restore about 150 ms, a whole run 3 to 7 s.
 
 The QR code points at `https://kubecon.agentpwned.ai/agent-flow` when the screen is opened on localhost, otherwise at the screen's own origin. Open `/agent-flow/screen?join=http://<lan-ip>:8090/agent-flow` to point phones somewhere else. Reset the round with `curl -XPOST localhost:8090/admin/agent-flow/api/reset`.

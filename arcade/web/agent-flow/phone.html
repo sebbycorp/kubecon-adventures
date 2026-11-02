@@ -252,7 +252,9 @@ function render() {
     const list = steps.map((s, i) => `<li class="${s.stage === "error" ? "bad" : live && i === steps.length - 1 ? "now" : ""}"><i></i><div>${esc(s.text)}${s.detail ? `<code>${esc(s.detail)}</code>` : ""}</div></li>`).join("");
     const tools = r.steps.filter((s) => (s.stage === "tool" || s.stage === "hook") && s.text !== "tool output").length;
     const sum = live ? "Working through the stack..." : `${steps.length} steps${tools ? ` · ${tools} tool call${tools > 1 ? "s" : ""}` : ""}`;
-    const body = r.error ? `<div class="err">Something went wrong: ${esc(r.error)}</div>`
+    const body = r.policy === "blocked" ? `<div class="err">🛡️ agentgateway's prompt guard blocked this before it reached the LLM: it asked for secrets or tried to override the agent's rules. Your agent was reset, so ask something else.</div>`
+      : r.policy === "limited" ? `<div class="err">🛡️ agentgateway rate limited this: the flow agents' token budget is used up for this minute. Try again shortly.</div>`
+      : r.error ? `<div class="err">Something went wrong: ${esc(r.error)}</div>`
       : r.answer ? `<div class="answer${/\n/.test(r.answer) ? " mono" : ""}">${esc(r.answer)}</div><div class="meta">${(r.ms / 1000).toFixed(1)}s · ${r.tokens.toLocaleString()} tokens</div>`
       : `<div class="typing"><span></span><span></span><span></span></div>`;
     return `<div class="me">${esc(r.ask || r.task)}</div>
