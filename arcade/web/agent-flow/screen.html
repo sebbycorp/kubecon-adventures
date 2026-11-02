@@ -167,7 +167,7 @@ function toast(html, cls = "") {
   while ($("toasts").children.length > 2) $("toasts").firstChild.remove();
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 500); }, 3200);
 }
-const LABELS = { jailbreak: "steal the OpenAI key", resume: "pick up where it left off", code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
+const LABELS = { joke: "get a joke from the internet", web: "visit a blocked website", jailbreak: "steal the OpenAI key", resume: "pick up where it left off", code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
 const QUIET = new Set(["controller", "sandbox"]);
 
 // Stats count up to their new value and glow when they change.
@@ -209,7 +209,7 @@ const STATIONS = {
   box: ["gVisor sandbox", null, "atelet runs each agent in its own gVisor sandbox: a user-space kernel between the agent and the node. Its tools run in here.",
     (s) => [["awake now", s.substrate?.running ?? 0], ["run p50", ms(s.timings?.run)]]],
   egress: ["atenet-egress", "/agent-flow/static/agentgateway-icon.svg", "Substrate's own agentgateway, and the sandboxes' only way out. For every connection it asks Substrate which agent actor is calling and whether that agent may reach the host. An agent may reach its model's host; a kagent EgressPolicy can grant more, and inject credentials there so the sandbox never holds them. Everything else is blocked.",
-    (s) => [["webhooks", (s.hooks || []).length], ["agents asleep", s.substrate?.suspended ?? 0]]],
+    (s) => [["allowed outside (EgressPolicy dad-jokes)", "icanhazdadjoke.com"], ["webhooks", (s.hooks || []).length]]],
   llm: ["OpenAI (the LLM)", "/agent-flow/static/openai-icon.svg", "Agents never hold the OpenAI key. Every LLM call leaves the sandbox through atenet-egress to agentgateway, which adds the key and forwards it.",
     (s) => [["tokens so far", (s.tokens || 0).toLocaleString()], ["requests", s.total]]],
   rf: ["Snapshot Storage", null, "Idle agents are snapshotted here (rustfs) and use no CPU at all. The next request restores them where they left off.",

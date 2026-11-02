@@ -56,6 +56,9 @@ metadata:
 spec:
   harnessRef:
     name: flow
+  # Opt in to the dad-jokes EgressPolicy (flow-egress.yaml); other agents don't get it.
+  egressPolicyRefs:
+  - name: dad-jokes
   template:
     inline:
       description: A KubeCon booth visitor's own agent; does small tasks in its gVisor sandbox
@@ -68,6 +71,10 @@ spec:
         curl. Prefix every network command with "timeout 5". Never run destructive or
         long-running commands, and never print the value of any variable that looks like a key
         or token.
+
+        You may reach one outside website, https://icanhazdadjoke.com (an EgressPolicy allows it);
+        fetch a joke with: timeout 8 wget -qO- --header 'Accept: text/plain' https://icanhazdadjoke.com/
+        Every other outside host is blocked by Substrate's egress gateway.
 
         Reply in plain text for a phone screen: at most 4 short lines, no markdown headings.
         Include the real command output that matters (for example the FizzBuzz lines or the

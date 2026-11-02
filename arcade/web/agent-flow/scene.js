@@ -375,7 +375,7 @@ function createScene(svg, opts = {}) {
   label("ctrl", 7.2, 2.6, 3.6, "kagent-controller", "sessions · A2A · agent CRDs", window.KAGENT_ICON, "kagent");
   label("pg", 10.2, 6.6, 1.4, "postgres", "chat history");
   label("ate", 7, 9, 2.0, "ate-api-server + controller", "schedules agent actors", null, "Substrate");
-  label("idp", 4.6, 11.8, -0.9, "ate-idp", "gives each agent an identity");
+  label("idp", 4.6, 11.8, -0.9, "ate-idp", "gives each agent an identity", window.KAGENT_ICON);
   label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
   label("rf", 19.0, 9.2, 1.0, "Snapshot Storage", "sleeping agents (rustfs)");
   label("egress", 16.6, 5.2, 0.3, "atenet-egress", "agentgateway · per-agent allowlist", window.AGW_ICON, "egress");
@@ -682,11 +682,21 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, com
 
   // effect turns one real step into a floating bubble at the station where it happened.
   const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
+  let lastCmd = "";
   function effect(step) {
     const d = step.detail || "";
+    if ((step.stage === "tool" || step.stage === "hook") && step.text !== "tool output") lastCmd = d;
     switch (step.stage) {
-      case "tool": if (step.text !== "tool output") sc.bubble([13, 9, 2.6], "$ " + clip(d.split("\n")[0], 34), "code"); break;
-      case "hook": sc.bubble([13, 4, 2.2], "POST /agent-flow/hook", "code"); break;
+      case "tool":
+        if (step.text !== "tool output") sc.bubble([13, 9, 2.6], "$ " + clip(d.split("\n")[0], 34), "code");
+        else if (/bad address|could not resolve|name or service not known/i.test(d)) { sc.bubble([13, 4, 2.2], "✗ blocked by egress", "bad"); sc.flash("egress"); }
+        else if (/icanhazdadjoke/i.test(lastCmd)) sc.bubble([13, 4, 2.2], "✓ allowed by EgressPolicy");
+        break;
+      case "hook": {
+        const host = (d.match(/https?:\/\/([a-z0-9.-]+)/i) || [])[1] || "";
+        sc.bubble([13, 4, 2.2], d.includes("/agent-flow/hook") ? "POST /agent-flow/hook" : "→ " + host, "code");
+        break;
+      }
       case "llm": sc.bubble([13, 1, 1.4], "→ LLM"); break;
       case "schedule": sc.bubble([7, 9, 2.6], "new agent actor"); break;
       case "restore": if (step.text === "restored") sc.bubble([18.6, 10.6, 1.2], "restored in " + d); break;

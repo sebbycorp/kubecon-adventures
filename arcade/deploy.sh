@@ -34,7 +34,7 @@ k apply -f manifests/fork-agent.yaml
 k -n kagent wait agent/forky --for=condition=Ready --timeout 5m
 
 echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
-k apply -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
+k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
 
 echo "==> arcade image"

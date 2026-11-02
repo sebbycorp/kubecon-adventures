@@ -1,0 +1,11 @@
+# Grants one outside host to the agents that opt in with egressPolicyRefs (only flowbot):
+# Substrate's egress agentgateway (atenet-egress) then resolves and lets through this origin
+# for those actors. Every other outside host stays blocked.
+apiVersion: api.kagent.dev/v1alpha3
+kind: EgressPolicy
+metadata:
+  name: dad-jokes
+  namespace: kagent
+spec:
+  destinations:
+  - origin: https://icanhazdadjoke.com

@@ -118,6 +118,14 @@ Agents only ever hold the placeholder key `via-agentgateway`; agentgateway adds 
 
 kagent reports a guard rejection as `OpenAI API error: 403 Forbidden` (without the guard's message), so the backend treats a 403 from flowbot's LLM route as a block. The blocked prompt stays in the session's history, where the guard would reject every later call, so the backend deletes that visitor's session and the next request starts a fresh agent. The phone's "Try to steal the key" task triggers it on purpose; the big screen's gate flashes red and a toast names the visitor.
 
+### Egress: Substrate's agentgateway and an EgressPolicy
+
+`atenet-egress` is Substrate's own agentgateway build and the sandboxes' only way out. For each connection it resolves the calling actor and asks Substrate (`GetActorEgressPolicy`) whether that actor may reach the host. The sandbox's DNS (`169.254.17.1`) only resolves allowed names, so a blocked host fails with `bad address` before any request is sent. An agent may reach its model's host by default.
+
+`manifests/flow-egress.yaml` grants one outside origin, `https://icanhazdadjoke.com`, through the kagent `EgressPolicy` `dad-jokes`. Agents opt in by name: flowbot lists it under `spec.egressPolicyRefs`, so the other games' agents don't get it. An EgressPolicy can also inject a credential for a header at the gateway, so the sandbox never holds it.
+
+The phone's "Get a joke from the internet" task fetches a real joke (allowed). "Try another website" tries `example.com` and is blocked. On the big screen the agent goes to egress, with a "✓ allowed" or "✗ blocked by egress" bubble.
+
 ### Hints
 
 A line under the headline rotates through facts from live data: sandboxes per pool, the share of agents asleep, run time vs sleep, agents per sandbox, and a savings estimate (agents minus sandboxes, times 24 hours, times an assumed $0.02 per always-on pod-hour; override with `POD_HOUR_USD`). `deploy.sh` measures the node count and this host's CPUs and RAM; the kind nodes share one machine, so the host's numbers are the real capacity.
