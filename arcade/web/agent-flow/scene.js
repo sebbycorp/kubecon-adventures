@@ -141,7 +141,7 @@ function createScene(svg, opts = {}) {
     el("polyline", { points: pts([a, b, c]), fill: "none", stroke: "var(--green)", opacity: 0.35, "stroke-width": 1.5, filter: "url(#glow)" }, L.island);
   }
   const shadow = (x, y, w, d, k = 0.35) => el("polygon", { points: pts([P(x + k, y + k), P(x + w + k, y + k), P(x + w + k, y + d + k), P(x + k, y + d + k)]), fill: "#000", opacity: 0.55, filter: "url(#soft)" }, L.shadow);
-  for (const [x, y, w, d] of [[1.63, 3.2, 0.24, 0.26], [1.63, 4.54, 0.24, 0.26], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.5, 8.75, 0.5, 0.5], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
+  for (const [x, y, w, d] of [[1.3, 2.9, 0.9, 0.5], [1.3, 4.6, 0.9, 0.5], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.5, 8.75, 0.5, 0.5], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
   belts();
   const ORB = {};
   for (const n of NODES.slice(1, -1)) ORB[n.key] = orbit(...n.at, n.key === "box" ? 2.6 : 1.9);
@@ -153,7 +153,7 @@ function createScene(svg, opts = {}) {
   const dyn = el("g", {}, L.obj); // machine parts redrawn every frame
 
   // Every component is its own kind of machine:
-  // agentgateway, a scanner gate: pillars here, its lit top beam and scan line in machines().
+  // agentgateway, a security speed gate: drawn in machines(), since its flaps and lights move.
 
   // kagent-controller, a card reader: a dock on the belt and a block with a slot that takes a session card.
   box(6.3, 3.3, 1.4, 1.4, 0.12);
@@ -213,8 +213,25 @@ function createScene(svg, opts = {}) {
   }
   // atenet-egress, a boom barrier across the belt (its arm and light in machines()).
   box(11.75, 3.85, 0.35, 0.35, 1.0);
-  // The LLM: a radio mast at the edge of the map.
-  box(14.3, -7.9, 0.18, 0.18, 2.4);
+  box(14.2, 3.95, 0.14, 0.14, 0.82); // rest post the arm drops onto
+  // The LLM: a lattice radio tower at the edge of the map, with a dish aimed at the map.
+  const TW = { x: 14.4, y: -2.4, b: 0.36, t: 0.08, h: 3.2 }; // centre, base and top half-widths, height
+  {
+    const leg = (sx, sy, z) => { const k = TW.b + (TW.t - TW.b) * (z / TW.h); return P(TW.x + sx * k, TW.y + sy * k, z); };
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    for (const [sx, sy] of corners) { const [a, b] = [leg(sx, sy, 0), leg(sx, sy, TW.h)]; el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "#9a9fa4", "stroke-width": 1.5 }, L.obj); }
+    for (let z = 0; z < TW.h - 0.1; z += 0.45) { // cross bracing on the two faces we see
+      const z2 = Math.min(TW.h, z + 0.45);
+      for (const [[ax, ay], [bx2, by2]] of [[[-1, 1], [1, 1]], [[1, 1], [1, -1]]]) {
+        const lines = [[leg(ax, ay, z), leg(bx2, by2, z2)], [leg(bx2, by2, z), leg(ax, ay, z2)], [leg(ax, ay, z2), leg(bx2, by2, z2)]];
+        for (const [a, b] of lines) el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "#5d6166" }, L.obj);
+      }
+    }
+    // The dish, facing back toward the map.
+    const [dx, dy] = P(TW.x - 0.25, TW.y + 0.25, 2.5);
+    el("ellipse", { cx: dx, cy: dy, rx: 16, ry: 9, fill: "#141517", stroke: "#b9bec2", transform: `rotate(-28 ${dx} ${dy})` }, L.obj);
+    el("circle", { cx: dx - 6, cy: dy + 3, r: 2.5, fill: "#b9bec2" }, L.obj);
+  }
   const awakeG = el("g", {}, L.obj);
   // awake draws one small cube on the sandbox platform per actor running in Substrate right now.
   let awakeN = -1;
@@ -252,32 +269,37 @@ function createScene(svg, opts = {}) {
   function machines(glow, dt) {
     dyn.innerHTML = "";
     const now = performance.now(), G = "var(--green)", grey = "#9a9fa4";
-    // Gate: the top beam lights up and a scan line sweeps down while a cube passes.
-    M.gate = ease(M.gate, glow.gw ? 1 : 0, dt, 6);
-    // The gate is one solid Π-shaped frame (no overlapping boxes): the inner face of the
-    // far pillar, the front face, the beam's top and the near pillar's outer side.
+    // agentgateway is a security speed gate: two cabinets either side of the lane with glass
+    // flaps that slide back as a request arrives, status screens, an LED strip, and a
+    // scanner arch overhead. The near cabinet and its flap are drawn in front of the cubes.
+    M.gate = ease(M.gate, glow.gate ? 1 : 0, dt, glow.gate ? 7 : 3);
     {
-      // The pillars stand on the floor either side of the belt, which runs through the arch.
-      // The near pillar is drawn above the cubes so they visibly pass behind it.
-      const [x0, x1, ya, yb, yc, yd, zb, zt, z0] = [1.63, 1.87, 3.2, 3.42, 4.58, 4.8, 2.1, 2.34, 0];
-      const st = M.gate > 0.5 ? G : "#b9bec2";
-      const F = (q, fill, g = dyn) => el("polygon", { points: pts(q), fill, stroke: st, "stroke-linejoin": "round" }, g);
-      F([P(x0, yb, z0), P(x1, yb, z0), P(x1, yb, zb), P(x0, yb, zb)], "#0e0f10");
-      F([P(x1, ya, z0), P(x1, ya, zt), P(x1, yd, zt), P(x1, yd, zb), P(x1, yb, zb), P(x1, yb, z0)], "#141517");
-      F([P(x0, ya, zt), P(x1, ya, zt), P(x1, yd, zt), P(x0, yd, zt)], M.gate > 0.5 ? "#1a3320" : "url(#topface)");
-      F([P(x0, yd, zb), P(x1, yd, zb), P(x1, yd, zt), P(x0, yd, zt)], "#0c0d0e");
+      const open = M.gate, ok = open > 0.5, state = ok ? G : "#f59e0b";
       L.front.innerHTML = "";
-      F([P(x1, yc, z0), P(x1, yc, zb), P(x1, yd, zb), P(x1, yd, z0)], "#141517", L.front);
-      F([P(x0, yd, z0), P(x1, yd, z0), P(x1, yd, zb), P(x0, yd, zb)], "#0c0d0e", L.front);
-      // A lit strip along the inside of the beam, brighter while a cube is scanned.
-      const [a, b] = [P(x1, yb + 0.04, zb - 0.06), P(x1, yc - 0.04, zb - 0.06)];
-      el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 2.5, "stroke-linecap": "round", opacity: (0.45 + 0.55 * M.gate).toFixed(2), filter: M.gate > 0.3 ? "url(#glow)" : null }, dyn);
-    }
-    if (M.gate > 0.05) {
-      const z = 2.0 - ((now / 500) % 1) * 1.85, [a, b] = [P(1.87, 3.46, z), P(1.87, 4.54, z)];
-      el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 3, opacity: M.gate, filter: "url(#glow)" }, dyn);
-      const [g1, g2, g3, g4] = [P(1.87, 3.46, 0.08), P(1.87, 4.54, 0.08), P(1.87, 4.54, 2.1), P(1.87, 3.46, 2.1)];
-      el("polygon", { points: pts([g1, g2, g3, g4]), fill: G, opacity: 0.12 * M.gate }, dyn);
+      const cab = (y, g) => {
+        box(1.3, y, 0.9, 0.5, 1.0, g, { f1: "#1b1c1e" });
+        const scr = [P(1.55, y + 0.12, 1.0), P(1.95, y + 0.12, 1.0), P(1.95, y + 0.38, 1.0), P(1.55, y + 0.38, 1.0)];
+        el("polygon", { points: pts(scr), fill: ok ? "#12301a" : "#2a1c0b", stroke: state, filter: "url(#glow)" }, g);
+      };
+      const flap = (y0, y1, g) => {
+        if (Math.abs(y1 - y0) < 0.02) return;
+        el("polygon", { points: pts([P(1.75, y0, 0.3), P(1.75, y1, 0.3), P(1.75, y1, 0.9), P(1.75, y0, 0.9)]), fill: ok ? "#5fd068" : "#f59e0b", "fill-opacity": 0.16, stroke: state, "stroke-opacity": 0.8 }, g);
+      };
+      cab(2.9, dyn);
+      const [l1, l2] = [P(1.4, 3.4, 0.72), P(2.1, 3.4, 0.72)]; // LED strip facing the lane
+      el("line", { x1: l1[0], y1: l1[1], x2: l2[0], y2: l2[1], stroke: state, "stroke-width": 3, "stroke-linecap": "round", filter: "url(#glow)" }, dyn);
+      flap(3.4, 3.4 + 0.59 * (1 - open), dyn);
+      box(1.68, 3.07, 0.16, 0.16, 1.3, dyn, { z: 1.0 }); // far post of the scanner arch
+      box(1.68, 3.07, 0.16, 1.86, 0.2, dyn, { z: 2.3, st: ok ? G : undefined, f1: ok ? "#1a3320" : undefined }); // arch beam
+      const [s1, s2] = [P(1.76, 3.25, 2.29), P(1.76, 4.75, 2.29)];
+      el("line", { x1: s1[0], y1: s1[1], x2: s2[0], y2: s2[1], stroke: G, "stroke-width": 2, opacity: (0.35 + 0.65 * open).toFixed(2) }, dyn);
+      if (open > 0.05) { // the scan sweeping down the lane
+        const z = 2.2 - ((now / 600) % 1) * 2.05, [a, b] = [P(1.76, 3.42, z), P(1.76, 4.58, z)];
+        el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 3, opacity: open, filter: "url(#glow)" }, dyn);
+      }
+      flap(4.6 - 0.59 * (1 - open), 4.6, L.front);
+      cab(4.6, L.front);
+      box(1.68, 4.77, 0.16, 0.16, 1.3, L.front, { z: 1.0 }); // near post
     }
     // kagent: the session card swipes in and out of the reader's slot, quickly while a
     // request is at the controller.
@@ -324,27 +346,31 @@ function createScene(svg, opts = {}) {
       }
     }
     cage.setAttribute("stroke", glow.box ? "#5fd068" : "#6b7f70");
-    // Egress: the barrier arm lifts and its light turns green as traffic goes out.
-    M.arm = ease(M.arm, glow.egress || glow.llm ? 1.25 : 0, dt, 5);
+    // Egress: a boom barrier. The arm swings up as a request nears egress (and every few
+    // seconds when idle), then drops back onto its rest post.
+    M.arm = ease(M.arm, glow.barrier ? 1.35 : 0, dt, glow.barrier ? 4.5 : 2.6);
     {
-      const pv = [11.92, 4.02, 0.9], L2 = 2.3, ex = pv[0] + Math.cos(M.arm) * L2, ez = pv[2] + Math.sin(M.arm) * L2;
-      const [a, b] = P(...pv), [c, d] = P(ex, pv[1], ez);
+      const pv = [11.92, 4.02, 0.92], L2 = 2.35, ca = Math.cos(M.arm), sa = Math.sin(M.arm);
+      const [a, b] = P(...pv), [c, d] = P(pv[0] + ca * L2, pv[1], pv[2] + sa * L2);
+      const [w1, w2] = P(pv[0] - ca * 0.45, pv[1], pv[2] - sa * 0.45); // counterweight end
+      el("line", { x1: a, y1: b, x2: w1, y2: w2, stroke: "#9a9fa4", "stroke-width": 5, "stroke-linecap": "round" }, dyn);
+      box(pv[0] - ca * 0.45 - 0.1, pv[1] - 0.1, 0.2, 0.2, 0.2, dyn, { z: pv[2] - sa * 0.45 - 0.1 });
       el("line", { x1: a, y1: b, x2: c, y2: d, stroke: "#e8e8e8", "stroke-width": 5, "stroke-linecap": "round" }, dyn);
       el("line", { x1: a, y1: b, x2: c, y2: d, stroke: "#0d0e0f", "stroke-width": 5, "stroke-dasharray": "6 8", "stroke-linecap": "butt" }, dyn);
-      const lt = P(11.92, 4.02, 1.15);
-      el("circle", { cx: lt[0], cy: lt[1], r: 6, fill: M.arm > 0.4 ? G : "#f59e0b", filter: "url(#glow)" }, dyn);
+      el("circle", { cx: a, cy: b, r: 4, fill: "#d4d4d8" }, dyn); // pivot
+      const lt = P(11.92, 4.02, 1.2);
+      el("circle", { cx: lt[0], cy: lt[1], r: 6, fill: M.arm > 0.5 ? G : "#f59e0b", filter: "url(#glow)" }, dyn);
     }
     // Snapshot Storage: the top drawer slides out while a snapshot is saved or restored.
     M.drawer = ease(M.drawer, glow.rf ? 0.55 : 0, dt, 5);
     if (M.drawer > 0.02) box(15.95, 10.3 + M.drawer, 1.1, 1.0, 0.4, dyn, { z: 0.96, st: G, f1: "#1a3320" });
-    // LLM mast: waves go out while a call is in flight.
+    // LLM tower: waves leave the dish while a call is in flight.
     M.waves += dt;
-    {
-      const [mx, my] = P(14.39, -7.81, 2.4);
-      el("circle", { cx: mx, cy: my, r: 4, fill: glow.llm ? G : grey }, dyn);
-      if (glow.llm) for (let i = 0; i < 3; i++) {
-        const r = 10 + ((M.waves * 40 + i * 18) % 54);
-        el("path", { d: `M${mx - r},${my - r * 0.3} A${r},${r} 0 0 1 ${mx + r},${my - r * 0.3}`, fill: "none", stroke: G, opacity: (1 - (r - 10) / 54).toFixed(2) }, dyn);
+    if (glow.llm) {
+      const [mx, my] = P(TW.x - 0.25, TW.y + 0.25, 2.5);
+      for (let i = 0; i < 3; i++) {
+        const r = 14 + ((M.waves * 45 + i * 20) % 60);
+        el("path", { d: `M${mx - r * 0.75},${my - r * 0.55} A${r},${r} 0 0 0 ${mx - r * 0.75},${my + r * 0.55}`, fill: "none", stroke: G, "stroke-width": 2, opacity: (1 - (r - 14) / 60).toFixed(2) }, dyn);
       }
     }
   }
@@ -357,18 +383,17 @@ function createScene(svg, opts = {}) {
   label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
   label("rf", 17.6, 12.4, -0.9, "Snapshot Storage", "sleeping agents (rustfs)");
   label("egress", 15, 2, 1.5, "atenet-egress", "only allowed hosts go out", null, "egress");
-  // A beacon where requests leave the map for the LLM; it pulses while a call is out.
-  const [bx, by] = P(13, -7.6);
-  const beacon = el("circle", { cx: bx, cy: by, r: 9, fill: "var(--green)", opacity: 0.25, filter: "url(#glow)" }, L.obj);
+  label("llm", 16.3, -3.3, 1.6, "OpenAI", "LLM calls via agentgateway", null, "LLM");
+  // The tower's top light: blinks red when idle, glows green while an LLM call is out.
+  const [bx, by] = P(TW.x, TW.y, TW.h + 0.1);
+  const beacon = el("circle", { cx: bx, cy: by, r: 4, fill: "#ef4444", filter: "url(#glow)" }, L.obj);
   {
-    const [a, b] = P(13, -6.5, 0.2);
-    el("text", { x: a + 16, y: b, fill: "#6d7277", "font-size": opts.compact ? 22 : 12, "font-family": "ui-monospace,monospace" }, L.lab).textContent = opts.compact ? "↗ LLM" : "↗ via agentgateway to OpenAI";
     const [c, d] = P(-6, 4);
     el("text", { x: c - 10, y: d + 34, fill: "#6d7277", "font-size": 12, "font-family": "ui-monospace,monospace" }, L.lab).textContent = "← phones";
   }
 
   // Click targets over each machine (the labels are clickable too).
-  const SPOTS = { gw: [2, 4], ctrl: [8.6, 3], pg: [9.4, 5.6], ate: [7, 9], idp: [4.6, 10.6], box: [13, 9], egress: [12.6, 4], rf: [16.5, 10.8] };
+  const SPOTS = { llm: [14.4, -2.4], gw: [2, 4], ctrl: [8.6, 3], pg: [9.4, 5.6], ate: [7, 9], idp: [4.6, 10.6], box: [13, 9], egress: [12.6, 4], rf: [16.5, 10.8] };
   if (opts.onPick) {
     const hit = el("g", {}, svg);
     for (const [key, at] of Object.entries(SPOTS)) {
@@ -716,6 +741,13 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, com
       const lb = sc.LAB[k], on = !!glow[k];
       lb.r.setAttribute("stroke", on ? "var(--green)" : "#34373a"); lb.d.setAttribute("fill", on ? "var(--green)" : "#3a3d40");
     }
+    // The barrier opens for requests near egress, and on a slow cycle when nothing is moving.
+    const eg = DIST[NODE.egress];
+    glow.barrier = [...cubes.values()].some((c) => !c.other && Math.abs(c.s - eg) < 3.2)
+      || (!busy && now % 7000 < 2300);
+    // The security gate opens for requests approaching it (either way), and now and then when idle.
+    const gw = DIST[NODE.gw];
+    glow.gate = [...cubes.values()].some((c) => !c.other && Math.abs(c.s - gw) < 2.4) || (!busy && (now + 3500) % 9000 < 1800);
     sc.machines(glow, dt);
     if (camera) {
       const f = cubes.get(focusId);
@@ -727,8 +759,9 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, com
       cam.y += (Math.min(470, Math.max(350, 410 + (ty - 410) * 0.25)) - cam.y) * k;
       svg.setAttribute("viewBox", `${(cam.x - VW / 2).toFixed(1)} ${(cam.y - VH / 2).toFixed(1)} ${VW} ${VH}`);
     }
-    sc.beacon.setAttribute("opacity", glow.llm ? (0.6 + 0.4 * Math.sin(now / 120)).toFixed(2) : 0.2);
-    sc.beacon.setAttribute("r", glow.llm ? 12 : 8);
+    sc.beacon.setAttribute("fill", glow.llm ? "#5fd068" : "#ef4444");
+    sc.beacon.setAttribute("opacity", glow.llm ? 1 : (Math.sin(now / 400) > 0.3 ? 1 : 0.25));
+    sc.beacon.setAttribute("r", glow.llm ? 6 : 4);
     sc.pg.setAttribute("fill", glow.pg ? "var(--green)" : "var(--greenDim)");
     sc.idp.setAttribute("fill", glow.idp ? "var(--green)" : "var(--greenDim)");
     for (const r of sc.rf) r.setAttribute("fill", glow.rf ? "var(--green)" : "var(--greenDim)");

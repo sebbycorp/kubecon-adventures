@@ -213,6 +213,8 @@ const STATIONS = {
     (s) => [["awake now", s.substrate?.running ?? 0], ["run p50", ms(s.timings?.run)]]],
   egress: ["atenet-egress", null, "Agents can only reach allowed hosts. Here that is agentgateway, for LLM calls and the booth webhook. Everything else is blocked.",
     (s) => [["webhooks", (s.hooks || []).length]]],
+  llm: ["OpenAI (the LLM)", null, "Agents never hold the OpenAI key. Every LLM call leaves the sandbox through atenet-egress to agentgateway, which adds the key and forwards it.",
+    (s) => [["tokens so far", (s.tokens || 0).toLocaleString()], ["requests", s.total]]],
   rf: ["Snapshot Storage", null, "Idle agents are snapshotted here (rustfs) and use no CPU at all. The next request restores them where they left off.",
     (s) => [["asleep", s.substrate?.suspended ?? 0], ["snapshot p50", ms(s.timings?.snapshot)], ["restore p50", ms(s.timings?.restore)]]],
 };
