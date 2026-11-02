@@ -155,7 +155,7 @@ function createScene(svg, opts = {}) {
   // Every component is its own kind of machine:
   // agentgateway, a scanner gate: pillars here, its lit top beam and scan line in machines().
   box(1.45, 3.05, 0.6, 1.9, 0.08); // base plate the belt runs over
-  box(1.63, 3.22, 0.24, 0.24, 2.0, L.obj, { z: 0.08 }); box(1.63, 4.54, 0.24, 0.24, 2.0, L.obj, { z: 0.08 });
+
   // kagent-controller, a card reader: a dock on the belt and a block with a slot that takes a session card.
   box(6.3, 3.3, 1.4, 1.4, 0.12);
   box(8.0, 2.0, 1.8, 1.5, 0.9, L.obj, { f1: "#18191a" });
@@ -223,16 +223,23 @@ function createScene(svg, opts = {}) {
     const now = performance.now(), G = "var(--green)", grey = "#9a9fa4";
     // Gate: the top beam lights up and a scan line sweeps down while a cube passes.
     M.gate = ease(M.gate, glow.gw ? 1 : 0, dt, 6);
-    // The beam sits flush on the pillars; a lit strip runs under it, brighter while scanning.
-    box(1.63, 3.22, 0.24, 1.56, 0.24, dyn, { z: 2.08, st: M.gate > 0.5 ? G : grey, f1: M.gate > 0.5 ? "#1a3320" : undefined });
+    // The gate is one solid Π-shaped frame (no overlapping boxes): the inner face of the
+    // far pillar, the front face, the beam's top and the near pillar's outer side.
     {
-      const [a, b] = [P(1.75, 3.46, 2.06), P(1.75, 4.54, 2.06)];
-      el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 2, opacity: 0.35 + 0.65 * M.gate }, dyn);
+      const [x0, x1, ya, yb, yc, yd, zb, zt, z0] = [1.63, 1.87, 3.22, 3.46, 4.54, 4.78, 2.1, 2.34, 0.08];
+      const st = M.gate > 0.5 ? G : "#b9bec2", F = (q, fill) => el("polygon", { points: pts(q), fill, stroke: st, "stroke-linejoin": "round" }, dyn);
+      F([P(x0, yb, z0), P(x1, yb, z0), P(x1, yb, zb), P(x0, yb, zb)], "#0e0f10");
+      F([P(x1, ya, z0), P(x1, ya, zt), P(x1, yd, zt), P(x1, yd, z0), P(x1, yc, z0), P(x1, yc, zb), P(x1, yb, zb), P(x1, yb, z0)], "#141517");
+      F([P(x0, ya, zt), P(x1, ya, zt), P(x1, yd, zt), P(x0, yd, zt)], M.gate > 0.5 ? "#1a3320" : "url(#topface)");
+      F([P(x0, yd, z0), P(x1, yd, z0), P(x1, yd, zt), P(x0, yd, zt)], "#0c0d0e");
+      // A lit strip along the inside of the beam, brighter while a cube is scanned.
+      const [a, b] = [P(x1, yb + 0.04, zb - 0.06), P(x1, yc - 0.04, zb - 0.06)];
+      el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 2.5, "stroke-linecap": "round", opacity: (0.45 + 0.55 * M.gate).toFixed(2), filter: M.gate > 0.3 ? "url(#glow)" : null }, dyn);
     }
     if (M.gate > 0.05) {
-      const z = 2.0 - ((now / 500) % 1) * 1.85, [a, b] = [P(1.75, 3.46, z), P(1.75, 4.54, z)];
+      const z = 2.0 - ((now / 500) % 1) * 1.85, [a, b] = [P(1.87, 3.46, z), P(1.87, 4.54, z)];
       el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 3, opacity: M.gate, filter: "url(#glow)" }, dyn);
-      const [g1, g2, g3, g4] = [P(1.75, 3.46, 0.08), P(1.75, 4.54, 0.08), P(1.75, 4.54, 2.06), P(1.75, 3.46, 2.06)];
+      const [g1, g2, g3, g4] = [P(1.87, 3.46, 0.08), P(1.87, 4.54, 0.08), P(1.87, 4.54, 2.1), P(1.87, 3.46, 2.1)];
       el("polygon", { points: pts([g1, g2, g3, g4]), fill: G, opacity: 0.12 * M.gate }, dyn);
     }
     // kagent: the session card swipes in and out of the reader's slot, quickly while a
