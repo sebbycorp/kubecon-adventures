@@ -214,24 +214,11 @@ function createScene(svg, opts = {}) {
   // atenet-egress, a boom barrier across the belt (its arm and light in machines()).
   box(11.75, 3.85, 0.35, 0.35, 1.0);
   box(14.2, 3.95, 0.14, 0.14, 0.82); // rest post the arm drops onto
-  // The LLM: a lattice radio tower at the edge of the map, with a dish aimed at the map.
-  const TW = { x: 14.4, y: -2.4, b: 0.36, t: 0.08, h: 3.2 }; // centre, base and top half-widths, height
-  {
-    const leg = (sx, sy, z) => { const k = TW.b + (TW.t - TW.b) * (z / TW.h); return P(TW.x + sx * k, TW.y + sy * k, z); };
-    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-    for (const [sx, sy] of corners) { const [a, b] = [leg(sx, sy, 0), leg(sx, sy, TW.h)]; el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "#9a9fa4", "stroke-width": 1.5 }, L.obj); }
-    for (let z = 0; z < TW.h - 0.1; z += 0.45) { // cross bracing on the two faces we see
-      const z2 = Math.min(TW.h, z + 0.45);
-      for (const [[ax, ay], [bx2, by2]] of [[[-1, 1], [1, 1]], [[1, 1], [1, -1]]]) {
-        const lines = [[leg(ax, ay, z), leg(bx2, by2, z2)], [leg(bx2, by2, z), leg(ax, ay, z2)], [leg(ax, ay, z2), leg(bx2, by2, z2)]];
-        for (const [a, b] of lines) el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "#5d6166" }, L.obj);
-      }
-    }
-    // The dish, facing back toward the map.
-    const [dx, dy] = P(TW.x - 0.25, TW.y + 0.25, 2.5);
-    el("ellipse", { cx: dx, cy: dy, rx: 16, ry: 9, fill: "#141517", stroke: "#b9bec2", transform: `rotate(-28 ${dx} ${dy})` }, L.obj);
-    el("circle", { cx: dx - 6, cy: dy + 3, r: 2.5, fill: "#b9bec2" }, L.obj);
-  }
+  // The LLM: a sleek monolith on a round plinth, with a ring floating above it that spins
+  // and glows while a call is in flight (drawn in machines()).
+  const TW = { x: 14.4, y: -2.4, h: 2.1 };
+  disc(TW.x, TW.y, 0.62, 0.12);
+  box(TW.x - 0.26, TW.y - 0.26, 0.52, 0.52, TW.h, L.obj, { z: 0.12, f1: "#1d1f22", f2: "#121315", f3: "#0d0e10" });
   const awakeG = el("g", {}, L.obj);
   // awake draws one small cube on the sandbox platform per actor running in Substrate right now.
   let awakeN = -1;
@@ -264,7 +251,7 @@ function createScene(svg, opts = {}) {
   }
 
   // machines animates the moving parts from what is happening right now.
-  const M = { alarmUntil: 0, hookZ: 2.6, trolley: 14.15, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
+  const M = { ring: 0, llm: 0, alarmUntil: 0, hookZ: 2.6, trolley: 14.15, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
   const ease = (cur, want, dt, k = 5) => cur + (want - cur) * (1 - Math.exp(-dt * k));
   function machines(glow, dt) {
     dyn.innerHTML = "";
@@ -366,13 +353,23 @@ function createScene(svg, opts = {}) {
     // Snapshot Storage: the top drawer slides out while a snapshot is saved or restored.
     M.drawer = ease(M.drawer, glow.rf ? 0.55 : 0, dt, 5);
     if (M.drawer > 0.02) box(15.95, 10.3 + M.drawer, 1.1, 1.0, 0.4, dyn, { z: 0.96, st: G, f1: "#1a3320" });
-    // LLM tower: waves leave the dish while a call is in flight.
-    M.waves += dt;
-    if (glow.llm) {
-      const [mx, my] = P(TW.x - 0.25, TW.y + 0.25, 2.5);
-      for (let i = 0; i < 3; i++) {
-        const r = 14 + ((M.waves * 45 + i * 20) % 60);
-        el("path", { d: `M${mx - r * 0.75},${my - r * 0.55} A${r},${r} 0 0 0 ${mx - r * 0.75},${my + r * 0.55}`, fill: "none", stroke: G, "stroke-width": 2, opacity: (1 - (r - 14) / 60).toFixed(2) }, dyn);
+    // LLM monolith: light seams down its faces and a floating ring that spins, glows and
+    // sends out pulses while a call is in flight.
+    M.ring += dt * (glow.llm ? 2.2 : 0.35);
+    M.llm = ease(M.llm, glow.llm ? 1 : 0, dt, 5);
+    {
+      const on = M.llm, c = on > 0.5 ? G : "#6b7280", z0 = 0.2, z1 = 0.12 + TW.h - 0.15;
+      for (const [x, y] of [[TW.x + 0.26, TW.y], [TW.x, TW.y + 0.26]]) { // seams on the two faces we see
+        const [a, b] = P(x, y, z0), [d, e] = P(x, y, z1);
+        el("line", { x1: a, y1: b, x2: d, y2: e, stroke: c, "stroke-width": 2, opacity: 0.35 + 0.65 * on, filter: on > 0.3 ? "url(#glow)" : null }, dyn);
+      }
+      const [rx0, ry0] = P(TW.x, TW.y, TW.h + 0.75), rx = 0.62 * S * 1.2247, ry = 0.62 * S * 0.7071;
+      const bob = Math.sin(now / 900) * 3;
+      el("ellipse", { cx: rx0, cy: ry0 + bob, rx, ry, fill: "none", stroke: "#2b2f33", "stroke-width": 5 }, dyn);
+      el("ellipse", { cx: rx0, cy: ry0 + bob, rx, ry, fill: "none", stroke: c, "stroke-width": 3, "stroke-dasharray": `${rx * 1.4} ${rx * 0.9}`, "stroke-dashoffset": (-M.ring * rx).toFixed(1), opacity: 0.5 + 0.5 * on, filter: on > 0.3 ? "url(#glow)" : null }, dyn);
+      if (on > 0.3) for (let i = 0; i < 2; i++) { // pulses rising off the ring
+        const k = ((M.ring * 0.5 + i * 0.5) % 1);
+        el("ellipse", { cx: rx0, cy: ry0 + bob - k * 26, rx: rx * (1 + k * 0.6), ry: ry * (1 + k * 0.6), fill: "none", stroke: G, opacity: ((1 - k) * on * 0.7).toFixed(2) }, dyn);
       }
     }
   }
@@ -385,10 +382,7 @@ function createScene(svg, opts = {}) {
   label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
   label("rf", 19.0, 9.2, 1.0, "Snapshot Storage", "sleeping agents (rustfs)");
   label("egress", 15, 2, 1.5, "atenet-egress", "only allowed hosts go out", null, "egress");
-  label("llm", 9.3, -3.7, 0, "OpenAI", "LLM calls via agentgateway", window.OPENAI_ICON, "LLM");
-  // The tower's top light: blinks red when idle, glows green while an LLM call is out.
-  const [bx, by] = P(TW.x, TW.y, TW.h + 0.1);
-  const beacon = el("circle", { cx: bx, cy: by, r: 4, fill: "#ef4444", filter: "url(#glow)" }, L.obj);
+  label("llm", 8.5, -3.9, 0, "OpenAI", "LLM calls via agentgateway", window.OPENAI_ICON, "LLM");
   {
     const [c, d] = P(-6, 4);
     el("text", { x: c - 10, y: d + 34, fill: "#6d7277", "font-size": 12, "font-family": "ui-monospace,monospace" }, L.lab).textContent = "← phones";
@@ -576,7 +570,7 @@ function createScene(svg, opts = {}) {
   L.front = el("g", { "pointer-events": "none" }, svg); // scenery in front of the cubes (the gate's near pillar)
   svg.appendChild(L.fx); // bubbles stay on top of everything
   const alarm = () => { M.alarmUntil = performance.now() + 3000; };
-  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, beacon, machines, spot, wall, alarm };
+  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, machines, spot, wall, alarm };
 }
 
 function fmtMs(ms) {
@@ -765,9 +759,6 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, com
       cam.y += (Math.min(470, Math.max(350, 410 + (ty - 410) * 0.25)) - cam.y) * k;
       svg.setAttribute("viewBox", `${(cam.x - VW / 2).toFixed(1)} ${(cam.y - VH / 2).toFixed(1)} ${VW} ${VH}`);
     }
-    sc.beacon.setAttribute("fill", glow.llm ? "#5fd068" : "#ef4444");
-    sc.beacon.setAttribute("opacity", glow.llm ? 1 : (Math.sin(now / 400) > 0.3 ? 1 : 0.25));
-    sc.beacon.setAttribute("r", glow.llm ? 6 : 4);
     sc.pg.setAttribute("fill", glow.pg ? "var(--green)" : "var(--greenDim)");
     sc.idp.setAttribute("fill", glow.idp ? "var(--green)" : "var(--greenDim)");
     for (const r of sc.rf) r.setAttribute("fill", glow.rf ? "var(--green)" : "var(--greenDim)");
