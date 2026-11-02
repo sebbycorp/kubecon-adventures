@@ -105,6 +105,13 @@
   .node { font: 11.5px ui-monospace, monospace; color: var(--mute); margin-bottom: 4px; }
   .node b { color: #60a5fa; font-weight: 500; }
 
+  /* The compute heartbeat along the bottom: baseline = agents awake, a spike per agent. */
+  #pulseBox { left: 430px; right: 440px; bottom: 28px; height: 96px; border: 1px solid #1f2326; border-radius: 12px; background: #0b0d0cd9; overflow: hidden; transition: right .5s; }
+  body.story #pulseBox { right: 440px; }
+  #pulse { width: 100%; height: 100%; display: block; }
+  #pulseLbl { position: absolute; left: 12px; top: 8px; font: 600 10.5px Inter, sans-serif; letter-spacing: .12em; color: #6f7479; }
+  #pulseLbl b { color: var(--green); letter-spacing: 0; font-weight: 600; margin-left: 6px; }
+
   body.idle #qr { animation: invite 2.4s ease-in-out infinite; }
   @keyframes invite { 50% { box-shadow: 0 0 70px #5fd06855; border-color: var(--green); transform: translateY(-3px); } }
 </style>
@@ -120,6 +127,7 @@
 <div id="toasts" class="ui" aria-live="polite"></div>
 <div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
 <div id="story" class="ui off" aria-live="polite"></div>
+<div id="pulseBox" class="ui"><canvas id="pulse" aria-label="Compute heartbeat"></canvas><div id="pulseLbl">COMPUTE<b id="pulseNow"></b></div></div>
 <div id="feed" class="ui" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -240,6 +248,7 @@ const flow = startFlowScreen($("scene"), {
   camera: true,
   onMove(m) {
     if (m.error) return;
+    if (m.kind === "wake") heart.beat(0.9, m.nick + " · woke");
     if (m.kind === "wake") {
       toast(`<span>⚡</span><span><b>${esc(m.nick)}</b>'s agent woke up in <b>${fmtMs(m.ms)}</b> after ${fmtMs(m.sleptMs)} asleep</span>`);
       if (m.nodeAfter && m.nodeBefore && m.nodeAfter !== m.nodeBefore) toast(`<span>🛰️</span><span>…on a different node: ${esc(m.nodeBefore)} → <b>${esc(m.nodeAfter)}</b></span>`, "hook");
@@ -248,6 +257,10 @@ const flow = startFlowScreen($("scene"), {
   onPick(key) { stationCard(key); },
   onStep(run, step) {
     lastRequest = Date.now();
+    if (step.stage === "schedule") heart.beat(1, run.nick + " · new");
+    else if (step.stage === "restore" && step.text !== "restored" && !step.text.includes("node")) heart.beat(0.9, run.nick + " · woke");
+    else if (step.stage === "gateway") heart.beat(0.25);
+    else if ((step.stage === "tool" || step.stage === "hook") && step.text !== "tool output") heart.beat(0.4);
     if (step.stage === "gateway") return feed("", run.nick, LABELS[run.task] ? `asks their agent to ${LABELS[run.task]}` : `asks “${run.ask}”`, "", run.color);
     if (step.text.includes("blocked by agentgateway")) toast(`<span>🛡️</span><span>agentgateway's prompt guard <b>blocked</b> ${esc(run.nick)}'s request before it reached the LLM</span>`, "bad");
     if (step.text.includes("rate limited by agentgateway")) toast(`<span>🛡️</span><span>agentgateway <b>rate limited</b> ${esc(run.nick)}'s agent</span>`, "bad");
@@ -269,10 +282,73 @@ const flow = startFlowScreen($("scene"), {
     $("density").innerHTML = `<b>${(sub.actors ?? 0).toLocaleString()}</b> agents on <b>${workers}</b> sandboxes <span>·</span> <b>${(sub.suspended ?? 0).toLocaleString()}</b> asleep using <b>0 CPU</b>`;
     stat("restore", ms(t.restore), "restore p50"); stat("snapshot", ms(t.snapshot), "snapshot p50");
     lastState = s;
+    heart.set(sub.running ?? 0, (sub.pools || []).reduce((n, p) => n + (p.workers || 0), 0));
     if (flow?.picked()) stationCard(flow.picked());
     else story((s.runs || []).find((r) => r.id === flow?.focus()));
   },
 });
+
+// The compute heartbeat: a scrolling trace whose baseline is the share of sandboxes busy
+// with an awake agent, with an ECG-style spike each time an agent is created or woken up
+// (named), and smaller blips for requests arriving and tools running.
+const heart = (() => {
+  const cv = $("pulse"), cx = cv.getContext("2d");
+  const BEAT = [0, .04, .1, .06, 0, -.12, 1, -.38, 0, .06, .14, .18, .12, .05, 0];
+  // ys and labels are one entry per pixel column; pending holds names waiting for their spike.
+  let W = 0, H = 0, ys = [], labels = [], pending = [], queue = [], level = 0, target = 0, last = performance.now(), carry = 0;
+  const fit = () => {
+    const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+    cv.width = r.width * d; cv.height = r.height * d; cx.setTransform(d, 0, 0, d, 0, 0);
+    W = r.width; H = r.height;
+    while (ys.length < W) { ys.unshift(0); labels.unshift(null); }
+  };
+  addEventListener("resize", fit); fit();
+  function beat(size, tag) {
+    const n = 30, start = queue.length < 6 ? 0 : queue.length; // let beats queue up, never overlap
+    for (let i = 0; i < n; i++) {
+      const f = (i / (n - 1)) * (BEAT.length - 1), k = Math.floor(f), t = f - k;
+      const v = (BEAT[k] * (1 - t) + (BEAT[k + 1] ?? 0) * t) * size;
+      queue[start + i] = (queue[start + i] || 0) + v;
+    }
+    if (tag) pending.push({ at: start + 6, text: tag });
+  }
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    level += (target - level) * (1 - Math.exp(-dt * 1.5));
+    carry += dt * 70; // pixels per second
+    while (carry >= 1) {
+      carry--;
+      const spike = queue.length ? queue.shift() : 0;
+      const due = pending.findIndex((t) => t.at <= 0);
+      ys.push(level + spike + (Math.random() - 0.5) * 0.015);
+      labels.push(due >= 0 ? pending.splice(due, 1)[0].text : null);
+      pending.forEach((t) => t.at--);
+      if (ys.length > W) { ys.shift(); labels.shift(); }
+    }
+    cx.clearRect(0, 0, W, H);
+    cx.strokeStyle = "#16201a"; cx.lineWidth = 1;
+    for (let x = W - ((now / 1000 * 70) % 28); x > 0; x -= 28) { cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H); cx.stroke(); }
+    const base = H - 16, amp = H - 34, Y = (v) => base - Math.max(-0.4, Math.min(1.15, v)) * amp * 0.62;
+    cx.shadowColor = "#5fd068"; cx.shadowBlur = 8; cx.strokeStyle = "#5fd068"; cx.lineWidth = 1.8; cx.lineJoin = "round";
+    cx.beginPath();
+    const off = W - ys.length;
+    ys.forEach((v, i) => (i ? cx.lineTo(off + i, Y(v)) : cx.moveTo(off + i, Y(v))));
+    cx.stroke(); cx.shadowBlur = 0;
+    const hx = W - 1, hy = Y(ys[ys.length - 1] || 0);
+    cx.fillStyle = "#c8ffcb"; cx.beginPath(); cx.arc(hx - 2, hy, 3, 0, 7); cx.fill();
+    cx.font = "11px ui-monospace, monospace"; cx.fillStyle = "#cfe9d2";
+    labels.forEach((t, i) => { if (t) cx.fillText(t, off + i - 10, 30); });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  return {
+    beat,
+    set(running, workers) {
+      target = workers ? Math.min(1, running / workers) * 0.9 + 0.04 : 0.04;
+      $("pulseNow").textContent = `${running} awake · ${workers ? Math.round((100 * running) / workers) : 0}% of sandboxes`;
+    },
+  };
+})();
 
 // typeInto types text into el a few characters at a time, continuing from what's shown.
 function typeInto(el, text, html = (t) => esc(t)) {

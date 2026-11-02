@@ -383,7 +383,7 @@ function createScene(svg, opts = {}) {
   label("ate", 7, 9, 2.0, "ate-api-server + controller", "schedules agent actors", null, "Substrate");
   label("idp", 4.6, 11.8, -0.9, "ate-idp", "gives each agent an identity");
   label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
-  label("rf", 17.6, 12.4, -0.9, "Snapshot Storage", "sleeping agents (rustfs)");
+  label("rf", 19.0, 9.2, 1.0, "Snapshot Storage", "sleeping agents (rustfs)");
   label("egress", 15, 2, 1.5, "atenet-egress", "only allowed hosts go out", null, "egress");
   label("llm", 9.3, -3.7, 0, "OpenAI", "LLM calls via agentgateway", window.OPENAI_ICON, "LLM");
   // The tower's top light: blinks red when idle, glows green while an LLM call is out.
