@@ -383,7 +383,7 @@ function createScene(svg, opts = {}) {
   label("box", 12.2, 11.9, -0.7, "atelet · gVisor sandbox", "your agent runs here, isolated", null, "gVisor sandbox");
   label("rf", 17.6, 12.4, -0.9, "Snapshot Storage", "sleeping agents (rustfs)");
   label("egress", 15, 2, 1.5, "atenet-egress", "only allowed hosts go out", null, "egress");
-  label("llm", 16.3, -3.3, 1.6, "OpenAI", "LLM calls via agentgateway", null, "LLM");
+  label("llm", 9.3, -3.7, 0, "OpenAI", "LLM calls via agentgateway", window.OPENAI_ICON, "LLM");
   // The tower's top light: blinks red when idle, glows green while an LLM call is out.
   const [bx, by] = P(TW.x, TW.y, TW.h + 0.1);
   const beacon = el("circle", { cx: bx, cy: by, r: 4, fill: "#ef4444", filter: "url(#glow)" }, L.obj);

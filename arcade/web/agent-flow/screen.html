@@ -120,7 +120,7 @@
 <div id="feed" class="ui" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-<script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg";</script>
+<script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>
 <script src="/agent-flow/static/scene.js"></script>
 <script>
 "use strict";
@@ -213,7 +213,7 @@ const STATIONS = {
     (s) => [["awake now", s.substrate?.running ?? 0], ["run p50", ms(s.timings?.run)]]],
   egress: ["atenet-egress", null, "Agents can only reach allowed hosts. Here that is agentgateway, for LLM calls and the booth webhook. Everything else is blocked.",
     (s) => [["webhooks", (s.hooks || []).length]]],
-  llm: ["OpenAI (the LLM)", null, "Agents never hold the OpenAI key. Every LLM call leaves the sandbox through atenet-egress to agentgateway, which adds the key and forwards it.",
+  llm: ["OpenAI (the LLM)", "/agent-flow/static/openai-icon.svg", "Agents never hold the OpenAI key. Every LLM call leaves the sandbox through atenet-egress to agentgateway, which adds the key and forwards it.",
     (s) => [["tokens so far", (s.tokens || 0).toLocaleString()], ["requests", s.total]]],
   rf: ["Snapshot Storage", null, "Idle agents are snapshotted here (rustfs) and use no CPU at all. The next request restores them where they left off.",
     (s) => [["asleep", s.substrate?.suspended ?? 0], ["snapshot p50", ms(s.timings?.snapshot)], ["restore p50", ms(s.timings?.restore)]]],
