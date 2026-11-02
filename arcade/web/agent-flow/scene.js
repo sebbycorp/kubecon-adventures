@@ -47,7 +47,7 @@ function posAt(s) {
 
 function createScene(svg, opts = {}) {
   const L = {};
-  for (const k of ["grid", "floor", "obj", "orbs", "cubes", "lab"]) L[k] = el("g", {}, svg);
+  for (const k of ["grid", "island", "shadow", "floor", "obj", "orbs", "cubes", "lab"]) L[k] = el("g", {}, svg);
   for (let i = -14; i <= 24; i++) {
     el("line", { x1: P(i, -14)[0], y1: P(i, -14)[1], x2: P(i, 24)[0], y2: P(i, 24)[1], stroke: "var(--grid)" }, L.grid);
     el("line", { x1: P(-14, i)[0], y1: P(-14, i)[1], x2: P(24, i)[0], y2: P(24, i)[1], stroke: "var(--grid)" }, L.grid);
@@ -56,7 +56,7 @@ function createScene(svg, opts = {}) {
     const c = el("g", {}, g), st = o.st || "#9a9fa4", z = o.z || 0;
     el("polygon", { points: pts([P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)]), fill: o.f2 || "#101112", stroke: st }, c);
     el("polygon", { points: pts([P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: o.f3 || "#0c0d0e", stroke: st }, c);
-    el("polygon", { points: pts([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: o.f1 || "#161718", stroke: st }, c);
+    el("polygon", { points: pts([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: o.f1 || "url(#topface)", stroke: o.st ? st : "#b9bec2" }, c);
     return c;
   }
   // belts draws the conveyor as one path with rounded corners, then its slats and the
@@ -113,13 +113,14 @@ function createScene(svg, opts = {}) {
       LAB[key] = { r, d };
       return;
     }
-    let w = Math.max(name.length * 8.6, role.length * 6.6) + 26;
-    if (icon) w += 30;
-    const r = el("rect", { x: a - w / 2, y: b - 24, width: w, height: 44, rx: 9, fill: "#121314", stroke: "#34373a" }, g);
+    let w = Math.max(name.length * 7.6, role.length * 5.9) + 22;
+    if (icon) w += 26;
+    const r = el("rect", { x: a - w / 2, y: b - 21, width: w, height: 38, rx: 8, fill: "#121314", stroke: "#34373a" }, g);
     const d = document.createElementNS(NS, "circle"); // no status dot; the border shows activity
-    el("text", { x: a - w / 2 + 13, y: b - 5, fill: "#f0f0f0", "font-size": 14, "font-weight": 600 }, g).textContent = name;
-    el("text", { x: a - w / 2 + 13, y: b + 11, fill: "#7d8287", "font-size": 11.5 }, g).textContent = role;
-    if (icon) el("image", { href: icon, x: a + w / 2 - 34, y: b - 16, width: 28, height: 25 }, g);
+    el("text", { x: a - w / 2 + 11, y: b - 4, fill: "#e6e7e8", "font-size": 12.5, "font-weight": 600 }, g).textContent = name;
+    el("text", { x: a - w / 2 + 11, y: b + 10, fill: "#7d8287", "font-size": 10.5 }, g).textContent = role;
+    if (icon) el("image", { href: icon, x: a + w / 2 - 29, y: b - 14, width: 23, height: 21 }, g);
+    g.setAttribute("opacity", 0.82);
     LAB[key] = { r, d };
   }
 
@@ -130,6 +131,17 @@ function createScene(svg, opts = {}) {
     .station { cursor: pointer; } .station:hover rect { stroke: var(--green); }
     .hit { fill: transparent; cursor: pointer; } .pickable { cursor: pointer; }`;
   L.fx = el("g", {}, svg);
+  // The map sits on a raised slab, like a diorama; machines cast soft shadows on it.
+  {
+    const [x0, y0, x1, y1, t] = [-0.6, 0.5, 19.6, 13.6, 0.45];
+    el("polygon", { points: pts([P(x0, y1, 0), P(x1, y1, 0), P(x1, y1, -t), P(x0, y1, -t)]), fill: "url(#slabfront)", stroke: "#2c3033" }, L.island);
+    el("polygon", { points: pts([P(x1, y0, 0), P(x1, y1, 0), P(x1, y1, -t), P(x1, y0, -t)]), fill: "url(#slabside)", stroke: "#2c3033" }, L.island);
+    el("polygon", { points: pts([P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)]), fill: "#101112", "fill-opacity": 0.82, stroke: "#3a3f43" }, L.island);
+    const [a, b] = [P(x0, y1), P(x1, y1)], [c] = [P(x1, y0)];
+    el("polyline", { points: pts([a, b, c]), fill: "none", stroke: "var(--green)", opacity: 0.35, "stroke-width": 1.5, filter: "url(#glow)" }, L.island);
+  }
+  const shadow = (x, y, w, d, k = 0.35) => el("polygon", { points: pts([P(x + k, y + k), P(x + w + k, y + k), P(x + w + k, y + d + k), P(x + k, y + d + k)]), fill: "#000", opacity: 0.55, filter: "url(#soft)" }, L.shadow);
+  for (const [x, y, w, d] of [[1.5, 3.1, 0.5, 1.8], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.8, 7.8, 0.32, 0.32], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
   belts();
   const ORB = {};
   for (const n of NODES.slice(1, -1)) ORB[n.key] = orbit(...n.at, n.key === "box" ? 2.6 : 1.9);
@@ -318,7 +330,7 @@ function createScene(svg, opts = {}) {
     const slot = [0, 1, 2, 3, 4, 5].find((i) => !(stacks.get(key) || new Set()).has(i)) ?? 0;
     if (!stacks.has(key)) stacks.set(key, new Set());
     stacks.get(key).add(slot);
-    const fs = 12.5 * k, w = text.length * fs * 0.62 + 20 * k, h = 26 * k;
+    const fs = 11 * k, w = text.length * fs * 0.62 + 16 * k, h = 22 * k;
     const [a, b0] = P(...at), b = b0 - slot * (h + 6 * k), g = el("g", {}, L.fx);
     const color = kind === "bad" ? "#ff6b6b" : kind === "code" ? "#cfe9d2" : "#e8e8e8";
     el("rect", { x: a - w / 2, y: b - h, width: w, height: h, rx: 7 * k, fill: kind === "bad" ? "#2a1212" : "#0f1a12", stroke: kind === "bad" ? "#ff6b6b" : "var(--green)" }, g);
@@ -358,6 +370,15 @@ function createScene(svg, opts = {}) {
     return P(at[0], at[1]);
   }
   const defs = el("defs", {}, svg);
+  const grad = (id, stops, x2 = 0, y2 = 1) => {
+    const g = el("linearGradient", { id, x1: 0, y1: 0, x2, y2 }, defs);
+    stops.forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, g));
+  };
+  grad("topface", [[0, "#24262a"], [1, "#16171a"]], 1, 1);
+  grad("slabfront", [[0, "#15171a"], [1, "#0a0b0c"]]);
+  grad("slabside", [[0, "#111316"], [1, "#08090a"]]);
+  const sf = el("filter", { id: "soft", x: "-50%", y: "-50%", width: "200%", height: "200%" }, defs);
+  el("feGaussianBlur", { stdDeviation: 6 }, sf);
   const f = el("filter", { id: "glow", x: "-50%", y: "-50%", width: "200%", height: "200%" }, defs);
   el("feGaussianBlur", { stdDeviation: 3, result: "b" }, f);
   const m = el("feMerge", {}, f);
@@ -392,7 +413,7 @@ function createScene(svg, opts = {}) {
 function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, camera, live = true }) {
   let picked = null, pickedUntil = 0, pinned = null;
   const sc = createScene(svg, { compact, me, onPick: onPick && ((key) => { picked = key; pickedUntil = Date.now() + 9000; sc.ripple(key); sc.flash(key); onPick(key); }) });
-  const VW = 1000, VH = 560, cam = { x: 720, y: 400 };
+  const VW = 1360, VH = 762, cam = { x: 700, y: 410 }; // the whole map, with room to breathe
   let focusId = null, focusUntil = 0, tourAt = null;
   const cubes = new Map(); // run ID -> {g, s, target, nick, stage, bad}
   const seenSteps = new Map(); // run ID -> steps already announced
@@ -511,9 +532,10 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, me, compact, ca
       const f = cubes.get(focusId);
       if (picked && Date.now() > pickedUntil) picked = null;
       const [tx, ty] = picked ? sc.spot(picked) : f && f.pos ? f.pos : tourAt || [720, 400];
-      const k = 1 - Math.exp(-dt * 1.6);
-      cam.x += (Math.min(960, Math.max(520, tx)) - cam.x) * k;
-      cam.y += (Math.min(540, Math.max(280, ty)) - cam.y) * k;
+      // A gentle drift toward the action, never more than ~70px from the centre.
+      const k = 1 - Math.exp(-dt * 0.7);
+      cam.x += (Math.min(770, Math.max(630, 700 + (tx - 700) * 0.25)) - cam.x) * k;
+      cam.y += (Math.min(470, Math.max(350, 410 + (ty - 410) * 0.25)) - cam.y) * k;
       svg.setAttribute("viewBox", `${(cam.x - VW / 2).toFixed(1)} ${(cam.y - VH / 2).toFixed(1)} ${VW} ${VH}`);
     }
     sc.beacon.setAttribute("opacity", glow.llm ? (0.6 + 0.4 * Math.sin(now / 120)).toFixed(2) : 0.2);
