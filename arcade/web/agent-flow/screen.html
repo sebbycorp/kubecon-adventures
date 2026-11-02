@@ -35,14 +35,11 @@
   #qr span { color: var(--mute); font-size: 12.5px; }
   #qr .ask { display: block; margin-top: 6px; color: var(--green); font-size: 12.5px; min-height: 1.4em; transition: opacity .4s; }
 
-  /* Ambient life: a slow light sweep and drifting sparks behind the map. */
+  /* A soft, still glow behind the map. */
   #sweep { position: fixed; inset: -20%; z-index: -1; pointer-events: none;
     background: radial-gradient(circle at 30% 40%, #5fd06812, transparent 30%), radial-gradient(circle at 70% 60%, #7c3aed10, transparent 32%);
-    animation: sweep 22s ease-in-out infinite alternate; }
-  @keyframes sweep { to { transform: translate(8%, -6%) rotate(8deg); } }
+  }
   body { background: var(--bg); } svg#scene { z-index: 0; }
-  .spark { position: fixed; z-index: 0; width: 3px; height: 3px; border-radius: 50%; background: var(--green); opacity: 0; pointer-events: none; animation: drift linear infinite; }
-  @keyframes drift { 0% { opacity: 0; transform: translateY(0); } 15% { opacity: .3; } 85% { opacity: .2; } 100% { opacity: 0; transform: translateY(-160px); } }
 
   #live { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--mute); border: 1px solid #2a2d30; background: #121314ee; border-radius: 999px; padding: 5px 12px 5px 10px; }
   #live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: beat 1.4s ease-in-out infinite; }
@@ -117,7 +114,7 @@
 </style>
 </head>
 <body>
-<svg id="scene" viewBox="0 0 1400 800" preserveAspectRatio="xMidYMid slice" aria-label="Live map of kagent on Agent Substrate"></svg>
+<svg id="scene" viewBox="20 29 1360 762" preserveAspectRatio="xMidYMid slice" aria-label="Live map of kagent on Agent Substrate"></svg>
 <div id="sweep"></div>
 <div id="vig"></div>
 <div id="title" class="ui"><img src="/agent-flow/static/kagent-logo.svg" alt="kagent"><h1>on Agent Substrate</h1><p>Every cube is someone's real request, live.</p>
@@ -172,17 +169,6 @@ function toast(html, cls = "") {
 }
 const LABELS = { jailbreak: "steal the OpenAI key", resume: "pick up where it left off", code: "write code", webhook: "call a webhook", explore: "explore the sandbox", dice: "roll the dice", haiku: "write a haiku" };
 const QUIET = new Set(["controller", "sandbox"]);
-
-// Drifting sparks behind the map.
-for (let i = 0; i < 14; i++) {
-  const s = document.createElement("div");
-  s.className = "spark";
-  s.style.left = Math.random() * 100 + "vw";
-  s.style.top = 20 + Math.random() * 80 + "vh";
-  s.style.animationDuration = 7 + Math.random() * 9 + "s";
-  s.style.animationDelay = -Math.random() * 12 + "s";
-  document.body.appendChild(s);
-}
 
 // Stats count up to their new value and glow when they change.
 const shown = {};
@@ -245,7 +231,7 @@ function stationCard(key) {
 }
 
 const flow = startFlowScreen($("scene"), {
-  camera: true,
+  camera: false, // a still view of the whole map; only the things on it move
   onMove(m) {
     if (m.error) return;
     if (m.kind === "wake") heart.beat(0.9, m.nick + " · woke");
