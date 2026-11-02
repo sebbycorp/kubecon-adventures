@@ -141,7 +141,7 @@ function createScene(svg, opts = {}) {
     el("polyline", { points: pts([a, b, c]), fill: "none", stroke: "var(--green)", opacity: 0.35, "stroke-width": 1.5, filter: "url(#glow)" }, L.island);
   }
   const shadow = (x, y, w, d, k = 0.35) => el("polygon", { points: pts([P(x + k, y + k), P(x + w + k, y + k), P(x + w + k, y + d + k), P(x + k, y + d + k)]), fill: "#000", opacity: 0.55, filter: "url(#soft)" }, L.shadow);
-  for (const [x, y, w, d] of [[1.5, 3.1, 0.5, 1.8], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.8, 7.8, 0.32, 0.32], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
+  for (const [x, y, w, d] of [[1.45, 3.05, 0.6, 1.9], [8.0, 2.0, 1.8, 1.5], [4.2, 10.2, 0.8, 0.8], [11.6, 8.3, 2.8, 1.4], [14.8, 7.8, 0.32, 0.32], [15.9, 10.3, 1.2, 1.0], [11.75, 3.85, 0.35, 0.35], [6, 8, 2, 2], [9.1, 5.3, 0.6, 0.6]]) shadow(x, y, w, d);
   belts();
   const ORB = {};
   for (const n of NODES.slice(1, -1)) ORB[n.key] = orbit(...n.at, n.key === "box" ? 2.6 : 1.9);
@@ -154,11 +154,15 @@ function createScene(svg, opts = {}) {
 
   // Every component is its own kind of machine:
   // agentgateway, a scanner gate: pillars here, its lit top beam and scan line in machines().
-  box(1.6, 3.2, 0.3, 0.3, 2.4); box(1.6, 4.5, 0.3, 0.3, 2.4);
+  box(1.45, 3.05, 0.6, 1.9, 0.08); // base plate the belt runs over
+  box(1.63, 3.22, 0.24, 0.24, 2.0, L.obj, { z: 0.08 }); box(1.63, 4.54, 0.24, 0.24, 2.0, L.obj, { z: 0.08 });
   // kagent-controller, a card reader: a dock on the belt and a block with a slot that takes a session card.
   box(6.3, 3.3, 1.4, 1.4, 0.12);
   box(8.0, 2.0, 1.8, 1.5, 0.9, L.obj, { f1: "#18191a" });
-  el("polygon", { points: pts([P(8.35, 2.68, 0.9), P(9.45, 2.68, 0.9), P(9.45, 2.82, 0.9), P(8.35, 2.82, 0.9)]), fill: "#060707", stroke: "#5d6166" }, L.obj);
+  const slot = el("polygon", { points: pts([P(8.35, 2.68, 0.9), P(9.45, 2.68, 0.9), P(9.45, 2.82, 0.9), P(8.35, 2.82, 0.9)]), fill: "#060707", stroke: "#5d6166" }, L.obj);
+  // The session card is drawn in front of the block but clipped at the slot, so the part
+  // that has gone into the reader disappears.
+  const cardG = el("g", { "clip-path": "url(#cardclip)" }, L.obj);
   const pg = cyl(9.4, 5.6, 0.75);
   // ate-api-server + controller, a turntable that places each actor.
   disc(7, 9, 1.15, 0.22);
@@ -212,28 +216,37 @@ function createScene(svg, opts = {}) {
   }
 
   // machines animates the moving parts from what is happening right now.
-  const M = { hookZ: 2.2, card: 0.9, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
+  const M = { hookZ: 2.2, cardPhase: 0, badge: 0.1, arm: 0, drawer: 0, turn: 0, scan: 0, gate: 0, waves: 0 };
   const ease = (cur, want, dt, k = 5) => cur + (want - cur) * (1 - Math.exp(-dt * k));
   function machines(glow, dt) {
     dyn.innerHTML = "";
     const now = performance.now(), G = "var(--green)", grey = "#9a9fa4";
     // Gate: the top beam lights up and a scan line sweeps down while a cube passes.
     M.gate = ease(M.gate, glow.gw ? 1 : 0, dt, 6);
-    box(1.5, 3.1, 0.5, 1.8, 0.3, dyn, { z: 2.4, st: M.gate > 0.5 ? G : grey, f1: M.gate > 0.5 ? "#1a3320" : "#161718" });
+    // The beam sits flush on the pillars; a lit strip runs under it, brighter while scanning.
+    box(1.63, 3.22, 0.24, 1.56, 0.24, dyn, { z: 2.08, st: M.gate > 0.5 ? G : grey, f1: M.gate > 0.5 ? "#1a3320" : undefined });
+    {
+      const [a, b] = [P(1.75, 3.46, 2.06), P(1.75, 4.54, 2.06)];
+      el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 2, opacity: 0.35 + 0.65 * M.gate }, dyn);
+    }
     if (M.gate > 0.05) {
-      const z = 2.3 - ((now / 500) % 1) * 2.2, [a, b] = [P(1.75, 3.5, z), P(1.75, 4.5, z)];
+      const z = 2.0 - ((now / 500) % 1) * 1.85, [a, b] = [P(1.75, 3.46, z), P(1.75, 4.54, z)];
       el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: G, "stroke-width": 3, opacity: M.gate, filter: "url(#glow)" }, dyn);
-      const [g1, g2, g3, g4] = [P(1.75, 3.5, 0), P(1.75, 4.5, 0), P(1.75, 4.5, 2.4), P(1.75, 3.5, 2.4)];
+      const [g1, g2, g3, g4] = [P(1.75, 3.46, 0.08), P(1.75, 4.54, 0.08), P(1.75, 4.54, 2.06), P(1.75, 3.46, 2.06)];
       el("polygon", { points: pts([g1, g2, g3, g4]), fill: G, opacity: 0.12 * M.gate }, dyn);
     }
-    // kagent: a session card drops into the reader's slot.
-    M.card = ease(M.card, glow.ctrl ? 0.25 : 0.95, dt, 4);
+    // kagent: the session card swipes in and out of the reader's slot, quickly while a
+    // request is at the controller.
+    M.cardPhase += dt * (glow.ctrl ? 5.5 : 1.4);
     {
-      const z = 0.9 + M.card, st = glow.ctrl ? G : grey;
-      for (const x of [8.55, 9.25]) { const [a, b] = [P(x, 2.75, 0.9), P(x, 2.75, z)]; el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: grey, "stroke-dasharray": "3 4", opacity: 0.6 }, dyn); }
-      box(8.55, 2.71, 0.7, 0.08, 0.95, dyn, { z, st, f1: "#1b1c1d", f3: "#141516" });
-      const dot = P(8.9, 2.79, z + 0.6);
-      el("circle", { cx: dot[0], cy: dot[1], r: 5, fill: G, opacity: glow.ctrl ? 1 : 0.7 }, dyn);
+      const depth = (0.5 - 0.5 * Math.cos(M.cardPhase)) * (glow.ctrl ? 0.8 : 0.55); // 0 = out, 0.8 = deep in
+      const z = 0.9 - depth + 0.05, st = glow.ctrl ? G : grey;
+      cardG.innerHTML = "";
+      box(8.55, 2.71, 0.7, 0.08, 0.95, cardG, { z, st, f1: "#1b1c1d", f3: "#141516" });
+      const dot = P(8.9, 2.79, z + 0.62);
+      el("circle", { cx: dot[0], cy: dot[1], r: 5, fill: G, opacity: glow.ctrl ? 1 : 0.75 }, cardG);
+      slot.setAttribute("stroke", depth > 0.35 ? G : "#5d6166");
+      slot.setAttribute("fill", depth > 0.35 && glow.ctrl ? "#12301a" : "#060707");
     }
     // Scheduler: an arrow rides round the turntable, fast while it places an actor.
     M.turn += dt * (glow.ate ? 3.2 : 0.5);
@@ -280,7 +293,7 @@ function createScene(svg, opts = {}) {
     }
   }
 
-  label("gw", 2, 4, 3.4, "agentgateway", "front door · auth · webhooks", window.AGW_ICON);
+  label("gw", -0.4, 6.6, 0.2, "agentgateway", "front door · auth · webhooks", window.AGW_ICON);
   label("ctrl", 7.2, 2.6, 3.6, "kagent-controller", "sessions · A2A · agent CRDs", window.KAGENT_ICON, "kagent");
   label("pg", 10.2, 6.6, 1.4, "postgres", "chat history");
   label("ate", 7, 9, 2.0, "ate-api-server + controller", "schedules agent actors", null, "Substrate");
@@ -374,6 +387,8 @@ function createScene(svg, opts = {}) {
     const g = el("linearGradient", { id, x1: 0, y1: 0, x2, y2 }, defs);
     stops.forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, g));
   };
+  const cc = el("clipPath", { id: "cardclip" }, defs);
+  el("polygon", { points: pts([P(8.3, 2.75, 0.9), P(9.5, 2.75, 0.9), P(9.5, 2.75, 9), P(8.3, 2.75, 9)]) }, cc);
   grad("topface", [[0, "#24262a"], [1, "#16171a"]], 1, 1);
   grad("slabfront", [[0, "#15171a"], [1, "#0a0b0c"]]);
   grad("slabside", [[0, "#111316"], [1, "#08090a"]]);
