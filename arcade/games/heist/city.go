@@ -129,23 +129,97 @@ func (c *City) free(p Vec) bool {
 	return true
 }
 
+// Movement tuning: sub-step length, corner-assist nudge per sub-step, and the longest
+// single move (anything past it is a stalled client, not a real step).
+const (
+	subStep   = 0.1
+	cornerAid = 0.15
+	maxMove   = 64.0
+)
+
 // Move advances from along dir (normalized, so diagonals are no faster) for dt seconds
-// at speed tiles/second. Each axis is resolved separately so walls are slid along.
+// at speed tiles/second. It walks in sub-steps of at most 0.1 tile and resolves each
+// axis separately, so walls are slid along and reached flush. When one axis is blocked
+// and the other is idle, the body is nudged toward the nearest open lane centre so it
+// can turn into 1-tile side streets. Non-finite input is treated as no motion.
 func (c *City) Move(from, dir Vec, speed, dt float64) Vec {
 	n := math.Hypot(dir.X, dir.Y)
-	if n == 0 {
+	dist := speed * dt
+	if n == 0 || !finite(n) || !finite(dist) || dist <= 0 || !finite(from.X) || !finite(from.Y) {
 		return from
 	}
-	step := speed * dt / n
+	dist = min(dist, maxMove)
+	steps := int(math.Ceil(dist / subStep))
+	sx, sy := dir.X/n*dist/float64(steps), dir.Y/n*dist/float64(steps)
 	p := from
-	if q := (Vec{p.X + dir.X*step, p.Y}); c.free(q) {
-		p = q
-	}
-	if q := (Vec{p.X, p.Y + dir.Y*step}); c.free(q) {
-		p = q
+	for range steps {
+		var bx, by bool
+		p, bx = c.slide(p, Vec{sx, 0})
+		p, by = c.slide(p, Vec{0, sy})
+		if bx && sy == 0 {
+			p = c.nudge(p, false, sx)
+		}
+		if by && sx == 0 {
+			p = c.nudge(p, true, sy)
+		}
 	}
 	return p
 }
+
+// slide moves p by d, or as far as it can before touching a wall; blocked reports a
+// shortened move.
+func (c *City) slide(p, d Vec) (Vec, bool) {
+	if d == (Vec{}) {
+		return p, false
+	}
+	if q := (Vec{p.X + d.X, p.Y + d.Y}); c.free(q) {
+		return q, false
+	}
+	lo, hi := 0.0, 1.0 // bisect for the furthest free fraction of d
+	for range 8 {
+		mid := (lo + hi) / 2
+		if c.free(Vec{p.X + d.X*mid, p.Y + d.Y*mid}) {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	return Vec{p.X + d.X*lo, p.Y + d.Y*lo}, true
+}
+
+// nudge shifts p on the cross axis (x when vertical is true, else y) toward the nearest
+// lane centre whose tile ahead, in the blocked direction ahead, is open.
+func (c *City) nudge(p Vec, vertical bool, ahead float64) Vec {
+	cross, along := p.Y, p.X
+	if vertical {
+		cross, along = p.X, p.Y
+	}
+	look := along + math.Copysign(playerRadius+0.5, ahead)
+	best, bestD := 0.0, math.Inf(1)
+	for _, ctr := range [3]float64{math.Floor(cross) - 0.5, math.Floor(cross) + 0.5, math.Floor(cross) + 1.5} {
+		tile := Vec{look, ctr}
+		if vertical {
+			tile = Vec{ctr, look}
+		}
+		if d := math.Abs(ctr - cross); d < bestD && c.Walkable(tile) {
+			best, bestD = ctr, d
+		}
+	}
+	if bestD == 0 || bestD > 1 {
+		return p
+	}
+	shift := math.Copysign(min(cornerAid, bestD), best-cross)
+	q := Vec{p.X, p.Y + shift}
+	if vertical {
+		q = Vec{p.X + shift, p.Y}
+	}
+	if c.free(q) {
+		return q
+	}
+	return p
+}
+
+func finite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
 
 // DistrictOf is the district a node owns; unknown nodes get the Dispatch block.
 func (c *City) DistrictOf(node string) Rect {

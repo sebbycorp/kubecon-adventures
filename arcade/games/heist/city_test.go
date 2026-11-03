@@ -66,3 +66,43 @@ func TestVaultAndDispatchReachable(t *testing.T) {
 		t.Fatal("vault unreachable from dispatch")
 	}
 }
+
+func TestMoveTurnsCorner(t *testing.T) {
+	c := NewCity(nil)
+	// Road row y=6 crosses side street column x=12 (centre 12.5). Start 0.3 off its
+	// centre line and push south into it.
+	p := Vec{12.8, 6.5}
+	for i := 0; i < 30; i++ {
+		p = c.Move(p, Vec{0, 1}, 5, 1.0/30)
+	}
+	if p.Y < 7.5 || !c.free(p) {
+		t.Fatalf("did not turn into the side street within 1s: %+v", p)
+	}
+}
+
+func TestMoveReachesWall(t *testing.T) {
+	c := NewCity(nil)
+	// Building face at x=7; a 0.3-radius body should stop at 6.7, give or take 0.05.
+	got := c.Move(Vec{6.5, 3.5}, Vec{1, 0}, 5, 1)
+	if got.X < 7-0.35 || got.X > 7-0.3+1e-9 {
+		t.Fatalf("stopped at %+v, want x in [6.65, 6.7]", got)
+	}
+	// A large dt must not tunnel through the block to the next street (x=12).
+	if got := c.Move(Vec{6.5, 3.5}, Vec{1, 0}, 5, 1.2); got.X > 7-0.3+1e-9 {
+		t.Fatalf("tunnelled: %+v", got)
+	}
+	from := Vec{24.5, 12.5}
+	for _, bad := range []struct {
+		dir       Vec
+		speed, dt float64
+	}{
+		{Vec{math.NaN(), 0}, 5, 0.1},
+		{Vec{1, math.Inf(1)}, 5, 0.1},
+		{Vec{1, 0}, math.NaN(), 0.1},
+		{Vec{1, 0}, 5, math.Inf(1)},
+	} {
+		if got := c.Move(from, bad.dir, bad.speed, bad.dt); got != from {
+			t.Fatalf("non-finite input %+v moved to %+v", bad, got)
+		}
+	}
+}
