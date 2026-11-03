@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Agent Hunt load test: N bot players each play one run at once. A bot launches a target
+# Duck Hunt load test: N bot players each play one run at once. A bot launches a target
 # (a real Substrate resume), waits like a player aiming, and shoots it (a real suspend).
 # Few LLM calls: only the occasional line a waking agent says.
 # Usage: ./loadtest.sh [players=10] [seconds=75] [base=http://localhost:8090]

@@ -25,7 +25,7 @@ func TestArcadeBoards(t *testing.T) {
 	b := arcadeBoards(5, top("duck"), top("flow"), top("siege"), top("defense"), top("gateway"), top("missions"))
 	want := []struct{ game, path, nick string }{
 		{"Substrate Siege", "/substrate-siege", "siege"}, {"Cluster Defense", "/cluster-defense", "defense"},
-		{"Gateway Defense", "/gateway-defense", "gateway"}, {"Agent Flow", "/agent-flow", "flow"}, {"Agent Hunt", "/duck-hunt", "duck"},
+		{"Gateway Defense", "/gateway-defense", "gateway"}, {"Agent Flow", "/agent-flow", "flow"}, {"Duck Hunt", "/duck-hunt", "duck"},
 		{"AI agentgateway missions", missionsURL, "missions"},
 	}
 	if len(b) != len(want) {

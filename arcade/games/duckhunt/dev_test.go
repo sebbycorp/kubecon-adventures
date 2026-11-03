@@ -2,7 +2,7 @@
 
 package duckhunt
 
-// A local dev server for Agent Hunt's pages, with kagent faked (resumes and suspends take
+// A local dev server for Duck Hunt's pages, with kagent faked (resumes and suspends take
 // about as long as on the cluster) and nothing else of the arcade running, so it never
 // touches the cluster. Run it with:
 //
@@ -63,12 +63,12 @@ func TestDevServer(t *testing.T) {
 	})
 	mux.HandleFunc("GET /api/me", p.Players.WithPlayer(func(w http.ResponseWriter, r *http.Request, pl platform.Player) { platform.WriteJSON(w, pl) }))
 	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
-		platform.WriteJSON(w, []map[string]any{{"game": "Agent Hunt", "path": "/duck-hunt", "unit": "points", "rows": g.Top(5)}})
+		platform.WriteJSON(w, []map[string]any{{"game": "Duck Hunt", "path": "/duck-hunt", "unit": "points", "rows": g.Top(5)}})
 	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("../../web/shared"))))
 	mux.Handle("GET /agent-flow/static/", http.StripPrefix("/agent-flow/static/", http.FileServer(http.Dir("../../web/agent-flow"))))
 	g.Routes(mux, os.DirFS("../../web/duck-hunt"))
-	t.Logf("Agent Hunt dev server on http://%s/duck-hunt", addr)
+	t.Logf("Duck Hunt dev server on http://%s/duck-hunt", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		t.Fatal(err)
 	}

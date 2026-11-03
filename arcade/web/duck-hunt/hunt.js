@@ -1,4 +1,4 @@
-// Agent Hunt's phone game: a landscape canvas. Each flying agent is a real kagent session
+// Duck Hunt's phone game: a landscape canvas. Each flying agent is a real kagent session
 // the server woke for this run (a Substrate Resume); tapping one sends the hit, and the
 // server suspends it (a real snapshot) and scores it. The sky, the agents and every effect
 // are drawn here; the score, the combo and the timings come from the server.

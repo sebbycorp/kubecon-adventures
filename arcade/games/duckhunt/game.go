@@ -1,4 +1,4 @@
-// Package duckhunt is Agent Hunt (at /duck-hunt): a landscape phone shooter where every
+// Package duckhunt is Duck Hunt (at /duck-hunt): a landscape phone shooter where every
 // flying target is a real kagent session of the "duck" agent on Agent Substrate. A pool
 // of sessions sleeps as Substrate snapshots; launching a target is a real Resume (it wakes
 // on a worker), a hit is a real Suspend (it goes back into Snapshot Storage), and an
@@ -195,7 +195,7 @@ func (g *Game) fillPool(ctx context.Context) {
 	states, serr := g.k.ActorStates(c)
 	cancel()
 	if err != nil || serr != nil {
-		slog.Warn("agent hunt: listing duck sessions", "err", errors.Join(err, serr))
+		slog.Warn("duck hunt: listing duck sessions", "err", errors.Join(err, serr))
 	}
 	adopted := 0
 	for _, id := range ids {
@@ -217,7 +217,7 @@ func (g *Game) fillPool(ctx context.Context) {
 		g.addSlot(id)
 		adopted++
 	}
-	slog.Info("agent hunt: pool", "adopted", adopted)
+	slog.Info("duck hunt: pool", "adopted", adopted)
 	sem := make(chan struct{}, createConcur)
 	var wg sync.WaitGroup
 	for i := adopted; i < poolMin; i++ {
@@ -232,7 +232,7 @@ func (g *Game) fillPool(ctx context.Context) {
 			if id, err := g.newSession(ctx, i); err == nil {
 				g.addSlot(id)
 			} else {
-				slog.Warn("agent hunt: new pool session", "err", err)
+				slog.Warn("duck hunt: new pool session", "err", err)
 			}
 		}(i)
 	}
@@ -364,7 +364,7 @@ func (g *Game) Launch(ctx context.Context, player, runID string) (Launched, erro
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if err != nil {
-		slog.Warn("agent hunt: resume", "session", s.sid, "err", err)
+		slog.Warn("duck hunt: resume", "session", s.sid, "err", err)
 		s.state, s.flight = "asleep", ""
 		r.air--
 		return Launched{}, ErrBusy
@@ -539,7 +539,7 @@ func (g *Game) sleep(ctx context.Context, flightID string) (int64, bool) {
 	}
 	delete(g.flights, flightID)
 	if err != nil {
-		slog.Warn("agent hunt: suspend", "session", s.sid, "err", err)
+		slog.Warn("duck hunt: suspend", "session", s.sid, "err", err)
 		s.state, s.flight = "broken", ""
 		return 0, false
 	}

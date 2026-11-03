@@ -4,7 +4,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 
 | Game | Shows off | Status | Design |
 |------|-----------|--------|--------|
-| Agent Hunt (at `/duck-hunt`) | Suspend and resume in milliseconds, as a landscape phone shooter: every target is a real agent woken for you, every hit a real snapshot | Playable | [below](#agent-hunt) |
+| Duck Hunt (at `/duck-hunt`) | Suspend and resume in milliseconds, as a landscape phone shooter: every target is a real agent woken for you, every hit a real snapshot | Playable | [below](#duck-hunt) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
 | Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a 3-minute multiplayer city shooter | Playable | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
 | Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
@@ -22,7 +22,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Page | URL |
 |------|-----|
 | Arcade front page (players join once, then pick a game) | http://localhost:8090/ |
-| Agent Hunt phone (landscape) / big screen | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
+| Duck Hunt phone (landscape) / big screen | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
 | Substrate Siege phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/substrate-siege, http://localhost:8090/substrate-siege/screen |
 | Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
@@ -30,7 +30,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
-`deploy.sh` can be rerun safely. Game state (players, scores) lives in memory, so a redeploy starts a new round. Agent sessions stay in kagent until a round is reset from admin. It builds the image, pushes it to the local registry (`localhost:5001`) and rolls out a new version. `DUCK_WORKERS` sets the size of the duck worker pool (default 12). To reach the arcade from other machines, run `sudo ufw route allow proto tcp from any to any port 8090`. `./loadtest.sh [players] [seconds]` runs an Agent Hunt load test.
+`deploy.sh` can be rerun safely. Game state (players, scores) lives in memory, so a redeploy starts a new round. Agent sessions stay in kagent until a round is reset from admin. It builds the image, pushes it to the local registry (`localhost:5001`) and rolls out a new version. `DUCK_WORKERS` sets the size of the duck worker pool (default 12). To reach the arcade from other machines, run `sudo ufw route allow proto tcp from any to any port 8090`. `./loadtest.sh [players] [seconds]` runs a Duck Hunt load test.
 
 ## Layout
 
@@ -159,7 +159,7 @@ A solo tower defense on the phone, drawn neon-cyber on a 2D canvas. Rogue agent 
 
 A kill over the budget shows that tower's last real result, marked as such. Leaks cost lives (two for runaways, obfuscated jailbreaks, smugglers and zombies, ten for the boss) and say what the creep would have done. Scores are checked before the leaderboard: at most the most the wave reached allows, counting splits, summons and endless waves (up to wave 300), and no faster than its creeps can spawn on 2× (`MaxScore`, `MinSeconds`; the countdowns aren't counted, since they can be skipped); a win means all 99 waves were cleared. The leaderboard is today's best run per player (in memory, so a restart clears it): `GET /gateway-defense/api/board` gives the top 10 with the asking player's row and rank, the phone shows it from the start screen and the menu, a live rank ticker during a run ("#4 live · 42 to pass Linus"), and on the end screen the rank, the score to beat for the next place and the top 5. The big screen (`/gateway-defense/screen`) shows a QR code, per-control real call counts and p50 timings, a live feed of the real blocks and an animated top 10 (rows slide on rank changes; new entries and climbs flash). `manifests/gatedef.yaml` holds the WorkerPool, the `rogue` Agent, its guarded LLM route (`/gatedef/v1`, 30k tokens a minute), the guard and limit routes and their policies, all in-cluster only.
 
-## Agent Hunt
+## Duck Hunt
 
 A landscape phone shooter at `/duck-hunt` (it replaced Duck Hunt, and keeps its URL, its `duck` agent and its `ducks` worker pool). Agent birds with the kagent face fly over a night city of server racks; tap one to shoot it and it drops into Snapshot Storage. Runs are 75 seconds; a wave every 15 s flies faster and puts more targets in the air (one, then two, then three).
 

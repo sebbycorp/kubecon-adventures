@@ -17,7 +17,7 @@ import (
 // board and the feed, pushed up to 10 times a second).
 const maxScreens = 64
 
-// Routes mounts Agent Hunt: pages and API under /duck-hunt, admin under /admin/duck-hunt.
+// Routes mounts Duck Hunt: pages and API under /duck-hunt, admin under /admin/duck-hunt.
 // web holds phone.html, screen.html, admin.html and hunt.js.
 func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	page := func(name string) http.HandlerFunc {
@@ -103,7 +103,7 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	})
 }
 
-// Stats are Agent Hunt's numbers for dashboards (the home page reads players).
+// Stats are Duck Hunt's numbers for dashboards (the home page reads players).
 func (g *Game) Stats() map[string]any {
 	s := g.Snapshot()
 	return map[string]any{

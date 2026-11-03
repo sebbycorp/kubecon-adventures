@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent Hunt admin</title>
+<title>Duck Hunt admin</title>
 <style>
   body { margin: 0; padding: 20px; background: #0d0e0f; color: #e8e8e8; font: 14px/1.5 Inter, system-ui, sans-serif; }
   h1 { font-size: 18px; margin: 0 0 12px; }
@@ -13,14 +13,14 @@
 </style>
 </head>
 <body>
-<h1>Agent Hunt admin · <a href="/duck-hunt/screen">big screen</a> · <a href="/duck-hunt">phone</a></h1>
+<h1>Duck Hunt admin · <a href="/duck-hunt/screen">big screen</a> · <a href="/duck-hunt">phone</a></h1>
 <p><button id="reset">Reset leaderboard and end every run</button> <span id="msg"></span></p>
 <pre id="state">Loading…</pre>
 <script>
 const $ = (id) => document.getElementById(id);
 async function load() { try { $("state").textContent = JSON.stringify(await (await fetch("/admin/duck-hunt/api/state")).json(), null, 2); } catch (e) { $("state").textContent = String(e); } }
 $("reset").onclick = async () => {
-  if (!confirm("Clear the Agent Hunt leaderboard and end every run?")) return;
+  if (!confirm("Clear the Duck Hunt leaderboard and end every run?")) return;
   const r = await fetch("/admin/duck-hunt/api/reset", { method: "POST" });
   $("msg").textContent = r.ok ? "Done." : "Failed: " + r.status;
   load();
