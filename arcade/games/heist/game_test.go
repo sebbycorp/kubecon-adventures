@@ -24,9 +24,9 @@ import (
 // liveOps answers every call at once, except kinds in block, which wait for ctx. It
 // records every call as "kind arg".
 type liveOps struct {
-	mu       sync.Mutex
-	calls    []string
-	block    map[string]bool
+	mu          sync.Mutex
+	calls       []string
+	block       map[string]bool
 	sessions    []string            // what ListSessions returns (the startup sweep's orphans)
 	checkpoints map[string][]string // what ListCheckpoints returns, by session
 	listErr     error
@@ -88,6 +88,7 @@ func (o *liveOps) Freeze(ctx context.Context, id string) (int64, error) {
 func (o *liveOps) Spring(ctx context.Context, id string) (string, string, int64, error) {
 	return "node-1", "back", 9, o.do(ctx, "spring", id)
 }
+
 // Extract, like the real adapter, checkpoints the session, deletes it and returns the
 // checkpoint's ID ("cp-<session>").
 func (o *liveOps) Extract(ctx context.Context, id string) (string, string, int64, error) {

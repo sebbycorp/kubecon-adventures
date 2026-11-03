@@ -42,7 +42,7 @@ type ScoreRow struct {
 // Pacing and scoring.
 const (
 	runSeconds     = 180.0
-	runTargetsMax  = 4    // live agents per run: 1 + online squad players, at most this
+	runTargetsMax  = 4 // live agents per run: 1 + online squad players, at most this
 	ptsFreeze      = 1
 	ptsBook        = 2
 	frozenTTL      = 8.0 // a frozen agent nobody books is deleted after this long

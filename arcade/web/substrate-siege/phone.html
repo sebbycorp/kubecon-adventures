@@ -101,6 +101,16 @@
   details.friends summary { cursor: pointer; font-size: 12px; margin: 8px 0; color: var(--g); }
   .err { color: #ffb4b4; min-height: 1.4em; font-size: 12px; }
 
+  /* PvP: the nearest enemy player off screen, how many are near, and the frozen screen. */
+  #enemyArrow { position: fixed; left: 0; top: 0; width: 38px; height: 38px; margin: -19px 0 0 -19px; pointer-events: none; z-index: 2; display: none; }
+  #enemyArrow svg { width: 38px; height: 38px; filter: drop-shadow(0 0 6px #ff9f43); }
+  #enemyArrow span { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); font-size: 10px; font-weight: 800; color: #ffd0a0; text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
+  #nearby { position: fixed; left: 50%; transform: translateX(-50%); top: calc(118px + var(--st, 0px)); z-index: 2; pointer-events: none; font-size: 11px; font-weight: 800; letter-spacing: .06em;
+    color: #ffd0a0; background: rgba(40, 14, 0, .8); border: 1px solid #ff9f43; border-radius: 999px; padding: 3px 10px; display: none; }
+  #iced { position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; pointer-events: none;
+    background: radial-gradient(circle, rgba(0, 60, 80, .35), rgba(0, 30, 45, .82)); }
+  #iced h1 { margin: 0; color: #c8ffff; font-size: 26px; letter-spacing: .12em; text-shadow: 0 0 18px #6ff; }
+  #iced p { margin: 0; color: #9fffff; font-size: 14px; }
   #down { position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: radial-gradient(circle, rgba(80, 0, 10, .35), rgba(40, 0, 6, .8)); pointer-events: none; text-align: center; }
   #down h1 { margin: 0; color: #ffd0d4; font-size: 26px; letter-spacing: .12em; text-shadow: 0 0 18px var(--red); }
   #toast { position: fixed; left: 50%; top: calc(140px + var(--st)); transform: translateX(-50%); z-index: 6; padding: 8px 14px; color: #fff; border-color: var(--gold); pointer-events: none; text-align: center; max-width: calc(100% - 32px); }
@@ -142,6 +152,8 @@
     <canvas id="mini" width="192" height="128"></canvas>
   </div>
   <div id="feed" class="panel"></div>
+  <div id="enemyArrow"><svg viewBox="0 0 44 44"><path d="M22 4 L38 34 L22 26 L6 34 Z" fill="#ff9f43" stroke="#fff" stroke-width="2"/></svg><span id="enemyD"></span></div>
+  <div id="nearby"></div>
   <div id="arrow"><svg viewBox="0 0 44 44"><path d="M22 4 L38 34 L22 26 L6 34 Z" fill="#ff4d5e" stroke="#fff" stroke-width="2"/></svg><span id="arrowD"></span></div>
   <div id="inv"></div>
   <div id="stickZone"><div id="stick"><div id="knob"></div></div></div>
@@ -157,6 +169,7 @@
     <li>❄ Hold <b>FIRE</b>: 2 hits <b>freezes</b> it (a real suspend). <b>+1</b></li>
     <li>▣ Tap <b>BOOK</b> next to a frozen agent to snapshot it. <b>+2</b></li>
     <li>⚠ Agents shoot back, and escape when their job is done.</li>
+    <li>⚔ Other players are real agents too: <b>3 hits</b> freezes one (their agent is snapshotted). <b>+2</b></li>
   </ul>
   <button class="big play" id="play">▶ PLAY</button>
   <div class="err" id="startErr"></div>
@@ -190,6 +203,7 @@
   <div class="row"><button class="ghost" id="resClose">Look around</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
 
+<div id="iced" class="hidden"><h1>❄ FROZEN</h1><p id="icedBy"></p><p id="icedAgent"></p><p id="icedT"></p></div>
 <div id="down" class="hidden"><h1>DOWN — RESPAWNING</h1><div>The parts you carried dropped where you fell.</div></div>
 <div id="toast" class="panel hidden"></div>
 <div id="status" class="panel hidden"></div>
@@ -365,6 +379,37 @@ function arrow(a, run) {
   el.querySelector("svg").style.transform = `rotate(${(Math.atan2(dy, dx) * 180) / Math.PI + 90}deg)`;
   $("arrowD").textContent = `${Math.round(n.d)} m`;
 }
+// enemies points an arrow at the nearest enemy player off screen and counts the ones
+// within 20 tiles.
+function enemies(a) {
+  const el = $("enemyArrow");
+  if (!a || a.down || a.frozen) { el.style.display = "none"; show("nearby", false); return; }
+  const p = view.view().me || a;
+  let best = null, bd = Infinity, near = 0;
+  for (const b of snap.avatars) {
+    if (b.id === a.id || !b.online || b.down || b.frozen || b.squad === a.squad) continue;
+    const q = net.pos("avatars", b.id) || b, d = Math.hypot(q.x - p.x, q.y - p.y);
+    if (d < 20) near++;
+    if (d < bd) { best = q; bd = d; }
+  }
+  $("nearby").textContent = near ? `⚔ ${near} player${near > 1 ? "s" : ""} nearby` : "";
+  $("nearby").style.display = near ? "block" : "none";
+  if (!best) { el.style.display = "none"; return; }
+  const sc = view.screen(best.x, best.y), me2 = view.screen(p.x, p.y);
+  if (sc.on) { el.style.display = "none"; return; }
+  const W = innerWidth, H = innerHeight, m = 36;
+  let dx = sc.x - me2.x, dy = sc.y - me2.y;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  const top = 170, bot = H - 210;
+  const tx = dx > 0 ? (W - m - me2.x) / dx : dx < 0 ? (m - me2.x) / dx : Infinity;
+  const ty = dy > 0 ? (bot - me2.y) / dy : dy < 0 ? (top - me2.y) / dy : Infinity;
+  const k = Math.max(60, Math.min(tx, ty));
+  el.style.display = "block";
+  el.style.transform = `translate(${me2.x + dx * k}px,${me2.y + dy * k}px)`;
+  el.querySelector("svg").style.transform = `rotate(${(Math.atan2(dy, dx) * 180) / Math.PI + 90}deg)`;
+  $("enemyD").textContent = `player ${Math.round(bd)} m`;
+}
 function hud(now) {
   if (!snap) return;
   const a = snap.avatars.find((x) => x.id === me.id);
@@ -372,6 +417,14 @@ function hud(now) {
     $("hp").querySelector("i").style.width = `${a.hp}%`;
     $("hp").classList.toggle("low", a.hp < 30);
     show("down", a.down);
+    show("iced", !!a.frozen);
+    if (a.frozen) {
+      const by = snap.avatars.find((x) => x.id === a.frozenBy);
+      $("icedBy").textContent = `${by ? by.nick : "Another player"} froze you.`;
+      $("icedAgent").textContent = a.agent === "suspending" ? "Your agent is being snapshotted…"
+        : a.agent === "asleep" && a.agentMs ? `Your agent was snapshotted in ${a.agentMs} ms.` : "Your agent sleeps as a snapshot.";
+      $("icedT").textContent = a.respawnIn ? `Respawn in ${Math.max(1, Math.ceil(a.respawnIn - (now - snapAt) / 1000))} s` : "";
+    }
   }
   $("squadName").textContent = isSolo() ? "solo" : `team ${mySquad}`;
   $("pts").textContent = snap.score || 0;
@@ -403,6 +456,7 @@ function hud(now) {
     }).join("") + `<div id="rigHint">full set = an ally agent</div>`;
   }
   arrow(a, run);
+  enemies(a);
   if (now - lastMini > 200) { lastMini = now; drawMini(snap, me.id, view.view()); }
 }
 
@@ -455,6 +509,9 @@ function feedEvent(e) {
   if (e.player === me.id && e.kind === "frozen") { sfx("freeze"); buzz(40); }
   if (e.player === me.id && e.kind === "booked") { sfx("book"); buzz(25); }
   if (e.player === me.id && e.kind === "hit") { sfx("hurt"); buzz(20); }
+  if (e.kind === "pvp-hit" && String(e.text).startsWith(me.id + " ")) { sfx("hurt"); buzz(25); }
+  if (e.kind === "player-frozen" && e.player === me.id) { sfx("freeze"); buzz(50); toast("❄ Player frozen! +2"); }
+  if (e.kind === "player-frozen" && e.text === me.id) { buzz(120); }
   const t = snap && snap.targets.find((x) => x.id === e.target);
   const who = (id) => { const a = snap && snap.avatars.find((x) => x.id === id); return a ? esc(a.nick) : "someone"; };
   const name = esc(e.text || (t && t.name) || "a hunter");
@@ -467,6 +524,12 @@ function feedEvent(e) {
     drop: e.text === "DDR5" ? `<span style="color:#ffd23d">★ DDR5 RAM dropped</span>` : "",
     ally: `⚙ ${who(e.player)} built a rig · ally online`,
     slipped: `<span style="color:#ff9f43">${name} slipped away</span>`,
+    // A PvP freeze is reported with its real snapshot time once the victim's agent is
+    // suspended; a victim without an awake agent is reported at once.
+    "player-snapshot": (() => { const v = snap && snap.avatars.find((x) => x.id === e.player);
+      return v && v.frozenBy ? `<span style="color:#ff9f43">⚔ ${who(v.frozenBy)} froze ${who(e.player)} · snapshot ${e.ms} ms</span>` : ""; })(),
+    "player-frozen": (() => { const v = snap && snap.avatars.find((x) => x.id === e.text);
+      return v && v.agent !== "awake" && v.agent !== "suspending" ? `<span style="color:#ff9f43">⚔ ${who(e.player)} froze ${who(e.text)}</span>` : ""; })(),
   }[e.kind];
   if (e.player === me.id && e.kind === "rig-failed") toast("The rig failed to boot. Parts refunded.");
   if (e.player === me.id && e.kind === "ally") toast("⚙ Full rig! Your ally agent is online.");

@@ -303,7 +303,11 @@ export function startCity(canvas, opts) {
 .gl-bub{max-width:200px;white-space:normal;background:rgba(0,20,6,.88);border:1px solid #2bff6a;border-radius:8px;padding:3px 7px;color:#d8ffe0;font-size:11px;box-shadow:0 0 10px #2bff6a55}
 .gl-float{font-weight:700;font-size:12px;transition:none}
 .gl-place{font-size:10px;letter-spacing:.18em;color:#5bff8a;opacity:.85}.gl-gold{color:#ffd23d}
-.gl-chip{font-size:10px;font-weight:700}`;
+.gl-chip{font-size:10px;font-weight:700}
+.gl-agent{font-size:9px;font-weight:600;letter-spacing:.04em;opacity:.9}
+.gl-ice{font-size:10px;font-weight:700;color:#9fffff;background:#062a33;border:1px solid #6ff;border-radius:4px;padding:0 5px}
+.gl-region{font-size:15px;font-weight:800;letter-spacing:.32em;color:#e8f3ff;opacity:.55;text-shadow:0 0 10px #000,0 0 3px #000}
+.gl-enemy{color:#ff8a8a}`;
     document.head.appendChild(st);
   }
   const labels = new Map(); // key -> {el, html, used}
@@ -437,6 +441,28 @@ export function startCity(canvas, opts) {
       case "down": if (a) floater("DOWN", a.x, a.y, "#ff4d5e", 1.6); break;
       case "ally": if (a) floater("ally online", a.x, a.y, "#2bff6a", 1.8); break;
       case "hit": if (t && a) tracer([t.x, 0.8, t.y], [a.x, 0.7, a.y], 0xff3b3b, 0.2); break;
+      case "pvp-hit": {
+        const [vid, n] = String(e.text || "").split(" "), v = byId(s.avatars, vid);
+        if (a && v) {
+          if (a.id !== me) tracer([a.x, 0.85, a.y], [v.x, 0.9, v.y], 0xff6b6b, 0.14, 1.6);
+          hitFlash.set("p:" + v.id, performance.now() + 140);
+          if (v.id === me) shake = Math.max(shake, 0.18);
+        }
+        break;
+      }
+      case "player-frozen": {
+        const v = byId(s.avatars, e.text);
+        if (v) {
+          burst(v.x, v.y, 0x9fffff, 46, 0.7);
+          floater(`❄ ${a ? a.nick : "someone"} froze ${v.nick}`, v.x, v.y, "#6ff", 2.4);
+          if (e.player === me || v.id === me) shake = Math.max(shake, 0.4);
+        }
+        break;
+      }
+      case "player-snapshot": if (a) floater(`snapshotted in ${e.ms} ms`, a.x, a.y, "#9fffff", 2.2, 2.6); break;
+      case "player-woke": if (a) floater(`agent woke in ${e.ms} ms`, a.x, a.y, "#60a5fa", 2.2, 2.6); break;
+      case "player-respawn": if (a) { burst(a.x, a.y, 0xffffff, 20, 0.5); floater("respawned · protected", a.x, a.y, "#fff", 1.6); } break;
+      case "agent-up": if (a && e.text) floater(`“${e.text}”`, a.x, a.y, "#d8ffe0", 3, 2.6); break;
       case "ally-hit": {
         const h = byId(s.targets, e.text), al = byId(s.allies, e.target);
         if (h && al) tracer([h.x, 0.8, h.y], [al.x, 0.55, al.y], 0xff3b3b, 0.2);
@@ -491,17 +517,27 @@ export function startCity(canvas, opts) {
   resize();
 
   // ---- the local player: drawn ahead of the 100 ms interpolation ----
+  // The server's terrain rules (city.go): these tiles stop feet; all but water stop shots.
+  const BLOCK_WALK = "#~tcfo", BLOCK_SHOT = "#tcfo";
+  const tileAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? "#" : tiles[Math.floor(y)][Math.floor(x)]);
   function free(x, y) {
-    for (const dx of [-0.3, 0.3]) for (const dy of [-0.3, 0.3]) {
-      const tx = Math.floor(x + dx), ty = Math.floor(y + dy);
-      if (tx < 0 || ty < 0 || tx >= W || ty >= H || tiles[ty][tx] === "#") return false;
+    for (const dx of [-0.3, 0.3]) for (const dy of [-0.3, 0.3]) if (BLOCK_WALK.includes(tileAt(x + dx, y + dy))) return false;
+    return true;
+  }
+  // los mirrors City.LineOfSight: the tiles the two ends stand on don't count.
+  function los(a, b) {
+    const d = Math.hypot(b.x - a.x, b.y - a.y), n = Math.ceil(d / 0.2);
+    const ta = `${Math.floor(a.x)},${Math.floor(a.y)}`, tb = `${Math.floor(b.x)},${Math.floor(b.y)}`;
+    for (let i = 1; i < n; i++) {
+      const x = a.x + ((b.x - a.x) * i) / n, y = a.y + ((b.y - a.y) * i) / n, k = `${Math.floor(x)},${Math.floor(y)}`;
+      if (k !== ta && k !== tb && BLOCK_SHOT.includes(tileAt(x, y))) return false;
     }
     return true;
   }
   function predictMe(a, dt) {
     let { x, y } = a;
     const inp = input(), n = Math.hypot(inp.mx || 0, inp.my || 0);
-    if (n > 0 && !a.down) {
+    if (n > 0 && !a.down && !a.frozen) {
       const ahead = Math.min((performance.now() - snapAt) / 1000 + 0.05, 0.15) * SPEED;
       const dx = (inp.mx / n) * ahead, dy = (inp.my / n) * ahead;
       if (free(x + dx, y + dy)) { x += dx; y += dy; } else if (free(x + dx, y)) x += dx; else if (free(x, y + dy)) y += dy;
@@ -549,18 +585,37 @@ export function startCity(canvas, opts) {
       // Players.
       const meA = byId(s.avatars, me);
       const mp = meA ? predictMe(meA, dt) : null;
+      const mySquad = meA ? meA.squad : "";
       for (const a of s.avatars) {
         if (!a.online || np >= CAP.people) continue;
         const p = a.id === me ? mp : pos("avatars", a.id) || a;
         const col = C.set(a.down ? "#3a4a3e" : colorOf(a.color));
+        if (a.frozen) col.multiplyScalar(0.35).add(C.clone().set("#0a4a55"));
         const yaw = a.id === me && aimYaw !== null && now < aimUntil ? aimYaw : yawOf(a.fx, a.fy);
         for (const k of ["body", "head", "visor"]) put(P[k], np, p.x, p.y, yaw, a.id === me ? 1.12 : 1, a.down);
-        put(P.ring, np, p.x, p.y, 0, a.id === me ? 1.12 : 1);
-        P.body.setColorAt(np, col); P.head.setColorAt(np, col); P.ring.setColorAt(np, a.down ? C.set("#ff4d5e") : col);
+        // Spawn protection: the ground ring pulses white.
+        const prot = a.protected && !a.frozen, enemy = a.id !== me && mySquad && a.squad !== mySquad;
+        put(P.ring, np, p.x, p.y, 0, (a.id === me ? 1.12 : 1) * (prot ? 1.25 + Math.sin(clock * 10) * 0.1 : 1));
+        P.body.setColorAt(np, col); P.head.setColorAt(np, col);
+        P.ring.setColorAt(np, a.down ? C.set("#ff4d5e") : prot ? C.set("#ffffff") : enemy ? C.set("#ff4d5e") : C.set(colorOf(a.color)));
         np++;
         blob.push(p.x, p.y, 1);
-        const tag = a.id === me ? `<b style="color:#fff">${esc(a.nick)}</b>` : esc(a.nick);
-        label("e:a" + a.id, tag, p.x, a.down ? 0.9 : 1.62, p.y, "gl-nick");
+        if (a.frozen && ni < CAP.ice) put(ice, ni++, p.x, p.y, 0, 1.05);
+        const flashing = (hitFlash.get("p:" + a.id) || 0) > now;
+        if (flashing) { P.body.setColorAt(np - 1, C.set("#e8ffff")); P.head.setColorAt(np - 1, C.set("#e8ffff")); }
+        // Name, then the player's own Substrate agent: its state, and the snapshot time once
+        // a freeze has suspended it.
+        const name = a.id === me ? `<b style="color:#fff">${esc(a.nick)}</b>` : `<span class="${enemy ? "gl-enemy" : ""}">${esc(a.nick)}</span>`;
+        const ag = a.agent || "";
+        const iceTag = !a.frozen ? "" : ag === "suspending" ? `<i class="gl-ice">SUSPENDING…</i>`
+          : ag === "asleep" && a.agentMs ? `<i class="gl-ice">❄ snapshotted in ${a.agentMs} ms</i>` : ag === "nosandbox" || ag === "" ? `<i class="gl-ice">❄ FROZEN</i>` : `<i class="gl-ice">❄ FROZEN</i>`;
+        const agTag = ag === "awake" ? `<span class="gl-agent" style="color:#5fd068">● agent awake</span>`
+          : ag === "starting" ? `<span class="gl-agent" style="color:#9dffb0">agent starting…</span>`
+          : ag === "waking" ? `<span class="gl-agent" style="color:#60a5fa">agent waking…</span>`
+          : ag === "nosandbox" ? `<span class="gl-agent" style="color:#8a8f94">asleep: no free sandbox</span>`
+          : ag === "asleep" && !a.frozen ? `<span class="gl-agent" style="color:#60a5fa">◌ agent asleep</span>` : "";
+        const hits = !a.frozen && a.pvpHits ? `<span class="gl-agent" style="color:#ff8a8a">HIT ${a.pvpHits}/3</span>` : "";
+        label("e:a" + a.id, `${iceTag}${name}${agTag}${hits}${prot ? `<span class="gl-agent" style="color:#fff">🛡 protected</span>` : ""}`, p.x, a.down ? 0.9 : 1.62, p.y, "gl-name");
         labels.get("e:a" + a.id).el.style.color = colorOf(a.color);
       }
       // Allies: smaller, in the owner's colour, frozen in ice when hunters drop them.
@@ -637,17 +692,25 @@ export function startCity(canvas, opts) {
       const inp = input();
       // Lock-on: the agent FIRE will hit (the server aims the same way), else the nearest
       // one a little out of range.
-      let lock = null, lockId = null, far = null, fd = FIRE_RANGE + 6;
-      if (mp && meA && !meA.down) {
+      let lock = null, lockId = null, far = null, fd = FIRE_RANGE + 6, lockPlayer = false;
+      if (mp && meA && !meA.down && !meA.frozen) {
         let bd = FIRE_RANGE;
         for (const t of s.targets) {
           if (t.state !== "Working" || t.busy || t.op) continue;
           const p = pos("targets", t.id) || t, d = Math.hypot(p.x - mp.x, p.y - mp.y);
-          if (d < bd) { lock = p; lockId = t.id; bd = d; }
+          if (d < bd && los(mp, p)) { lock = p; lockId = t.id; bd = d; }
           if (d < fd) { far = p; fd = d; }
         }
+        // Enemy players: another squad, in play, not protected (the server's rule).
+        for (const a of s.avatars) {
+          if (a.id === me || !a.online || a.down || a.frozen || a.protected || a.squad === meA.squad) continue;
+          const p = pos("avatars", a.id) || a, d = Math.hypot(p.x - mp.x, p.y - mp.y);
+          if (d < bd && los(mp, p)) { lock = p; lockId = "p:" + a.id; bd = d; lockPlayer = true; }
+          if (d < fd) { far = p; fd = d; }
+        }
+        if (lockId && !lockId.startsWith("p:")) lockPlayer = false;
       }
-      lockState = lock ? "lock" : far ? "far" : "none";
+      lockState = lock ? (lockPlayer ? "player" : "lock") : far ? "far" : "none";
       const rt = lock || far;
       reticle.visible = !!rt;
       if (rt) {
@@ -655,7 +718,7 @@ export function startCity(canvas, opts) {
         reticle.rotation.y = clock * (lock ? 3 : 0.8);
         const pulse = lock ? 1 + Math.sin(clock * 12) * 0.06 : 1.15;
         reticle.scale.setScalar(pulse);
-        retMat.color.set(lock ? (inp.fire ? 0xffffff : 0x9fffff) : 0x56606e);
+        retMat.color.set(lock ? (inp.fire ? 0xffffff : lockPlayer ? 0xff6b6b : 0x9fffff) : 0x56606e);
         retMat.opacity = lock ? 0.95 : 0.5;
       }
       if (inp.fire && lock && fireCD <= 0) {
@@ -755,6 +818,10 @@ export function startCity(canvas, opts) {
     // Place labels.
     label("dispatch", "DISPATCH · kagent", dc.x, 0.3, D.y + D.h - 0.2, "gl-place");
     label("vault", "SNAPSHOT VAULT", V.x + V.w / 2, vh + 0.5, V.y + V.h / 2, "gl-place gl-gold");
+    // District names lie on the ground as landmarks (the highway's sits on its deck).
+    for (const g of city.regions || []) {
+      label("rg:" + g.name, esc(g.name), g.x + g.w / 2, g.kind === "overpass" ? 2.4 : 0.15, g.y + Math.min(g.h / 2, 3.5), "gl-region");
+    }
     if (!phone) for (const [name, d] of districts) label("n" + name, name, d.x + d.w / 2, 0.05, -0.3, "gl-place");
     for (const [k, l] of labels) {
       if (!l.used) {

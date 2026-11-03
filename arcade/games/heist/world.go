@@ -46,14 +46,14 @@ type Avatar struct {
 
 	// PvP (players.go). A player is Enrolled from their first run; from then on their own
 	// agent (Agent) runs while they are in play.
-	Enrolled      bool
-	Frozen        bool    // frozen by another player: no move or fire until RespawnAt
-	FrozenBy      string  // the player who froze them
-	FrozenAt      float64 // world time
-	ProtectUntil  float64 // world time spawn protection ends
-	PvPHits       int     // hits from other players since LastPvP (reset after pvpHitDecay)
-	LastPvP       float64
-	Agent         PlayerAgent
+	Enrolled     bool
+	Frozen       bool    // frozen by another player: no move or fire until RespawnAt
+	FrozenBy     string  // the player who froze them
+	FrozenAt     float64 // world time
+	ProtectUntil float64 // world time spawn protection ends
+	PvPHits      int     // hits from other players since LastPvP (reset after pvpHitDecay)
+	LastPvP      float64
+	Agent        PlayerAgent
 }
 
 // NewAvatar is an online avatar at pos with full health.
@@ -114,8 +114,8 @@ type World struct {
 	Now     float64
 	Events  []Event
 	Drops   map[string]*Drop
-	Rand    *rand.Rand        // loot rolls; NewWorld seeds it from the clock
-	Allies  map[string]*Ally  // deployed allies; ones still spawning are kept in pending
+	Rand    *rand.Rand       // loot rolls; NewWorld seeds it from the clock
+	Allies  map[string]*Ally // deployed allies; ones still spawning are kept in pending
 	// OnPlayerFrozen, if set, is told every PvP takedown (the Game scores it).
 	OnPlayerFrozen func(by, victim string)
 	// PlayerAgentCap overrides PlayerAgentCap (tests).

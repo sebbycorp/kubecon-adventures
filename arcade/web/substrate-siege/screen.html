@@ -58,7 +58,7 @@
   .card h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--mute); display: flex; justify-content: space-between; }
   .card h2 em { font-style: normal; letter-spacing: 0; color: #6f7479; }
   #board { flex: none; }
-  #rows .row { display: grid; grid-template-columns: 20px 1fr auto 62px 48px 34px; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid #1c1f21; font-size: 13.5px; transition: background .6s; }
+  #rows .row { display: grid; grid-template-columns: 20px 1fr auto 52px 44px 48px 30px; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid #1c1f21; font-size: 13.5px; transition: background .6s; }
   #rows .row:first-child { border-top: 0; }
   #rows .row.bump { background: #5fd06818; }
   #rows .rk { color: #6f7479; font: 12px "JetBrains Mono", monospace; text-align: right; }
@@ -125,7 +125,7 @@
 
 <div id="side">
   <div id="qr"><div class="code" id="qrcode"></div><div><b>Scan to join the siege</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span><div id="cta"></div></div></div>
-  <div id="board" class="card"><h2>BEST 3-MINUTE RUN <em>points · frozen · rig · allies</em></h2><div id="rows"></div><div id="squads" class="hidden"></div></div>
+  <div id="board" class="card"><h2>BEST 3-MINUTE RUN <em>points · agents frozen · players frozen · rig · allies</em></h2><div id="rows"></div><div id="squads" class="hidden"></div></div>
   <div id="feedCard" class="card"><h2>LIVE FEED</h2><div id="feed" aria-live="polite"></div></div>
 </div>
 
@@ -258,7 +258,7 @@ function board(s) {
     const rig = r.rig ? `<span class="rig" style="color:${RAM[r.rig]};border-color:${RAM[r.rig]}66">DDR${r.rig}</span>` : `<span class="rig">–</span>`;
     return `<div class="row" data-id="${esc(r.id)}"><span class="rk">${i + 1}</span>` +
       `<span class="nm"><i style="background:${esc(colorOf(av ? av.color : "#6f7479"))}"></i><b>${esc(r.nick)}</b>${tag ? `<small>${esc(tag)}</small>` : ""}</span>` +
-      `<span class="td">${r.best}<small>pts</small></span><span class="cash">❄${n(r.freezes)}</span>${rig}` +
+      `<span class="td">${r.best}<small>pts</small></span><span class="cash">❄${n(r.freezes)}</span><span class="cash" style="color:#ff9f43">⚔${n(r.players || 0)}</span>${rig}` +
       `<span class="al">${r.allies ? "◆" + r.allies : ""}</span></div>`;
   }).join("") : `<div class="empty">No runs yet. Scan the code and be first.</div>`;
   if ($("rows")._h !== html) {
@@ -310,6 +310,21 @@ function onEvent(e) {
   const tg = byId(s.targets, e.target), tname = `<b>${esc(tg ? tg.name : e.text || "a hunter")}</b>`;
   switch (e.kind) {
     case "frozen": lastAction = Date.now(); return feed("ice", "❄", `${who} froze ${tname}`, `suspend ${e.ms} ms`);
+    // PvP: shown once the victim's own agent is snapshotted, with the real suspend time
+    // (or at once if their agent wasn't awake).
+    case "player-snapshot": {
+      const v = byId(s.avatars, e.player);
+      if (!v || !v.frozenBy) return;
+      lastAction = Date.now();
+      return feed("ice", "⚔", `${esc(nickOf(s, v.frozenBy))} froze player ${esc(v.nick)}`, `snapshot ${e.ms} ms`);
+    }
+    case "player-frozen": {
+      const v = byId(s.avatars, e.text);
+      if (!v || v.agent === "awake" || v.agent === "suspending") return;
+      lastAction = Date.now();
+      return feed("ice", "⚔", `${who} froze player ${esc(v.nick)}`);
+    }
+    case "player-woke": return feed("", "↻", `${esc(nickOf(s, e.player))} respawned, their agent woke`, `resume ${e.ms} ms`);
     case "booked": lastAction = Date.now(); return feed("gold", "▣", `${who} booked ${tname}`, "checkpoint");
     case "booked-line": return feed("gold", "❝", `${tname}, from its snapshot: “${esc(e.text)}”`);
     case "deleted": return feed("", "✖", `${tname} was left frozen too long`, "delete");

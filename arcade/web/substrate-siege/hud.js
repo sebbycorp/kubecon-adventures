@@ -40,6 +40,10 @@ export function runLine(snap, me, a) {
 }
 
 // minimap draws the city, the Vault and Dispatch once, then the moving dots each call.
+// MINI is each tile's colour on the minimap.
+const MINI = { "#": "#1c2632", V: "#4a3a00", D: "#1e9e4a", "~": "#0b3352", "=": "#5a4a3a", p: "#14181f", g: "#0f2a16",
+  t: "#1a4a24", c: "#5a2a20", f: "#2a4a5a", a: "#0a0c10", h: "#101216", o: "#2a2d33" };
+
 export function minimap(canvas, city) {
   const { w: W, h: H, tiles } = city;
   const base = document.createElement("canvas");
@@ -49,7 +53,7 @@ export function minimap(canvas, city) {
   b.fillStyle = "#000"; b.fillRect(0, 0, base.width, base.height);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const c = tiles[y][x];
-    b.fillStyle = c === "#" || c === "V" ? "#1c2632" : c === "D" ? "#1e9e4a" : "#05070a";
+    b.fillStyle = MINI[c] || "#05070a";
     b.fillRect(x * k, y * k, k, k);
   }
   const g = canvas.getContext("2d");

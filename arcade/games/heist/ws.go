@@ -93,43 +93,44 @@ type Snap struct {
 }
 
 type AvatarView struct {
-	ID       string  `json:"id"`
-	Nick     string  `json:"nick"`
-	Color    string  `json:"color"`
-	Squad    string  `json:"squad"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	FX       float64 `json:"fx"`
-	FY       float64 `json:"fy"`
-	HP       float64 `json:"hp"`
-	Down     bool    `json:"down"`
-	Online   bool    `json:"online"`
+	ID     string  `json:"id"`
+	Nick   string  `json:"nick"`
+	Color  string  `json:"color"`
+	Squad  string  `json:"squad"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	FX     float64 `json:"fx"`
+	FY     float64 `json:"fy"`
+	HP     float64 `json:"hp"`
+	Down   bool    `json:"down"`
+	Online bool    `json:"online"`
 	// PvP: frozen by another player (and by whom), spawn-protected, PvP hits taken, and
 	// the player's own Substrate agent (its state and last suspend or resume in ms).
-	Frozen    bool   `json:"frozen,omitempty"`
-	FrozenBy  string `json:"frozenBy,omitempty"`
-	Protected bool   `json:"protected,omitempty"`
-	PvPHits   int    `json:"pvpHits,omitempty"`
-	Agent     string `json:"agent,omitempty"`
-	AgentMs   int64  `json:"agentMs,omitempty"`
+	Frozen    bool    `json:"frozen,omitempty"`
+	FrozenBy  string  `json:"frozenBy,omitempty"`
+	Protected bool    `json:"protected,omitempty"`
+	PvPHits   int     `json:"pvpHits,omitempty"`
+	Agent     string  `json:"agent,omitempty"`
+	AgentMs   int64   `json:"agentMs,omitempty"`
+	RespawnIn float64 `json:"respawnIn,omitempty"` // seconds until a frozen player respawns
 }
 
 type TargetView struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Mission  string  `json:"mission"`
-	Squad    string  `json:"squad"`
-	Node     string  `json:"node"`
-	Say      string  `json:"say"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	State    string  `json:"state"`
-	Hits     int     `json:"hits"`
-	Step     int     `json:"step"`
-	Steps    int     `json:"steps"`
-	Busy     bool    `json:"busy"`
-	Op       string  `json:"op,omitempty"` // the op in flight: "freeze", "extract" or "delete"
-	New      bool    `json:"new"`
+	ID      string  `json:"id"`
+	Name    string  `json:"name"`
+	Mission string  `json:"mission"`
+	Squad   string  `json:"squad"`
+	Node    string  `json:"node"`
+	Say     string  `json:"say"`
+	X       float64 `json:"x"`
+	Y       float64 `json:"y"`
+	State   string  `json:"state"`
+	Hits    int     `json:"hits"`
+	Step    int     `json:"step"`
+	Steps   int     `json:"steps"`
+	Busy    bool    `json:"busy"`
+	Op      string  `json:"op,omitempty"` // the op in flight: "freeze", "extract" or "delete"
+	New     bool    `json:"new"`
 }
 
 type AllyView struct {
@@ -236,6 +237,14 @@ type CapView struct {
 
 func r2(f float64) float64 { return math.Round(f*100) / 100 }
 
+// respawnIn is how long a frozen player has left, or 0.
+func respawnIn(a *Avatar, now float64) float64 {
+	if !a.Frozen {
+		return 0
+	}
+	return r2(max(a.RespawnAt-now, 0.01))
+}
+
 func parts(ps []Part) *[]PartView {
 	out := make([]PartView, 0, len(ps))
 	for _, p := range ps {
@@ -267,7 +276,7 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		}
 		c.Avatars = append(c.Avatars, AvatarView{a.PlayerID, a.Nick, a.Color, a.Squad, r2(a.Pos.X), r2(a.Pos.Y),
 			r2(a.Facing.X), r2(a.Facing.Y), r2(a.HP), a.Down, a.Online,
-			a.Frozen, a.FrozenBy, w.Now < a.ProtectUntil, hits, a.Agent.State, a.Agent.Ms})
+			a.Frozen, a.FrozenBy, w.Now < a.ProtectUntil, hits, a.Agent.State, a.Agent.Ms, respawnIn(a, w.Now)})
 	}
 	for _, id := range slices.Sorted(maps.Keys(w.Targets)) {
 		t := w.Targets[id]

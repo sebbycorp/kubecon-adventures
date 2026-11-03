@@ -214,7 +214,7 @@ func policyErr(err error) error {
 // session is what the adapter remembers about one live session.
 type session struct {
 	ally     bool
-	player   bool // a player's own agent (siegeplayer)
+	player   bool   // a player's own agent (siegeplayer)
 	lastTask string // A2A task ID of the last prompt reply (Checkpoint's head)
 	// staleHead: a suspend since lastTask changed the snapshot, so lastTask can't be
 	// checkpointed any more ("SnapshotTagFailed: snapshot changed"); a new turn fixes it.

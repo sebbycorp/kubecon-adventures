@@ -167,10 +167,29 @@ export function buildTown(scene, city, { fade: fu = fadeUniforms(), maxHeight = 
   scene.add(instanced(new THREE.BoxGeometry(1, 0.07, 1), new THREE.MeshStandardMaterial({ color: 0x3a3d44, roughness: 0.9 }),
     blocks.map((b) => [mtx(b.x + b.w / 2, 0.035, b.y + b.h / 2, 0, b.w, 1, b.h)]), true));
 
+  // regionOf is the district kind under a tile (downtown, alleys, docks, ...).
+  const regions = city.regions || [];
+  const regionOf = (x, y) => (regions.find((g) => g.kind !== "overpass" && x >= g.x && x < g.x + g.w && y >= g.y && y < g.y + g.h) || {}).kind || "";
+
   // Buildings: each block holds one, two or four buildings, set back from the curb:
   // towers (2.2-3.5), mid-rises (1.2-2.2) and low shops (0.6-0.9) with an awning.
+  // Downtown leans to towers, the alleys are low, and the docks have flat warehouses.
   const IN = 0.25, boxes = [];
   for (const b of blocks) {
+    const kindOf = regionOf(b.x, b.y);
+    if (kindOf === "docks") {
+      boxes.push({ x0: b.x + 0.15, z0: b.y + 0.15, x1: b.x + b.w - 0.15, z1: b.y + b.h - 0.15, h: 0.95 + r() * 0.2, shop: false,
+        color: [0x6d7884, 0x8a6e52, 0x4f6a7d][Math.floor(r() * 3)], roof: 0x5a5c60, ou: 0, ov: 0, neon: null });
+      continue;
+    }
+    if (kindOf === "alleys") {
+      const shop = r() < 0.45;
+      boxes.push({ x0: b.x + 0.12, z0: b.y + 0.12, x1: b.x + b.w - 0.12, z1: b.y + b.h - 0.12, h: Math.min(maxHeight, shop ? 0.6 + r() * 0.3 : 1.0 + r() * 0.6), shop,
+        color: FACADES[Math.floor(r() * FACADES.length)], roof: ROOFS[Math.floor(r() * ROOFS.length)],
+        ou: Math.floor(r() * 5) / 5, ov: Math.floor(r() * 6) / 6, neon: !shop && r() < 0.3 ? NEON[Math.floor(r() * 3)] : null });
+      continue;
+    }
+    const towerBias = kindOf === "downtown" ? 0.5 : 0.72;
     const parts = [], k = r();
     if (b.w >= 4 && b.h >= 4 && k < 0.4) {
       const sx = 2 + (r() < 0.5 ? 0 : 1), sy = 2 + (r() < 0.5 ? 0 : 1);
@@ -180,7 +199,7 @@ export function buildTown(scene, city, { fade: fu = fadeUniforms(), maxHeight = 
       parts.push(...(r() < 0.5 ? [[0, 0, s, b.h], [s, 0, b.w, b.h]] : [[0, 0, b.w, s], [0, s, b.w, b.h]]));
     } else parts.push([0, 0, b.w, b.h]);
     for (const [a, c, d, e] of parts) {
-      const kind = r(), shop = kind < 0.28, tower = kind > 0.72;
+      const kind = r(), shop = kind < 0.28, tower = kind > towerBias;
       // A tower steps back from the street a little more; shops come right up to it.
       const inset = shop ? IN : IN + (tower ? 0.15 : 0.05);
       boxes.push({
@@ -245,6 +264,7 @@ export function buildTown(scene, city, { fade: fu = fadeUniforms(), maxHeight = 
   // Street lights on every block corner, with a warm pool of light on the road.
   const poles = [], heads = [], pools = [];
   for (const b of blocks) {
+    if (b.w < 3 || b.h < 3) continue; // the alley quarter's small blocks: no corner lights
     for (const [x, z, ry] of [[b.x + 0.12, b.y + 0.12, -Math.PI * 0.75], [b.x + b.w - 0.12, b.y + 0.12, -Math.PI * 0.25],
       [b.x + 0.12, b.y + b.h - 0.12, Math.PI * 0.75], [b.x + b.w - 0.12, b.y + b.h - 0.12, Math.PI * 0.25]]) {
       const dx = Math.sin(ry) * 0.35, dz = Math.cos(ry) * 0.35;
@@ -314,6 +334,8 @@ export function buildTown(scene, city, { fade: fu = fadeUniforms(), maxHeight = 
   scene.add(instanced(flat(1, 0.045), new THREE.MeshBasicMaterial({ color: 0xb8bcc4 }), white));
   scene.add(instanced(flat(1, 0.12), new THREE.MeshBasicMaterial({ color: 0xd8dde6, transparent: true, opacity: 0.4 }), zebra));
 
+  terrain(scene, city, F, rand(17));
+
   // District borders: a faint dashed line where one node's blocks end and the next begin.
   const districts = Object.entries(city.districts || {}).sort((a, b) => a[1].x - b[1].x);
   const pts = districts.slice(1).flatMap(([, d]) => [d.x + 0.5, 0.02, 0, d.x + 0.5, 0.02, H]);
@@ -324,4 +346,99 @@ export function buildTown(scene, city, { fade: fu = fadeUniforms(), maxHeight = 
   }
 
   return { setAwake, districts };
+}
+
+// terrain draws everything that isn't a road or a building: plaza paving and the river
+// promenades, park grass and trees, the river and its bridges, alley cobbles, shipping
+// containers, fountains and planters, and the elevated highway on its pillars. All of it
+// is instanced, a few draw calls per kind.
+function terrain(scene, city, F, r) {
+  const tiles = city.tiles;
+  const at = (ch) => rectsOf(tiles, ch);
+  const slab = (rects, y, color, opts = {}) => {
+    if (!rects.length) return;
+    const m = instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...opts }),
+      rects.map((b) => [mtx(b.x + b.w / 2, y / 2, b.y + b.h / 2, 0, b.w, Math.max(y, 0.01), b.h)]));
+    m.receiveShadow = true;
+    scene.add(m);
+  };
+  slab(at("p"), 0.05, 0x4b4f58); // plaza paving and the promenades
+  slab(at("g"), 0.04, 0x1d4428); // park grass
+  slab(at("a"), 0.02, 0x26282d); // alley cobbles
+  slab(at("t"), 0.04, 0x1d4428); // grass under the trees
+
+  // Water: a deep blue that glows a little, so the river reads at night.
+  const water = at("~");
+  if (water.length) {
+    scene.add(instanced(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x0b3352, emissive: 0x0a2c4a, emissiveIntensity: 0.9, roughness: 0.15, metalness: 0.3 }),
+      water.map((b) => [mtx(b.x + b.w / 2, 0.012, b.y + b.h / 2, 0, b.w, 1, b.h)])));
+  }
+  // Bridges: a deck with a railing on each side, across the river.
+  const decks = at("="), rails = [];
+  for (const b of decks) {
+    const across = b.w <= b.h; // bridges run north-south: rails on the east and west edges
+    if (across) rails.push([mtx(b.x + 0.06, 0.32, b.y + b.h / 2, 0, 0.08, 0.5, b.h)], [mtx(b.x + b.w - 0.06, 0.32, b.y + b.h / 2, 0, 0.08, 0.5, b.h)]);
+  }
+  slab(decks, 0.08, 0x6b5b4a);
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshStandardMaterial({ color: 0x9a8a72, roughness: 0.6 })), rails, true));
+
+  // Trees: a trunk and a round canopy per tile, in a few greens.
+  const trees = [], crowns = [];
+  for (let y = 0; y < tiles.length; y++) for (let x = 0; x < tiles[y].length; x++) {
+    if (tiles[y][x] !== "t") continue;
+    const jx = (r() - 0.5) * 0.3, jz = (r() - 0.5) * 0.3, s = 0.85 + r() * 0.35;
+    trees.push([mtx(x + 0.5 + jx, 0.3, y + 0.5 + jz, 0, 1, s, 1)]);
+    crowns.push([mtx(x + 0.5 + jx, 0.75 * s + 0.2, y + 0.5 + jz, r() * 6, s, s * 0.9, s), [0x2f6b3a, 0x3c7d3f, 0x27593a, 0x4a8a46][Math.floor(r() * 4)]]);
+  }
+  scene.add(instanced(new THREE.CylinderGeometry(0.06, 0.09, 0.6, 6), new THREE.MeshStandardMaterial({ color: 0x4a3524 }), trees, true));
+  scene.add(instanced(new THREE.IcosahedronGeometry(0.46, 0), F(new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true })), crowns, true));
+
+  // Shipping containers: one per row of a container block, ribbed by colour bands.
+  const boxes = [];
+  for (const b of at("c")) {
+    for (let j = 0; j < b.h; j++) {
+      const col = [0xb5452f, 0x2f6fa0, 0xd08a2a, 0x3f7f4f, 0x7a4a8a, 0x9aa1a8][Math.floor(r() * 6)];
+      boxes.push([mtx(b.x + b.w / 2, 0.45, b.y + j + 0.5, 0, b.w - 0.12, 0.9, 0.86), col]);
+    }
+  }
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.35 })), boxes, true));
+
+  // Fountains (2x2) and planters (3x1) on the plaza.
+  const basins = [], pools = [], jets = [], planters = [], shrubs = [];
+  for (const b of at("f")) {
+    if (b.w === 2 && b.h === 2) {
+      basins.push([mtx(b.x + 1, 0.18, b.y + 1, 0, 1, 1, 1)]);
+      pools.push([mtx(b.x + 1, 0.33, b.y + 1)]);
+      jets.push([mtx(b.x + 1, 0.6, b.y + 1)]);
+    } else {
+      planters.push([mtx(b.x + b.w / 2, 0.22, b.y + b.h / 2, 0, b.w - 0.1, 0.44, b.h - 0.1)]);
+      shrubs.push([mtx(b.x + b.w / 2, 0.5, b.y + b.h / 2, 0, b.w - 0.25, 0.25, b.h - 0.25), 0x3c7d3f]);
+    }
+  }
+  scene.add(instanced(new THREE.CylinderGeometry(0.95, 1.0, 0.36, 20), new THREE.MeshStandardMaterial({ color: 0x8c9099, roughness: 0.6 }), basins, true));
+  scene.add(instanced(new THREE.CylinderGeometry(0.82, 0.82, 0.04, 20), new THREE.MeshStandardMaterial({ color: 0x3fa7d6, emissive: 0x1a6a96, emissiveIntensity: 0.8 }), pools));
+  scene.add(instanced(new THREE.CylinderGeometry(0.05, 0.12, 0.6, 8), new THREE.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.7 }), jets));
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x6b6f78, roughness: 0.8 }), planters, true));
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), shrubs));
+
+  // The elevated highway: a deck over its band with lane stripes and a parapet, on
+  // pillars. It fades like a building when it hides the player.
+  const band = [...at("h"), ...at("o")];
+  if (band.length) {
+    const x0 = Math.min(...band.map((b) => b.x)), x1 = Math.max(...band.map((b) => b.x + b.w));
+    const z0 = Math.min(...band.map((b) => b.y)), z1 = Math.max(...band.map((b) => b.y + b.h));
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.22, z1 - z0 + 0.4), F(new THREE.MeshStandardMaterial({ color: 0x3a3d44, roughness: 0.85 })));
+    deck.position.set((x0 + x1) / 2, 2.0, (z0 + z1) / 2);
+    deck.castShadow = deck.receiveShadow = true;
+    scene.add(deck);
+    const stripes = [], walls = [];
+    for (let x = x0 + 0.5; x < x1; x += 1.6) stripes.push([mtx(x, 2.115, (z0 + z1) / 2, 0, 0.8, 0.01, 0.08)]);
+    walls.push([mtx((x0 + x1) / 2, 2.25, z0 - 0.15, 0, x1 - x0, 0.3, 0.1)], [mtx((x0 + x1) / 2, 2.25, z1 + 0.15, 0, x1 - x0, 0.3, 0.1)]);
+    scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshBasicMaterial({ color: 0xe6b84a })), stripes));
+    scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshStandardMaterial({ color: 0x8a8f99 })), walls));
+  }
+  const pillars = [];
+  for (const b of at("o")) for (let i = 0; i < b.w; i++) pillars.push([mtx(b.x + i + 0.5, 0.95, b.y + 0.5, 0, 0.62, 1.9, 0.62)]);
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshStandardMaterial({ color: 0x7a7f88, roughness: 0.8 })), pillars, true));
 }
