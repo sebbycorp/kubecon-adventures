@@ -169,6 +169,16 @@
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="duck"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/duck-hunt/screen" target="_blank">big screen ↗</a></object>
     </a>
+    <a class="card" href="/flappy" style="--c: #4ade80">
+      <img class="shot" src="/static/shots/flappy.webp" alt="Flappy Substrate: the green octopus swimming between coral pillars under the sea" loading="lazy" width="720" height="450">
+      <div class="head"><div class="ico">🐙</div><div><h2>FLAPPY SUBSTRATE</h2><div class="tag">tap to swim · how far can you go</div></div></div>
+      <div class="body"><p>You are the agent. Tap to keep the octopus swimming through the coral. Crash and your agent is snapshotted; play again wakes it right back up.</p>
+        <div class="real"><span>Resume</span><span>Suspend</span><span>Snapshot</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top swimmers</div><div data-ab-board="/flappy" data-ab-n="5" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/flappy"></div>scan to play</div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="flappy"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/flappy/screen" target="_blank">big screen ↗</a></object>
+    </a>
     <a class="card ext" href="https://gd-frontend-413299367082.us-central1.run.app/" target="_blank" rel="noopener" style="--c: #a78bfa">
       <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/agentgateway-missions.webp" aria-label="AI agentgateway missions: a pixel-art city intersection seen from above, a stun-gun blast in the street and the prompt: Lose the cops! Get to a car or out of sight" width="720" height="450"><source src="/static/loops/agentgateway-missions.webm" type="video/webm"><source src="/static/loops/agentgateway-missions.mp4" type="video/mp4"></video>
       <div class="head"><div class="ico"><img src="/agent-flow/static/agentgateway-icon.svg" alt="" width="24" height="24"></div><div><h2>AI AGENTGATEWAY MISSIONS</h2><div class="tag">community game · by Solo Labs</div></div></div>
@@ -180,7 +190,7 @@
     </a>
   </section>
 
-  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a></footer>
+  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a></footer>
 </div>
 
 <script>
@@ -217,7 +227,7 @@ document.querySelectorAll(".card:not(.ext)").forEach((c) => c.addEventListener("
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
 const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
 function players(s) {
-  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players };
+  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players };
 }
 async function poll() {
   try {

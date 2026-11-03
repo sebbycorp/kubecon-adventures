@@ -75,7 +75,8 @@
   .rhead { display: flex; justify-content: space-between; align-items: baseline; }
   .rhead h2 { margin: 0; font-size: 30px; font-weight: 800; }
   .rhead span { color: var(--mute); font-size: 17px; }
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); gap: 14px; min-height: 0; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, 1fr); gap: 12px; min-height: 0; }
+  .tile:last-child:nth-child(odd) { grid-column: span 2; }
   /* The game's screenshot fills the tile; a fade at the bottom keeps the name and board
      readable, and the QR code sits in a white card on the right. */
   .tile { --c: var(--green); position: relative; display: grid; grid-template-columns: 1fr 172px; gap: 12px; padding: 12px; border-radius: 18px; min-height: 0; overflow: hidden;
@@ -118,7 +119,7 @@
   </section>
 
   <section class="right">
-    <div class="rhead"><h2>Scan a code to play</h2><span>6 games · every character is a real agent</span></div>
+    <div class="rhead"><h2>Scan a code to play</h2><span>7 games · every character is a real agent</span></div>
     <div class="tiles" id="tiles"></div>
   </section>
 </div>
@@ -181,13 +182,14 @@ const TILES = [
   { path: "/gateway-defense", name: "Gateway Defense", color: "#22d3ee", unit: "Top defenders", pitch: "Tower defense with real controls: prompt guard, rate limit, egress and suspend." },
   { path: "/agent-flow", name: "Agent Flow", color: "#5fd068", unit: "Top agents", pitch: "Give your own agent a task and watch it travel through the platform on the left." },
   { path: "/duck-hunt", name: "Duck Hunt", color: "#facc15", unit: "Top hunters", pitch: "Turn your phone sideways and shoot real agents into Snapshot Storage." },
+  { path: "/flappy", name: "Flappy Substrate", color: "#4ade80", unit: "Top swimmers", still: true, pitch: "Tap to keep the octopus swimming. Crash and your agent is snapshotted; play again wakes it." },
   { path: MISSIONS, name: "AI agentgateway missions", color: "#a78bfa", unit: "Top players", ext: true, img: "agentgateway-missions",
     pitch: "Configure a real agentgateway, take contracts, stack points and dodge the cops." },
 ];
 function tile(g) {
   const url = g.ext ? g.path : SITE + g.path, img = g.img || g.path.slice(1);
   return `<div class="tile" style="--c:${g.color}">
-    <video class="shot" autoplay muted loop playsinline preload="auto" poster="/static/shots/${img}.webp?v=5" aria-label="${esc(g.name)} gameplay"><source src="/static/loops/${img}.webm?v=1" type="video/webm"><source src="/static/loops/${img}.mp4?v=1" type="video/mp4"></video>
+    ${g.still ? `<img class="shot" src="/static/shots/${img}.webp?v=5" alt="${esc(g.name)}">` : `<video class="shot" autoplay muted loop playsinline preload="auto" poster="/static/shots/${img}.webp?v=5" aria-label="${esc(g.name)} gameplay"><source src="/static/loops/${img}.webm?v=1" type="video/webm"><source src="/static/loops/${img}.mp4?v=1" type="video/mp4"></video>`}
     <div class="info"><h3>${esc(g.name)}</h3>
       <div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div></div>
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;
