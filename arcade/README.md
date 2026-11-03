@@ -89,7 +89,7 @@ Agent Flow makes Substrate's snapshots the headline, with real data only:
 | Policy | Target | What it does |
 |--------|--------|--------------|
 | `flow-llm-guard` | `openai-flow` route | Prompt guard (regex, `Reject`, 403): jailbreaks ("ignore previous instructions"), requests to reveal keys, tokens, passwords or credentials, and pasted `sk-…` keys. Scope is `Messages`, so the system prompt and tool output aren't scanned. Plus a local budget of 200k tokens and 300 requests a minute. |
-| `front-door` | `arcade` route | 300 requests a minute per visitor, keyed on Cloudflare's `cf-connecting-ip` (LAN requests share one bucket). |
+| `front-door` | `arcade` route | 3,000 requests a minute per visitor IP, keyed on Cloudflare's `cf-connecting-ip` (LAN requests share one bucket). High because a venue's Wi-Fi puts a whole booth behind one public IP: the combined load test hit 300 at once. |
 | `llm-in-cluster-only` | `openai` and `openai-flow` routes | LLM calls only from pod IPs (`10.244.0.0/16`). Before this, anyone on the LAN could reach the LLM routes through host port 8090 by faking the Host header. |
 
 Agents only ever hold the placeholder key `via-agentgateway`; agentgateway adds the real one. Every LLM call reaches agentgateway from atenet-egress, the sandboxes' only way out.

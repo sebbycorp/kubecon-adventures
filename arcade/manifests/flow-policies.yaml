@@ -61,7 +61,7 @@ spec:
       - requests: 300
         unit: Minutes
 ---
-# The public front door: a request budget per visitor, keyed on the client IP Cloudflare
+# The public front door: a request budget per visitor IP, keyed on the client IP Cloudflare
 # passes through (requests without it, from the LAN, share one bucket).
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
@@ -76,7 +76,7 @@ spec:
   traffic:
     rateLimit:
       local:
-      - requests: 300
+      - requests: 3000
         unit: Minutes
         key: 'request.headers["cf-connecting-ip"]'
 ---
