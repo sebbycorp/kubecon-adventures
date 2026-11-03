@@ -10,7 +10,7 @@ func testWorld(squads []string, pos ...Vec) *World {
 	w := NewWorld(NewCity(nil))
 	for i, p := range pos {
 		id := string(rune('a' + i))
-		w.Avatars[id] = &Avatar{PlayerID: id, Nick: id, Squad: squads[i], Pos: p, Online: true}
+		w.Avatars[id] = NewAvatar(id, id, "", squads[i], p)
 	}
 	return w
 }
@@ -64,12 +64,13 @@ func TestThreeHitsFreeze(t *testing.T) {
 	if tg.Hits != 3 || far.Hits != 0 {
 		t.Fatalf("hits after busy: t1=%d t2=%d", tg.Hits, far.Hits)
 	}
+	w.DrainEvents() // hunter hits from the ticks above
 	w.Resolve("t1", "freeze", true, 31)
 	if tg.State != Frozen || tg.Busy || tg.FrozenBy != "b" {
 		t.Fatalf("after resolve: %+v", tg)
 	}
-	ev := w.DrainEvents()
-	if len(ev) != 1 || ev[0].Kind != "frozen" || ev[0].Player != "b" || ev[0].Ms != 31 || ev[0].Target != "t1" {
+	ev := w.DrainEvents() // the freeze, then its loot drop
+	if len(ev) != 2 || ev[0].Kind != "frozen" || ev[0].Player != "b" || ev[0].Ms != 31 || ev[0].Target != "t1" || ev[1].Kind != "drop" {
 		t.Fatalf("events = %+v", ev)
 	}
 	if len(w.DrainEvents()) != 0 {
@@ -88,6 +89,7 @@ func TestFreezeFailureThaws(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("intents = %v", got)
 	}
+	w.DrainEvents() // hunter hits from the ticks above
 	w.Resolve("t1", "freeze", false, 0)
 	if tg.Hits != 0 || tg.Busy || tg.State != Working {
 		t.Fatalf("after failed freeze: %+v", tg)

@@ -6,7 +6,9 @@ package heist
 import (
 	"maps"
 	"math"
+	"math/rand/v2"
 	"slices"
+	"time"
 )
 
 // TargetState is where a target is in its life.
@@ -45,6 +47,15 @@ type Avatar struct {
 	Dragging                     string // target ID, or ""
 	FireCD, SpringCD             float64
 	Online                       bool
+	HP                           float64 // 0..maxHP; NewAvatar starts it full
+	Down                         bool    // knocked out: no move, fire, act or being shot
+	RespawnAt, LastHit           float64 // world times
+	Inv                          []Part  // unextracted loot, lost when Down
+}
+
+// NewAvatar is an online avatar at pos with full health.
+func NewAvatar(playerID, nick, color, squad string, pos Vec) *Avatar {
+	return &Avatar{PlayerID: playerID, Nick: nick, Color: color, Squad: squad, Pos: pos, Online: true, HP: maxHP}
 }
 
 // Target is an agent session walking the city.
@@ -60,6 +71,7 @@ type Target struct {
 	FrozenAt                                  float64
 	Busy                                      bool // an op is in flight; no further intents
 	New, Restored                             bool
+	ShotCD                                    float64 // hunter fire cooldown, seconds until it may shoot again
 
 	opBy string // player whose intent is in flight
 }
@@ -95,13 +107,20 @@ type World struct {
 	Targets map[string]*Target
 	Now     float64
 	Events  []Event
+	Drops   map[string]*Drop
+	Stash   map[string][]Part // banked parts per player ID
+	Rand    *rand.Rand        // loot rolls; NewWorld seeds it from the clock
 
 	ctl map[string]*control
 }
 
 // NewWorld is an empty world on c.
 func NewWorld(c *City) *World {
-	return &World{City: c, Avatars: map[string]*Avatar{}, Targets: map[string]*Target{}, ctl: map[string]*control{}}
+	seed := uint64(time.Now().UnixNano())
+	return &World{
+		City: c, Avatars: map[string]*Avatar{}, Targets: map[string]*Target{}, ctl: map[string]*control{},
+		Drops: map[string]*Drop{}, Stash: map[string][]Part{}, Rand: rand.New(rand.NewPCG(seed, seed>>1|1)),
+	}
 }
 
 // Input records a player's controls. ACTION edges are tracked here so a press and
@@ -146,6 +165,7 @@ func (w *World) Tick(dt float64) []Intent {
 		dt = 0
 	}
 	w.Now += dt
+	w.expireDrops()
 	var out []Intent
 	var claims []claim
 	for _, id := range slices.Sorted(maps.Keys(w.Avatars)) {
@@ -157,12 +177,19 @@ func (w *World) Tick(dt float64) []Intent {
 		}
 		a.FireCD = max(0, a.FireCD-dt)
 		a.SpringCD = max(0, a.SpringCD-dt)
+		if a.Down {
+			w.tickDown(a, k)
+			continue
+		}
+		w.regen(a, dt)
 		if !a.Online {
 			w.drop(a)
 			*k = control{}
 			continue
 		}
 		w.moveAvatar(a, k.in.Move, dt)
+		w.pickup(a)
+		w.bank(a)
 		if k.in.Fire && a.FireCD <= eps {
 			out = append(out, w.fire(a)...)
 		}
@@ -201,6 +228,7 @@ func (w *World) Tick(dt float64) []Intent {
 			}
 		}
 	}
+	w.huntersFire(dt)
 	out = append(out, w.moveTargets(dt)...)
 	return out
 }
@@ -318,11 +346,13 @@ func (w *World) Resolve(target, kind string, ok bool, ms int64) {
 	by := t.opBy
 	t.Busy, t.opBy = false, ""
 	ev := Event{Kind: kind + "-failed", Target: t.ID, Player: by, Text: t.Name, Ms: ms}
+	loot := false // a confirmed freeze or delete drops one part, after its event
 	switch kind {
 	case "freeze":
 		if ok {
 			t.State, t.FrozenBy, t.FrozenAt = Frozen, by, w.Now
 			ev.Kind = "frozen"
+			loot = true
 		} else {
 			t.Hits, t.HitBy = 0, map[string]bool{}
 			ev.Kind = "slipped"
@@ -339,6 +369,7 @@ func (w *World) Resolve(target, kind string, ok bool, ms int64) {
 		if ok {
 			t.State = Deleted
 			ev.Kind = "deleted"
+			loot = true
 		}
 	case "spring":
 		if ok {
@@ -347,6 +378,9 @@ func (w *World) Resolve(target, kind string, ok bool, ms int64) {
 		}
 	}
 	w.Events = append(w.Events, ev)
+	if loot {
+		w.lootDrop(t, by)
+	}
 }
 
 // release clears every avatar dragging target.
