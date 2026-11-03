@@ -40,6 +40,7 @@
 
   /* Second row: menu, mission banner, minimap. */
   #row2 { position: fixed; top: calc(70px + var(--st)); left: 8px; right: 8px; display: flex; gap: 6px; align-items: flex-start; }
+  #menuBtn em { font-style: normal; font-size: 8px; color: var(--gold); margin-left: 4px; }
   #menuBtn { pointer-events: auto; padding: 6px 9px; font-weight: 700; font-size: 11px; letter-spacing: .08em; }
   #banner { flex: 1; padding: 6px 9px; font-size: 11px; min-height: 28px; display: flex; align-items: center; }
   #banner b { color: #fff; }
@@ -151,6 +152,13 @@
   <div class="row"><a href="/grand-theft-agent/screen" target="_blank">Watch the big screen ↗</a><a href="/">Arcade</a></div>
 </div>
 
+<div id="menu" class="sheet panel hidden">
+  <h2>MENU</h2>
+  <button class="big" id="mMissions">MISSIONS<small id="mMissionsWhy">Pick a level, change squad.</small></button>
+  <button class="big" id="mQuality">GRAPHICS: HIGH<small>Low: sharper frame rate, no shadows.</small></button>
+  <div class="row"><button class="ghost" id="mClose">Close</button><a href="/grand-theft-agent/screen" target="_blank">Big screen ↗</a></div>
+</div>
+
 <div id="levels" class="sheet panel hidden">
   <h2>MISSIONS</h2>
   <p>Squad: <b id="lvSquad" style="color:#fff">solo</b> · <a href="#" id="changeSquad">change</a></p>
@@ -187,18 +195,30 @@ import { partIcon, fmtClock, starsHtml, missionLine, minimap, LEVELS } from "/gr
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
-const SHEETS = ["squad", "levels", "result", "stash"];
+const SHEETS = ["squad", "levels", "result", "stash", "menu"];
 const sheet = (id) => { for (const s of SHEETS) show(s, s === id); };
 
 // ---- join, map, socket ----
+const halt = () => new Promise(() => {}); // stop this module without an error
+function failed(msg) {
+  $("status").innerHTML = `${esc(msg)}<br><button class="ghost" style="margin-top:8px" onclick="location.reload()">Try again</button>`;
+  show("status");
+  return halt();
+}
 if (!webglOK()) {
   show("nogl");
-  throw new Error("no WebGL");
+  await halt();
 }
-const meR = await fetch("/api/me");
-if (meR.status === 401) location.replace("/?next=/grand-theft-agent");
+const meR = await fetch("/api/me").catch(() => null);
+if (meR && meR.status === 401) {
+  location.replace("/?next=/grand-theft-agent");
+  await halt();
+}
+if (!meR || !meR.ok) await failed("Can't reach the arcade right now.");
 const me = await meR.json();
-const city = await (await fetch("/grand-theft-agent/api/city")).json();
+const cityR = await fetch("/grand-theft-agent/api/city").catch(() => null);
+if (!cityR || !cityR.ok) await failed("Can't load the city map right now.");
+const city = await cityR.json();
 
 // Controls state, read by the renderer (prediction) and the send loop.
 const ctl = { mx: 0, my: 0, fire: false, act: false, stick: false, actAt: 0 };
@@ -276,7 +296,14 @@ function openLevels() {
   sheet("levels");
 }
 $("roam").onclick = () => sheet(null);
-$("menuBtn").onclick = () => (activeMission() ? toast("Finish this mission first.") : openLevels());
+$("menuBtn").onclick = () => {
+  const busy = !!activeMission();
+  $("mMissions").disabled = busy;
+  $("mMissionsWhy").textContent = busy ? "Finish this mission first." : "Pick a level, change squad.";
+  sheet("menu");
+};
+$("mMissions").onclick = () => openLevels();
+$("mClose").onclick = () => sheet(null);
 const ERRS = { "city full": "No free safehouse: the city has all the allies it can run.", "ally limit": "You already have 2 allies.", "missing parts": "Your stash is missing parts.", paused: "Missions are paused by the booth crew." };
 function onErr(msg) {
   const text = ERRS[msg] || msg;
@@ -449,18 +476,29 @@ function moveStick(e) {
   ctl.mx = +(dx * mm * k).toFixed(3);
   ctl.my = +(dy * mm * k).toFixed(3);
 }
+// button wires a hold button and returns its release(), which forgets the held pointer
+// (so the next press works even if its pointerup never came) and drops the capture.
 function button(el, key, onDown, onUp) {
   let id = null;
-  el.addEventListener("pointerdown", (e) => { e.preventDefault(); if (id !== null) return; id = e.pointerId; cap(el, e); ctl[key] = true; el.classList.add("on"); onDown && onDown(); });
-  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) el.addEventListener(ev, (e) => {
-    if (e.pointerId !== id) return;
+  const release = () => {
+    if (id !== null) { try { el.releasePointerCapture(id); } catch {} }
     id = null; ctl[key] = false; el.classList.remove("on"); onUp && onUp();
-  });
+  };
+  el.addEventListener("pointerdown", (e) => { e.preventDefault(); if (id !== null) return; id = e.pointerId; cap(el, e); ctl[key] = true; el.classList.add("on"); onDown && onDown(); });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) el.addEventListener(ev, (e) => { if (e.pointerId === id) release(); });
+  return release;
 }
-button($("fire"), "fire");
-button($("act"), "act", () => { ctl.actAt = performance.now(); }, () => { $("actRing").setAttribute("stroke-dasharray", "0 100"); $("act").classList.remove("del"); });
+const releaseFire = button($("fire"), "fire");
+const releaseAct = button($("act"), "act", () => { ctl.actAt = performance.now(); }, () => { $("actRing").setAttribute("stroke-dasharray", "0 100"); $("act").classList.remove("del"); });
 for (const el of [zone, $("fire"), $("act")]) el.addEventListener("contextmenu", (e) => e.preventDefault());
-function releaseAll() { stickId = null; Object.assign(ctl, { mx: 0, my: 0, fire: false, act: false, stick: false }); homeStick(); $("fire").classList.remove("on"); $("act").classList.remove("on", "del"); }
+function releaseAll() {
+  if (stickId !== null) { try { zone.releasePointerCapture(stickId); } catch {} }
+  stickId = null;
+  Object.assign(ctl, { mx: 0, my: 0, stick: false });
+  homeStick();
+  releaseFire();
+  releaseAct();
+}
 addEventListener("blur", releaseAll);
 document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll(); });
 addEventListener("resize", homeStick);
@@ -474,9 +512,39 @@ setInterval(() => {
   wasActive = active;
 }, 50);
 
+// ---- quality: drop to low (pixel ratio 1.25, no shadows) if the first ~3 s average
+// over 33 ms a frame; MENU has a manual switch, remembered on this phone ----
+let manualQ = null;
+try { manualQ = localStorage.getItem("gta-quality"); } catch {}
+function setQuality(low) {
+  view.setLowQuality(low);
+  $("menuBtn").innerHTML = low ? "MENU<em>LQ</em>" : "MENU";
+  $("mQuality").firstChild.textContent = low ? "GRAPHICS: LOW" : "GRAPHICS: HIGH";
+}
+if (manualQ) setQuality(manualQ === "low");
+$("mQuality").onclick = () => {
+  const low = !view.lowQuality();
+  setQuality(low);
+  try { localStorage.setItem("gta-quality", low ? "low" : "high"); } catch {}
+};
+const probe = { start: 0, frames: 0, done: !!manualQ }; // the first 0.5 s is warm-up
+function probeFrame(now) {
+  if (probe.done || !snap) return;
+  if (!probe.start) { probe.start = now + 500; return; }
+  if (now < probe.start) return;
+  probe.frames++;
+  if (now - probe.start >= 3000) {
+    probe.done = true;
+    const avg = (now - probe.start) / probe.frames;
+    probe.avgMs = avg;
+    if (avg > 33) setQuality(true);
+  }
+}
+
 // ---- frame loop ----
 function frame(now) {
   view.draw();
+  probeFrame(now);
   if (ctl.act) {
     const p = Math.min(1, (now - ctl.actAt) / 1000);
     $("actRing").setAttribute("stroke-dasharray", `${(p * 100).toFixed(1)} 100`);
@@ -491,6 +559,8 @@ requestAnimationFrame(frame);
 window.gta = {
   stats: () => view.stats(),
   snap: () => snap,
+  probe,
+  release: releaseAll,
   city,
   ctl,
   measure: (n = 60) => new Promise((done) => {

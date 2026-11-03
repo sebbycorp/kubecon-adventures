@@ -865,12 +865,27 @@ export function startCity(canvas, opts) {
     frameMs += performance.now() - now;
   }
 
+  // setLowQuality trades looks for speed on slow phones: pixel ratio 1.25 and no shadows.
+  // (Antialiasing is fixed when the context is made, so it stays as it was.)
+  let low = false;
+  function setLowQuality(on) {
+    if (on === low) return;
+    low = on;
+    renderer.setPixelRatio(on ? Math.min(window.devicePixelRatio || 1, 1.25) : Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = !on;
+    sun.castShadow = !on;
+    scene.traverse((o) => { for (const m of [].concat(o.material || [])) m.needsUpdate = true; }); // shadow defines changed
+    resize();
+  }
+
   return {
     apply,
     draw,
     resize,
+    setLowQuality,
+    lowQuality: () => low,
     // stats: draw calls and triangles of the last frame, frames drawn, mean CPU ms per draw().
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, drawn: frames, cpuMs: frames ? frameMs / frames : 0 }),
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, drawn: frames, cpuMs: frames ? frameMs / frames : 0, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled && sun.castShadow }),
     // view is where the camera is centred (for the minimap).
     view: () => ({ x: focus.x, y: focus.z, me: meView.ok ? { x: meView.x, y: meView.y } : null }),
   };

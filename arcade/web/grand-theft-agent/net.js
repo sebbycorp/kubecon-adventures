@@ -1,7 +1,7 @@
 // Grand Theft Agent: the WebSocket client shared by the phone page and the big screen.
 //
 // connect(url, onSnap, opts) opens /grand-theft-agent/ws, calls onSnap(snap) for every
-// snapshot, and reconnects with a 1 s, 2 s, 4 s, 8 s backoff. Positions are drawn 100 ms
+// snapshot, and reconnects with a 1 s, 2 s, 4 s, 8 s backoff (reset once a snapshot arrives). Positions are drawn 100 ms
 // in the past and interpolated between the two snapshots around that moment, so the
 // 15 Hz stream looks smooth; pos(kind, id) answers that for avatars, targets and allies.
 
@@ -21,11 +21,13 @@ export function connect(url, onSnap, { onMsg = () => {}, onStatus = () => {} } =
   function open() {
     opened = false;
     ws = new WebSocket(url);
-    ws.onopen = () => { opened = true; backoff = 1000; onStatus("open"); };
+    // The backoff resets on the first snapshot, not on open: a full city accepts the
+    // socket, says {"t":"full"} and closes, and must not be retried every second.
+    ws.onopen = () => { opened = true; onStatus("open"); };
     ws.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.t === "snap") { take(m); onSnap(m); return; }
+      if (m.t === "snap") { backoff = 1000; take(m); onSnap(m); return; }
       if (m.t === "full") onStatus("full");
       onMsg(m);
     };
