@@ -28,6 +28,7 @@ import (
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/gatewaydef"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/heist"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/podpacker"
+	"github.com/sebbycorp/kubecon-adventures/arcade/games/selfie"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
 )
@@ -64,6 +65,7 @@ func main() {
 		Client: &http.Client{Timeout: 5 * time.Second}}, gatewaydef.NewAgentProber(agentClient("rogue")))
 	fl := flappy.New(p, agentClient(flappy.AgentName))
 	pp := podpacker.New(p, agentClient(podpacker.AgentName))
+	sf := selfie.New(p, agentClient(selfie.AgentName), selfie.NewLLM())
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -76,6 +78,7 @@ func main() {
 	gd.Run(ctx)
 	fl.Run(ctx)
 	pp.Run(ctx)
+	sf.Run(ctx)
 	missions := newExtBoard(missionsBoard)
 	go missions.run(ctx)
 	tokens := newTokens() // every game's LLM token spend, from agentgateway's metrics
@@ -94,7 +97,9 @@ func main() {
 	mux.HandleFunc("GET /tv", servePage(versionedPage(web(""), "tv.html"))) // the booth TV
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
+	moreStats["selfie_"] = sf.Stats
 	arcadeAPI(mux, p, duck, flw, gta, cd, gd, fl, pp, missions, tokens)
+	mux.HandleFunc("GET /selfie/api/stats", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, sf.Stats()) })
 	duck.Routes(mux, web("duck-hunt"))
 	flw.Routes(mux, web("agent-flow"))
 	gta.Routes(mux, web("substrate-siege"))
@@ -102,6 +107,7 @@ func main() {
 	gd.Routes(mux, web("gateway-defense"))
 	fl.Routes(mux, web("flappy"))
 	pp.Routes(mux, web("pod-packer"))
+	sf.Routes(mux, web("selfie"))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	go func() {
@@ -118,7 +124,7 @@ func main() {
 	// Substrate Siege deletes its booked checkpoints, Cluster Defense its round's sessions and
 	// Flappy Substrate its octopus pool on the way out (bounded).
 	deadline := time.After(20 * time.Second)
-	for _, stopped := range []<-chan struct{}{gta.Stopped(), cd.Stopped(), fl.Stopped(), pp.Stopped()} {
+	for _, stopped := range []<-chan struct{}{gta.Stopped(), cd.Stopped(), fl.Stopped(), pp.Stopped(), sf.Stopped()} {
 		select {
 		case <-stopped:
 		case <-deadline:
@@ -134,6 +140,9 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
+// moreStats adds games' numbers to /api/stats under a prefix, without growing arcadeAPI.
+var moreStats = map[string]func() map[string]any{}
+
 func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game, fl *flappy.Game, pp *podpacker.Game, missions topper, tokens *Tokens) {
 	mux.HandleFunc("GET /api/tokens", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, tokens.View()) })
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +210,11 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		}
 		for k, v := range pp.Stats() {
 			out["podPacker_"+k] = v
+		}
+		for prefix, stats := range moreStats {
+			for k, v := range stats() {
+				out[prefix+k] = v
+			}
 		}
 		platform.WriteJSON(w, out)
 	})

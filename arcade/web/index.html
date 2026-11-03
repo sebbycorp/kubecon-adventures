@@ -205,6 +205,16 @@
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="flappy"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/flappy/screen" target="_blank">big screen ↗</a></object>
     </a>
+    <a class="card" href="/selfie" style="--c: #c084fc">
+      <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/selfie.webp" aria-label="Substrate Selfie: a cartoon visitor's photo placed into funny scenes with the Agent Substrate octopus, a keynote screen, a wanted poster and a trading card" width="720" height="450"><source src="/static/loops/selfie.webm" type="video/webm"><source src="/static/loops/selfie.mp4" type="video/mp4"></video>
+      <div class="head"><div class="ico">📸</div><div><h2>SUBSTRATE SELFIE</h2><div class="tag">photo booth · 10 scenes · share it</div></div></div>
+      <div class="body"><p>Snap a selfie and land in 10 funny scenes with the Agent Substrate octopus at KubeCon in Salt Lake City. AI writes the captions, through agentgateway; a real agent wakes and is snapshotted for you.</p>
+        <div class="real"><span>agentgateway</span><span>Resume</span><span>Suspend</span></div></div>
+      <div class="meta"><div><div class="ab-h">No leaderboard</div><div class="ab-empty">Just share your favourite.</div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/selfie"></div>scan to play</div></div>
+      <div class="foot"><span class="play">SNAP ▶</span><span class="now" data-k="selfie"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/selfie/screen" target="_blank">big screen ↗</a></object>
+    </a>
     <a class="card ext" href="https://gd-frontend-413299367082.us-central1.run.app/" target="_blank" rel="noopener" style="--c: #a78bfa">
       <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/agentgateway-missions.webp" aria-label="AI agentgateway missions: a pixel-art city intersection seen from above, a stun-gun blast in the street and the prompt: Lose the cops! Get to a car or out of sight" width="720" height="450"><source src="/static/loops/agentgateway-missions.webm" type="video/webm"><source src="/static/loops/agentgateway-missions.mp4" type="video/mp4"></video>
       <div class="head"><div class="ico"><img src="/agent-flow/static/agentgateway-icon.svg" alt="" width="24" height="24"></div><div><h2>AI AGENTGATEWAY MISSIONS</h2><div class="tag">community game · by Solo Labs</div></div></div>
@@ -216,7 +226,7 @@
     </a>
   </section>
 
-  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a> · <a href="/pod-packer/screen">Pod Packer</a><br>Give your own agent a task: <a href="/agent-flow">Agent Flow</a></footer>
+  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a> · <a href="/pod-packer/screen">Pod Packer</a> · <a href="/selfie/screen">Substrate Selfie</a><br>Give your own agent a task: <a href="/agent-flow">Agent Flow</a></footer>
 </div>
 
 <script>
@@ -253,7 +263,7 @@ document.querySelectorAll(".card:not(.ext)").forEach((c) => c.addEventListener("
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
 const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
 function players(s) {
-  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players, packer: s.podPacker_players };
+  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players, packer: s.podPacker_players, selfie: s.selfie_taken };
 }
 async function poll() {
   try {
@@ -271,7 +281,7 @@ async function poll() {
     document.querySelectorAll(".now[data-k]").forEach((el) => {
       const n = p[el.dataset.k] || 0;
       el.classList.toggle("on", n > 0);
-      el.lastElementChild.textContent = n > 0 ? `${n} playing now` : "be the first to play";
+      el.lastElementChild.textContent = el.dataset.k === "selfie" ? (n > 0 ? `${n} selfies taken` : "be the first") : n > 0 ? `${n} playing now` : "be the first to play";
     });
   } catch {}
 }

@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0e0f">
+<title>Substrate Selfie</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Substrate Selfie · you and the Agent Substrate octopus">
+<meta property="og:description" content="Take a selfie at KubeCon in Salt Lake City and land in 10 funny scenes with the Agent Substrate octopus. Captions by AI, through agentgateway.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/selfie">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/selfie.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Substrate Selfie · you and the Agent Substrate octopus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Substrate Selfie · you and the Agent Substrate octopus">
+<meta name="twitter:description" content="Take a selfie at KubeCon in Salt Lake City and land in 10 funny scenes with the Agent Substrate octopus. Captions by AI, through agentgateway.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/selfie.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Rye&family=Bebas+Neue&family=Playfair+Display:wght@700&family=Press+Start+2P&family=JetBrains+Mono:wght@600;800&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0d0e0f; --fg: #e8e8e8; --mute: #8a8f94; --green: #5fd068; --line: #2a2d30; --agw: #a259ff; --octo: #4ade80; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 Inter, system-ui, sans-serif; min-height: 100%; -webkit-tap-highlight-color: transparent; }
+  .hidden { display: none !important; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  header img { height: 26px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 800; }
+  header a { margin-left: auto; color: var(--mute); font-size: 13px; text-decoration: none; }
+  .card { border: 1px solid var(--line); border-radius: 18px; background: #111412; padding: 18px; }
+  .hero { display: grid; justify-items: center; text-align: center; gap: 10px; }
+  .hero img.octo { width: 220px; filter: drop-shadow(0 10px 24px #4ade8040); animation: bob 3s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-8px) rotate(-2deg); } }
+  .hero h2 { margin: 0; font-size: 24px; }
+  .hero p { margin: 0; color: #c9ccce; }
+  .consent { margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid #3d7a45; background: #0f1a12; font-size: 13.5px; color: #cfe9d2; text-align: left; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: 14px; padding: 15px; font: 800 16px Inter, sans-serif; cursor: pointer; letter-spacing: .02em; text-decoration: none; }
+  .btn.primary { background: var(--green); color: #06140a; }
+  .btn.ghost { background: #16191b; color: var(--fg); border: 1px solid var(--line); }
+  .btn:active { transform: scale(.98); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  /* camera */
+  .cam { position: relative; border-radius: 22px; overflow: hidden; background: #000; aspect-ratio: 3 / 4; }
+  .cam video, .cam canvas { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
+  .cam canvas { transform: none; }
+  .count { position: absolute; inset: 0; display: grid; place-items: center; font: 800 140px Inter; color: #fff; text-shadow: 0 6px 30px #000; pointer-events: none; }
+  .shutter { width: 84px; height: 84px; border-radius: 50%; border: 6px solid #fff; background: var(--green); margin: 16px auto 0; display: block; box-shadow: 0 0 0 6px #5fd06833; cursor: pointer; }
+  .shutter:active { transform: scale(.94); }
+  .note { color: var(--mute); font-size: 13px; text-align: center; margin-top: 10px; min-height: 1.3em; }
+  .err { color: #ff8c8c; }
+  /* the agentgateway flow, while the captions are written */
+  .flow { position: relative; border-radius: 22px; border: 1px solid #3a2a5a; background: radial-gradient(ellipse at 50% 30%, #1b1430, #0b0a12 70%); padding: 16px 14px 14px; overflow: hidden; }
+  .flow .brand { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: .01em; }
+  .flow .brand img { height: 28px; }
+  .flow .sub { text-align: center; color: #b9a8e8; font-size: 13px; margin-top: 2px; }
+  .flow svg { width: 100%; display: block; margin-top: 8px; }
+  .chk { opacity: .3; transition: opacity .3s, fill .3s; }
+  .chk.on { opacity: 1; }
+  .meter { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+  .m { border: 1px solid #3a2a5a; border-radius: 12px; padding: 8px 12px; background: #120f1fcc; }
+  .m b { display: block; font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff; }
+  .m span { font-size: 12px; color: #b9a8e8; letter-spacing: .08em; text-transform: uppercase; }
+  .m small { display: block; font-size: 11.5px; color: #8b7fb0; min-height: 1.2em; }
+  .lane { margin-top: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid #23402b; background: #0f1a12cc; border-radius: 12px; padding: 8px 12px; font-size: 13.5px; }
+  .lane img { width: 34px; }
+  .lane b { color: var(--octo); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #3a3d40; flex: none; transition: background .3s, box-shadow .3s; }
+  .dot.on { background: var(--octo); box-shadow: 0 0 12px var(--octo); }
+  /* results */
+  .tokens { margin-top: 12px; border-radius: 14px; padding: 12px 14px; border: 1px solid #3a2a5a; background: #120f1f; font-size: 14px; }
+  .tokens b { color: #fff; }
+  .tokens .agw { display: flex; align-items: center; gap: 8px; color: #cdbbff; font-weight: 700; }
+  .tokens .agw img { height: 18px; }
+  .gallery { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; margin: 14px -16px 0; padding: 0 16px 6px; scrollbar-width: none; }
+  .gallery::-webkit-scrollbar { display: none; }
+  .gallery figure { margin: 0; flex: 0 0 86%; scroll-snap-align: center; }
+  .gallery img { width: 100%; aspect-ratio: 4 / 5; border-radius: 16px; display: block; background: #16191b; box-shadow: 0 10px 30px #0008; }
+  .gallery figcaption { margin-top: 6px; font-size: 13px; color: var(--mute); text-align: center; }
+  .dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: #3a3d40; }
+  .dots i.on { background: var(--green); }
+  .share { display: grid; gap: 8px; margin-top: 12px; }
+  .share .net { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .share .net button { border: 1px solid var(--line); background: #16191b; color: var(--fg); border-radius: 10px; padding: 9px 4px; font: 700 12.5px Inter, sans-serif; cursor: pointer; }
+  .share .note { margin: 0; }
+  footer { text-align: center; color: var(--mute); font-size: 12.5px; margin-top: 18px; }
+  footer a { color: var(--green); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><img src="/selfie/static/kagent.png" alt="kagent"><h1>Substrate Selfie</h1><a href="/">Arcade</a></header>
+
+  <!-- 1. hello and consent -->
+  <section id="intro" class="card hero">
+    <img class="octo" src="/selfie/static/octo.png" alt="The Agent Substrate octopus">
+    <h2>Selfie with the octopus</h2>
+    <p>Snap a selfie and land in 10 funny scenes at KubeCon + CloudNativeCon North America 2026 in <b>Salt Lake City</b>, Nov 9–12.</p>
+    <div class="consent">📷 <b>About your photo:</b> Your photo is sent to an AI model through agentgateway to write captions. It isn't stored or logged. Images are made on your phone.</div>
+    <button class="btn primary" id="openCam">OPEN THE CAMERA</button>
+    <label class="btn ghost" for="pick">CHOOSE A PHOTO</label>
+    <input type="file" id="pick" accept="image/*" class="hidden">
+    <div class="note err" id="introErr"></div>
+  </section>
+
+  <!-- 2. camera -->
+  <section id="camera" class="hidden">
+    <div class="cam"><video id="video" playsinline muted autoplay></video><div class="count" id="count"></div></div>
+    <button class="shutter" id="shutter" aria-label="Take the picture"></button>
+    <div class="row"><button class="btn ghost" id="camBack">BACK</button><label class="btn ghost" for="pick">PHOTO LIBRARY</label></div>
+    <div class="note" id="camNote">Smile! A 3-second countdown starts when you tap.</div>
+  </section>
+
+  <!-- 3. review -->
+  <section id="review" class="hidden">
+    <div class="cam"><canvas id="shot"></canvas></div>
+    <div class="row"><button class="btn ghost" id="retake">RETAKE</button><button class="btn primary" id="useIt">USE THIS ✨</button></div>
+  </section>
+
+  <!-- 4. agentgateway at work -->
+  <section id="working" class="hidden">
+    <div class="flow">
+      <div class="brand"><img src="/selfie/static/agentgateway.svg" alt="">agentgateway</div>
+      <div class="sub" id="flowSub">Your photo is on its way to the model…</div>
+      <svg id="flowSvg" viewBox="0 0 360 230" aria-label="Your photo travelling through agentgateway to the model and back">
+        <defs>
+          <linearGradient id="wire" x1="0" x2="1"><stop offset="0" stop-color="#5fd068"/><stop offset=".5" stop-color="#a259ff"/><stop offset="1" stop-color="#60a5fa"/></linearGradient>
+          <clipPath id="pk"><circle r="15"/></clipPath>
+          <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <path id="wireIn" d="M48 70 C 110 70, 120 70, 180 70 S 260 70, 312 70" fill="none" stroke="url(#wire)" stroke-width="3" stroke-dasharray="6 7" opacity=".7"/>
+        <!-- phone -->
+        <g transform="translate(48 70)"><rect x="-20" y="-32" width="40" height="64" rx="8" fill="#16191b" stroke="#5fd068" stroke-width="2"/><circle cy="24" r="3" fill="#5fd068"/><text y="52" text-anchor="middle" fill="#cfe9d2" font-size="11" font-weight="700">you</text></g>
+        <!-- agentgateway -->
+        <g transform="translate(180 70)"><rect x="-44" y="-38" width="88" height="76" rx="14" fill="#1d1533" stroke="#a259ff" stroke-width="2" filter="url(#glow)"/><image href="/selfie/static/agentgateway.svg" x="-18" y="-28" width="36" height="36"/><text y="26" text-anchor="middle" fill="#e6dcff" font-size="11" font-weight="800">agentgateway</text></g>
+        <!-- model -->
+        <g transform="translate(312 70)"><circle r="30" fill="#14203a" stroke="#60a5fa" stroke-width="2"/><text y="-2" text-anchor="middle" fill="#dbeafe" font-size="10.5" font-weight="800">gpt-4.1</text><text y="11" text-anchor="middle" fill="#dbeafe" font-size="10.5" font-weight="800">mini</text><text y="48" text-anchor="middle" fill="#bfdbfe" font-size="11" font-weight="700">model</text></g>
+        <!-- the checks agentgateway runs -->
+        <g transform="translate(120 140)" font-size="12" font-weight="700">
+          <g class="chk" id="c1"><circle r="9" fill="#5fd068"/><text x="-4" y="4" fill="#06140a">✓</text><text x="16" y="4" fill="#e6dcff">prompt guard</text></g>
+          <g class="chk" id="c2" transform="translate(0 24)"><circle r="9" fill="#5fd068"/><text x="-4" y="4" fill="#06140a">✓</text><text x="16" y="4" fill="#e6dcff">rate limit · token budget</text></g>
+          <g class="chk" id="c3" transform="translate(0 48)"><circle r="9" fill="#5fd068"/><text x="-4" y="4" fill="#06140a">✓</text><text x="16" y="4" fill="#e6dcff">in-cluster only · API key added</text></g>
+        </g>
+        <!-- the packet: your photo -->
+        <g id="packet" filter="url(#glow)"><circle r="17" fill="#a259ff"/><image id="pkImg" x="-15" y="-15" width="30" height="30" clip-path="url(#pk)" preserveAspectRatio="xMidYMid slice"/></g>
+      </svg>
+      <div class="meter">
+        <div class="m"><span>input tokens</span><b id="tIn">0</b><small id="tInNote">estimating…</small></div>
+        <div class="m"><span>output tokens</span><b id="tOut">0</b><small id="tOutNote">waiting for the model</small></div>
+      </div>
+      <div class="lane"><img src="/selfie/static/octo.png" alt=""><span class="dot" id="aDot"></span><span id="aText">Your caption agent is asleep in Snapshot Storage…</span></div>
+    </div>
+  </section>
+
+  <!-- 5. the ten pictures -->
+  <section id="results" class="hidden">
+    <div class="tokens" id="tokenLine"></div>
+    <div class="gallery" id="gallery"></div>
+    <div class="dots" id="gDots"></div>
+    <div class="share">
+      <button class="btn primary" id="shareImg">📣 SHARE THIS PICTURE</button>
+      <div class="row" style="margin-top:0"><button class="btn ghost" id="download">⬇ DOWNLOAD</button><button class="btn ghost" id="again">📷 NEW SELFIE</button></div>
+      <div class="net"><button data-to="x">𝕏 Post</button><button data-to="li">LinkedIn</button><button data-to="bsky">🦋 Bluesky</button><button data-to="copy">⧉ Copy</button></div>
+      <div class="note" id="shareNote" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <footer>Every character here is a real AI agent on <a href="https://kagent.dev" target="_blank" rel="noopener">kagent</a> + Agent Substrate · captions via <a href="https://agentgateway.dev" target="_blank" rel="noopener">agentgateway</a></footer>
+</div>
+
+<script type="module">
+import { render, FONTS, W, H } from "/selfie/static/scenes.js";
+const $ = (id) => document.getElementById(id);
+const show = (id) => { for (const s of ["intro", "camera", "review", "working", "results"]) $(s).classList.toggle("hidden", s !== id); scrollTo(0, 0); };
+const n = (v) => Number(v || 0).toLocaleString("en-US");
+const load = (src) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
+
+// Join first: the arcade gives every visitor a name.
+let me = null;
+try { const r = await fetch("/api/me"); if (r.status === 401) { location.replace("/?next=/selfie"); } else me = await r.json(); } catch {}
+
+const octoImg = load("/selfie/static/octo.png"), kagentImg = load("/selfie/static/kagent.png");
+let stream = null, shot = null; // shot: the captured photo as a canvas
+
+// ---- camera ----
+async function openCam() {
+  $("introErr").textContent = "";
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+    $("video").srcObject = stream;
+    show("camera");
+  } catch (e) {
+    $("introErr").textContent = "No camera here (or it was blocked). Choose a photo instead.";
+  }
+}
+function stopCam() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; }
+$("openCam").onclick = openCam;
+$("camBack").onclick = () => { stopCam(); show("intro"); };
+$("shutter").onclick = async () => {
+  $("shutter").disabled = true;
+  for (const t of ["3", "2", "1"]) { $("count").textContent = t; await new Promise((r) => setTimeout(r, 750)); }
+  $("count").textContent = "";
+  const v = $("video");
+  takeFrom(v, v.videoWidth, v.videoHeight, true);
+  $("shutter").disabled = false;
+};
+$("pick").onchange = async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  try { const img = await load(URL.createObjectURL(f)); takeFrom(img, img.naturalWidth, img.naturalHeight, false); } catch { $("introErr").textContent = "That file isn't a photo we can read."; show("intro"); }
+  e.target.value = "";
+};
+// takeFrom keeps the picture (mirrored like the preview for selfies), at most 768 px on
+// its long side: that is all the model sees, and all that leaves the phone.
+function takeFrom(src, w, h, mirror) {
+  stopCam();
+  const s = Math.min(1, 768 / Math.max(w, h));
+  const cv = $("shot");
+  cv.width = Math.round(w * s); cv.height = Math.round(h * s);
+  const c = cv.getContext("2d");
+  if (mirror) { c.translate(cv.width, 0); c.scale(-1, 1); }
+  c.drawImage(src, 0, 0, cv.width, cv.height);
+  shot = cv;
+  show("review");
+}
+$("retake").onclick = openCam;
+
+// ---- the captions, through agentgateway ----
+// estimate is gpt-4.1-mini's input before the real count arrives: about 32x32-pixel
+// patches times 1.62 for the image (at most 1536 patches), plus the instructions.
+const estimate = (w, h) => Math.round(Math.min(1536, Math.ceil(w / 32) * Math.ceil(h / 32)) * 1.62) + 760;
+$("useIt").onclick = async () => {
+  const blob = await new Promise((r) => shot.toBlob(r, "image/jpeg", 0.85));
+  $("pkImg").setAttribute("href", shot.toDataURL("image/jpeg", 0.5));
+  show("working");
+  const flow = startFlow(estimate(shot.width, shot.height));
+  let res = null, err = "";
+  try {
+    const r = await fetch("/selfie/api/captions", { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob });
+    if (r.status === 401) { location.replace("/?next=/selfie"); return; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) err = j.error || "Something went wrong.";
+    else res = j;
+  } catch { err = "Couldn't reach the booth. Check your connection."; }
+  if (!res) { flow.stop(); $("introErr").textContent = err; show("intro"); return; }
+  await flow.finish(res);
+  await gallery(res);
+};
+
+// startFlow animates the photo through agentgateway to the model and, when the reply
+// lands, back, while the token meter counts. finish(res) plays the real numbers in.
+function startFlow(estIn) {
+  const svg = $("flowSvg"), pk = $("packet"), path = $("wireIn"), len = path.getTotalLength();
+  let t0 = performance.now(), phase = "out", raf = 0, done = null, back = 0, shownIn = 0, shownOut = 0, outGoal = 0, inGoal = 0;
+  ["c1", "c2", "c3"].forEach((id) => $(id).classList.remove("on"));
+  $("tIn").textContent = "0"; $("tOut").textContent = "0"; $("tInNote").textContent = "estimating…"; $("tOutNote").textContent = "waiting for the model";
+  $("aDot").classList.remove("on"); $("aText").innerHTML = "Waking your caption agent on Agent Substrate…";
+  $("flowSub").textContent = "Your photo is on its way to the model…";
+  const at = (f) => path.getPointAtLength(Math.max(0, Math.min(1, f)) * len);
+  function tick(now) {
+    const e = (now - t0) / 1000;
+    let f;
+    if (phase === "out") {
+      f = Math.min(1, e / 2.2); // phone -> agentgateway -> model
+      if (f > 0.42) $("c1").classList.add("on");
+      if (f > 0.5) $("c2").classList.add("on");
+      if (f > 0.58) $("c3").classList.add("on");
+      inGoal = Math.round(estIn * Math.min(1, f * 1.1));
+      if (f >= 1) { phase = "think"; $("flowSub").textContent = "The model is writing your ten captions…"; $("tOutNote").textContent = "writing…"; }
+    } else if (phase === "think") {
+      f = 1 + Math.sin(e * 6) * 0.004;
+      outGoal = Math.min(300, Math.round((e - 2.2) * 55)); // a guess until the real count lands
+    } else {
+      f = 1 - Math.min(1, (now - back) / 1500); // model -> agentgateway -> phone
+    }
+    const p = at(f);
+    pk.setAttribute("transform", `translate(${p.x} ${p.y})`);
+    shownIn += (inGoal - shownIn) * 0.12; shownOut += (outGoal - shownOut) * 0.12;
+    $("tIn").textContent = n(Math.round(shownIn)); $("tOut").textContent = n(Math.round(shownOut));
+    if (phase === "back" && f <= 0 && Math.abs(inGoal - shownIn) < 1 && Math.abs(outGoal - shownOut) < 1 && done) { const d = done; done = null; d(); }
+    raf = requestAnimationFrame(tick);
+  }
+  raf = requestAnimationFrame(tick);
+  return {
+    stop() { cancelAnimationFrame(raf); },
+    finish(res) {
+      return new Promise((ok) => {
+        const u = res.usage || {}, a = res.agent || {};
+        const go = () => {
+          phase = "back"; back = performance.now();
+          inGoal = u.input || 0; outGoal = u.output || 0;
+          $("tInNote").textContent = u.input ? `real count${u.cached ? ` · ${n(u.cached)} cached` : ""}` : "no count (stock captions)";
+          $("tOutNote").textContent = u.output ? "real count" : "";
+          $("flowSub").textContent = res.fallback ? "The model was busy: stock captions this time." : "Captions are back!";
+          if (a.wokeMs) { $("aDot").classList.add("on"); $("aText").innerHTML = `Your caption agent <b>woke in ${n(a.wokeMs)} ms</b>${a.snapshotMs ? ` and was <b>snapshotted in ${n(a.snapshotMs)} ms</b>` : ""} on Agent Substrate`; }
+          else $("aText").textContent = `No caption agent this time (${a.reason || "all busy"}): your pictures are still made.`;
+          done = () => { cancelAnimationFrame(raf); setTimeout(ok, 700); };
+        };
+        // Let the outbound trip finish first, so the animation always reads right.
+        const wait = () => (phase === "out" ? setTimeout(wait, 100) : go());
+        wait();
+      });
+    },
+  };
+}
+
+// ---- the gallery ----
+let pics = [], idx = 0, result = null;
+async function gallery(res) {
+  result = res;
+  const u = res.usage || {}, a = res.agent || {};
+  $("tokenLine").innerHTML = (u.input ? `<div class="agw"><img src="/selfie/static/agentgateway.svg" alt="">used <b>${n(u.input + u.output)}</b> tokens · ~$${(u.usd || 0).toFixed(4)} · via agentgateway</div>`
+    : `<div class="agw"><img src="/selfie/static/agentgateway.svg" alt="">stock captions this time (${res.why || "the model was busy"})</div>`) +
+    (a.wokeMs ? `<div style="margin-top:6px">🐙 Your caption agent woke in <b>${n(a.wokeMs)} ms</b>${a.snapshotMs ? ` · snapshotted in <b>${n(a.snapshotMs)} ms</b>` : ""} on kagent + Agent Substrate</div>` : "");
+  show("results");
+  await Promise.all(FONTS.map((f) => document.fonts.load(f).catch(() => {})));
+  const [o, k] = await Promise.all([octoImg, kagentImg]);
+  pics.forEach((p) => URL.revokeObjectURL(p.url));
+  pics = [];
+  const g = $("gallery");
+  g.innerHTML = res.scenes.map((s, i) => `<figure><img id="pic${i}" alt="${s.title}"><figcaption>${i + 1}/10 · ${s.title}</figcaption></figure>`).join("");
+  $("gDots").innerHTML = res.scenes.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("");
+  for (const [i, s] of res.scenes.entries()) {
+    const cv = render(s.id, { photo: shot, octo: o, kagent: k, caption: res.captions[s.id] || s.fallback, nick: me && me.nick, snapshotMs: a.snapshotMs });
+    const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9));
+    const url = URL.createObjectURL(blob);
+    pics[i] = { url, blob, scene: s, caption: res.captions[s.id] || s.fallback };
+    $("pic" + i).src = url;
+    await new Promise((r) => setTimeout(r, 0)); // keep the page responsive while drawing
+  }
+}
+$("gallery").addEventListener("scroll", () => {
+  const g = $("gallery"), w = g.firstElementChild ? g.firstElementChild.offsetWidth + 12 : 1;
+  idx = Math.max(0, Math.min(pics.length - 1, Math.round(g.scrollLeft / w)));
+  [...$("gDots").children].forEach((d, i) => d.classList.toggle("on", i === idx));
+}, { passive: true });
+
+// ---- sharing ----
+const SITE = "https://kubecon.agentpwned.ai/selfie", TAGS = "#kagent #AgentSubstrate #agentgateway #KubeCon";
+function post(p) {
+  const lines = [`Me at KubeCon + CloudNativeCon NA 2026 in Salt Lake City with the Agent Substrate octopus 🐙`, `"${p.caption}"`,
+    `Captioned by AI through agentgateway, every character a real agent on kagent + Agent Substrate.`];
+  let text = lines.join("\n");
+  while ((text + "\n" + SITE + "\n" + TAGS).length > 280 && lines.length > 1) { lines.splice(lines.length - 1, 1); text = lines.join("\n"); }
+  return { text: text + "\n" + TAGS, full: `${text}\n${SITE}\n${TAGS}` };
+}
+const note = (t) => { $("shareNote").textContent = t; };
+async function copy(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
+$("shareImg").onclick = async () => {
+  const p = pics[idx]; if (!p) return;
+  const file = new File([p.blob], `substrate-selfie-${p.scene.id}.jpg`, { type: "image/jpeg" }), t = post(p);
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "Substrate Selfie", text: t.text, url: SITE }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  download(p);
+  note((await copy(t.full)) ? "Picture saved and post text copied. Attach it on any network below." : "Picture saved. Attach it on any network below.");
+};
+function download(p) {
+  const a = document.createElement("a");
+  a.href = p.url; a.download = `substrate-selfie-${p.scene.id}.jpg`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+$("download").onclick = () => { const p = pics[idx]; if (p) { download(p); note("Saved. Post it anywhere!"); } };
+$("again").onclick = () => { show("intro"); };
+document.querySelectorAll(".net [data-to]").forEach((b) => (b.onclick = async () => {
+  const p = pics[idx]; if (!p) return;
+  const t = post(p), open = (u) => window.open(u, "_blank", "noopener");
+  switch (b.dataset.to) {
+    case "x": open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(t.text)}&url=${encodeURIComponent(SITE)}`); break;
+    case "li": await copy(t.full); note("Post text copied, paste it on LinkedIn and attach your picture."); open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(SITE)}`); break;
+    case "bsky": open(`https://bsky.app/intent/compose?text=${encodeURIComponent(t.full)}`); break;
+    case "copy": note((await copy(t.full)) ? "Copied. Paste it anywhere." : "Couldn't copy on this browser."); break;
+  }
+}));
+window.selfieDebug = { takeFrom, show }; // for the booth's own headless checks
+</script>
+</body>
+</html>

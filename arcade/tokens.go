@@ -27,6 +27,7 @@ var tokenRoutes = map[string]string{
 	"openai-defense": "Cluster Defense",
 	"openai-gatedef": "Gateway Defense",
 	"openai-flow":    "Agent Flow",
+	"openai-selfie":  "Substrate Selfie",
 }
 
 // Prices are USD per million tokens (gpt-4.1-mini by default; TOKEN_PRICES="in,cached,out"

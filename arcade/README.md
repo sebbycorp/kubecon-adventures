@@ -11,6 +11,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Gateway Defense | The platform's controls (prompt guard, rate limit, egress, suspend) as towers, each kill a real call; solo tower defense | Playable | [below](#gateway-defense) |
 | Flappy Substrate (at `/flappy`) | Resume and suspend of your own agent: you are the Agent Substrate octopus, woken to swim and snapshotted when you crash | Playable | [below](#flappy-substrate) |
 | Pod Packer (at `/pod-packer`) | Suspend and resume at scale: Tetris where every block is an agent pod; every row cleared snapshots real agents to free a node | Playable | [below](#pod-packer) |
+| Substrate Selfie (at `/selfie`) | agentgateway in front of an LLM with a photo: a selfie becomes 10 funny scenes with the Agent Substrate octopus; a real caption agent wakes and is snapshotted per photo | Playable | [below](#substrate-selfie) |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
 ## Start
@@ -31,6 +32,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Gateway Defense phone / big screen | http://localhost:8090/gateway-defense, http://localhost:8090/gateway-defense/screen |
 | Flappy Substrate phone / big screen | http://localhost:8090/flappy, http://localhost:8090/flappy/screen |
 | Pod Packer phone / big screen | http://localhost:8090/pod-packer, http://localhost:8090/pod-packer/screen |
+| Substrate Selfie phone / big screen | http://localhost:8090/selfie, http://localhost:8090/selfie/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -199,3 +201,15 @@ What is real:
 - **No LLM in play.** Each pool session ran one short placing turn when the arcade started; the pool is rebuilt at every start (leftover `packer` sessions are deleted) and deleted on shutdown.
 
 The pieces fall on the phone with the rules the server serves (`/pod-packer/api/rules`, from `games/podpacker/rules.go`). Each clear is reported as it happens (`POST /pod-packer/api/clear`, at most one every 150 ms), and the server checks the final score against the rules before it reaches the board: lines no more than the server saw cleared, every cleared cell coming from a placed piece, pieces no faster than 5 a second, tetrises no more than lines allow, and the score no higher than the scoring table could give at the level reached. For the all-games board, 20,000 points is par (1,000 arcade points). Game over ("cluster full, no room to schedule") shows the run's real snapshots and their median time, the rank and the share button. The big screen shows a QR code, the top 10, a live feed of freed nodes with their real snapshot times, and the pods awake, agents snapshotted and snapshot p50. Admin: `POST /admin/pod-packer/api/reset` clears the board.
+
+## Substrate Selfie
+
+A photo booth on the phone at `/selfie`. After a consent notice ("Your photo is sent to an AI model through agentgateway to write captions. It isn't stored or logged. Images are made on your phone."), the visitor takes a selfie with the front camera (a 3-second countdown, retake) or picks a photo from their library. The phone downscales it to at most 768 px on its long side and sends that JPEG to `POST /selfie/api/captions`.
+
+What is real:
+
+- **agentgateway in front of the model.** The arcade sends the photo (a data URL, held in memory for the call only, never written to disk or logged) to gpt-4.1-mini through its own route, `/selfie/v1/chat/completions` on the in-cluster hostname (`manifests/selfie.yaml`: HTTPRoute `openai-selfie` and policy `selfie-llm-guard`). The route adds the API key, runs the same prompt guard as the other games, allows 60k tokens a minute for the whole booth and 6 requests a minute per player (`x-selfie-player`), and only answers inside the cluster. The arcade itself allows 3 selfies a minute per player, 6 jobs at once, and photos up to 1.5 MB.
+- **The captions.** The model returns JSON: a short note on what's visible and one caption per scene (at most 90 characters). The system prompt forbids guessing age, gender, race, body, health, religion or identity. The arcade validates the reply: an unusable caption becomes a stock one, and a blocked word, a 403 from the guard, a 429, a timeout or bad JSON falls back to the stock set, so the visitor always gets their pictures. The phone shows the model's real token use (input, cached, output) and its estimated cost, and the route's tokens count in `/api/tokens` under "Substrate Selfie".
+- **A real caption agent.** A pool of 4 `selfiebot` sessions (harness and WorkerPool `selfie`, 3 workers) sleeps between jobs. Each job wakes one (a real `Resume`) while the model writes and snapshots it after (a real `Suspend`); the phone shows both timings. With no free agent the job still runs, and says so.
+
+While the model works, the phone animates the photo travelling through agentgateway (prompt guard, rate limit, in-cluster checks lighting up) to the model and back, with a token meter that counts an estimate and then the real numbers. The phone then draws ten 1080x1350 scenes on canvas with the photo, the octopus and the kagent logo: the KubeCon + CloudNativeCon North America 2026 keynote screen in Salt Lake City (November 9-12, Salt Palace), a WANTED poster ("for running 10,000 agents on 3 nodes"), a trading card, a magazine cover, a Salt Lake City billboard, a selfie at the Great Salt Lake, kagent employee of the month, a Kubernetes pod ID badge, an 8-bit high-score screen and a Substrate snapshot polaroid. Each picture can be shared with the phone's share sheet (as a file, with the post text), downloaded, or posted to X, LinkedIn or Bluesky. There is no leaderboard; `/api/stats` has `selfie_taken`. The big screen at `/selfie/screen` shows a QR code, the count, tokens through agentgateway, the agent wake-up p50 and recent captions as text, never anyone's photo. Admin: `POST /admin/selfie/api/reset` clears the count and captions.

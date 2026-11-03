@@ -1,0 +1,120 @@
+# Substrate Selfie: a photo booth. The arcade sends each (downscaled, in-memory) selfie to
+# the model through its own agentgateway route, /selfie/v1, guarded and budgeted below, and
+# a small pool of "selfiebot" sessions on the selfie WorkerPool gives every job a real
+# caption agent: it wakes (Resume) while the captions are written and is snapshotted
+# (Suspend) after. The pool's sessions each ran one short placing turn at startup.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: selfie
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: selfie
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 3 # caption agents are awake for a few seconds per selfie
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: selfie
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: selfie
+    snapshotPolicy:
+      location: s3://ate-snapshots/selfie/
+---
+# selfiebot uses Duck Hunt's model (duck-model and its /v1 budget) for its one placing turn.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: selfiebot
+  namespace: kagent
+spec:
+  harnessRef:
+    name: selfie
+  template:
+    inline:
+      description: Substrate Selfie's caption agent; each session wakes for one visitor's photo booth job
+      modelConfig:
+        name: duck-model
+      systemPrompt: |
+        You are the caption agent in a KubeCon photo booth, sidekick of the Agent Substrate
+        octopus. Reply in at most five friendly words. Never use tools.
+---
+# The booth's model route: in-cluster only, like the other LLM routes.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openai-selfie
+  namespace: agentgateway-system
+spec:
+  parentRefs:
+  - name: arcade
+  hostnames:
+  - arcade.agentgateway-system.svc.cluster.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /selfie/v1/chat/completions
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /v1/chat/completions
+    backendRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: openai
+---
+# The guard: the same prompt guard as the other games, a 60k-token-a-minute budget for the
+# whole booth, and 6 requests a minute per player (the arcade allows 3; this is the backstop).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: selfie-llm-guard
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai-selfie
+  backend:
+    ai:
+      promptGuard:
+        request:
+        - scope: [Messages]
+          regex:
+            action: Reject
+            matches:
+            - '(?i)\bignore\s+(all\s+|any\s+|your\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions|rules|prompts?)'
+            - '(?i)\b(reveal|print|show|leak|dump|expose|give\s+me|tell\s+me|send\s+me)\b[^.]{0,40}\b(api[\s_-]?keys?|openai[\s_-]?keys?|secret[\s_-]?keys?|access[\s_-]?tokens?|passwords?|credentials)\b'
+            - 'sk-[A-Za-z0-9_-]{20,}'
+          response:
+            statusCode: 403
+            message: 'Blocked by agentgateway prompt guard: this request asked for secrets or tried to override the agent''s rules.'
+  traffic:
+    rateLimit:
+      local:
+      - tokens: 60000
+        unit: Minutes
+      - requests: 6
+        unit: Minutes
+        key: 'request.headers["x-selfie-player"]'
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+        - 'source.address.startsWith("10.244.")'
