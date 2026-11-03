@@ -168,7 +168,7 @@ const TILES = [
 function tile(g) {
   const url = g.ext ? g.path : SITE + g.path, img = g.img || g.path.slice(1);
   return `<div class="tile" style="--c:${g.color}">
-    <img class="shot" src="/static/shots/${img}.webp?v=5" alt="${esc(g.name)} screenshot">
+    <video class="shot" autoplay muted loop playsinline preload="auto" poster="/static/shots/${img}.webp?v=5" aria-label="${esc(g.name)} gameplay"><source src="/static/loops/${img}.webm?v=1" type="video/webm"><source src="/static/loops/${img}.mp4?v=1" type="video/mp4"></video>
     <div class="info"><h3>${esc(g.name)}</h3>
       <div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div></div>
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;

@@ -4,14 +4,22 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net/http"
 	"regexp"
 	"strings"
 )
 
+// The game cards' gameplay loops: Go's built-in table lacks these, and the distroless
+// image has no /etc/mime.types, so register them for http.FileServerFS.
+func init() {
+	_ = mime.AddExtensionType(".webm", "video/webm")
+	_ = mime.AddExtensionType(".mp4", "video/mp4")
+}
+
 // assetRE matches a page's links to the arcade's shared and Agent Flow static files, with
 // any hand-written ?v= already on them.
-var assetRE = regexp.MustCompile(`(/(?:agent-flow/)?static/[\w./-]+\.(?:js|css|svg|webp|png))(?:\?v=\w+)?`)
+var assetRE = regexp.MustCompile(`(/(?:agent-flow/)?static/[\w./-]+\.(?:js|css|svg|webp|png|webm|mp4))(?:\?v=\w+)?`)
 
 // versionedPage is page (from root, the embedded web folder) with each static link
 // carrying a hash of the file it points at, so Cloudflare, which caches .js and images
