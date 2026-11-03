@@ -66,8 +66,8 @@
   .card .meta { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; font-size: 12.5px; --ab-accent: var(--c); }
   .card .meta .ab-h { font: 11px ui-monospace, monospace; letter-spacing: .08em; color: var(--mute); margin-bottom: 5px; text-transform: uppercase; }
   .card .qr { width: 86px; text-align: center; font-size: 10.5px; color: var(--mute); }
-  .card .qr .code { background: #fff; border-radius: 8px; padding: 5px; line-height: 0; }
-  .card .qr svg { width: 100%; height: auto; }
+  .card .qr .code { background: #fff; border-radius: 8px; padding: 5px; aspect-ratio: 1; display: grid; place-items: center; color: #111; font-size: 9px; word-break: break-all; }
+  .card .qr svg { display: block; width: 100%; height: 100%; }
   .card .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 21px; flex: none;
     background: #0d0e0f; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 22%, transparent); }
   .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -239,12 +239,13 @@ async function poll() {
 poll();
 setInterval(poll, 4000);
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/static/qrcode-1.4.4.min.js"></script>
 <script src="/static/arcade.js?v=2"></script>
 <script>
 // A QR code on every game card, to the game's public address.
 document.querySelectorAll("[data-qr]").forEach((el) => {
-  try { const q = qrcode(0, "M"); q.addData(el.dataset.qr); q.make(); el.innerHTML = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
+  try { const q = qrcode(0, "M"); q.addData(el.dataset.qr); q.make(); el.innerHTML = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); }
+  catch { el.textContent = el.dataset.qr.replace(/^https?:\/\//, ""); }
 });
 </script>
 <script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>

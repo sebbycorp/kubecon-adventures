@@ -17,7 +17,7 @@
     background: linear-gradient(transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 100% 40px, linear-gradient(90deg, transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 40px 100%, var(--bg); }
 
   /* Left: live traffic. */
-  .left { display: grid; grid-template-rows: auto 1fr auto; gap: 18px; min-height: 0; }
+  .left { display: grid; grid-template-rows: auto 1fr; gap: 18px; min-height: 0; }
   .hdr { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
   .hdr img { height: 40px; display: block; margin-bottom: 8px; }
   .hdr h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.01em; }
@@ -40,14 +40,6 @@
   #feed b { font-weight: 600; }
   #feed span { color: var(--mute); overflow: hidden; text-overflow: ellipsis; }
   @keyframes in { from { opacity: 0; transform: translateY(8px); } }
-  .learn { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .learn a { display: grid; grid-template-columns: 132px 1fr; gap: 16px; align-items: center; text-decoration: none; color: inherit; border: 1px solid var(--greenDim); border-radius: 16px; padding: 12px; background: #111412; }
-  .learn .code { background: #fff; border-radius: 10px; padding: 7px; line-height: 0; }
-  .learn .code svg { width: 100%; height: auto; }
-  .learn .t { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 800; }
-  .learn .t img { width: 32px; height: 32px; }
-  .learn small { display: block; color: var(--mute); font-size: 17px; margin-top: 4px; }
-
   /* Right: the games, three tiles a page, turning every 10 s. */
   .right { display: grid; grid-template-rows: auto 1fr; gap: 14px; min-height: 0; }
   .rhead { display: flex; justify-content: space-between; align-items: center; }
@@ -56,7 +48,7 @@
   .rhead .bar { width: 120px; height: 6px; border-radius: 3px; background: #22262a; overflow: hidden; }
   .rhead .bar i { display: block; height: 100%; width: 0; background: var(--green); }
   .tiles { display: grid; grid-template-rows: repeat(3, 1fr); gap: 16px; min-height: 0; }
-  .tile { --c: var(--green); display: grid; grid-template-columns: 300px 1fr 196px; gap: 18px; align-items: center; padding: 14px; border-radius: 18px;
+  .tile { --c: var(--green); display: grid; grid-template-columns: 300px 1fr 220px; gap: 18px; align-items: center; padding: 14px; border-radius: 18px;
     border: 1px solid color-mix(in srgb, var(--c) 45%, #2a2d30); background: #101311f2; box-shadow: 0 0 40px color-mix(in srgb, var(--c) 10%, transparent); min-height: 0; animation: in .5s ease-out; }
   .tile .shot { width: 300px; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; border: 1px solid #2a2d30; display: block; }
   .tile h3 { margin: 0; font-size: 27px; font-weight: 800; color: var(--c); line-height: 1.1; }
@@ -64,8 +56,8 @@
   .tile .top { font-size: 17px; --ab-accent: var(--c); }
   .tile .top .ab-row { padding: 3px 10px; }
   .tile .qr { text-align: center; font-size: 15px; color: var(--mute); }
-  .tile .qr .code { background: #fff; border-radius: 12px; padding: 9px; line-height: 0; margin-bottom: 6px; }
-  .tile .qr svg { width: 100%; height: auto; }
+  .tile .qr .code { background: #fff; border-radius: 12px; padding: 10px; margin-bottom: 6px; aspect-ratio: 1; display: grid; place-items: center; color: #111; font-size: 14px; word-break: break-all; }
+  .tile .qr svg { display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body>
@@ -93,10 +85,6 @@
       <div class="cap">Every cube is a real agent turn · <b id="density">–</b></div>
       <div id="feed" aria-live="polite"></div>
     </div>
-    <div class="learn">
-      <a href="https://kagent.dev" target="_blank" rel="noopener"><div class="code" data-qr="https://kagent.dev"></div><div><div class="t"><img src="/agent-flow/static/kagent-icon.svg" alt="">kagent.dev</div><small>Run AI agents on Kubernetes. Scan to learn more.</small></div></a>
-      <a href="https://agentgateway.dev" target="_blank" rel="noopener"><div class="code" data-qr="https://agentgateway.dev"></div><div><div class="t"><img src="/agent-flow/static/agentgateway-icon.svg" alt="">agentgateway.dev</div><small>The gateway for agents, LLMs and MCP. Scan to learn more.</small></div></a>
-    </div>
   </section>
 
   <section class="right">
@@ -105,7 +93,7 @@
   </section>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/static/qrcode-1.4.4.min.js"></script>
 <script src="/static/arcade.js?v=2"></script>
 <script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>
 <script src="/agent-flow/static/scene.js"></script>
@@ -127,10 +115,13 @@ function fit() {
 addEventListener("resize", fit);
 fit();
 
+// qr draws url's QR code into el (an SVG that fills it); if that fails, the address shows.
 function qr(el, url, cell) {
-  try { const q = qrcode(0, "M"); q.addData(url); q.make(); el.innerHTML = q.createSvgTag({ cellSize: cell, margin: 0, scalable: true }); } catch {}
+  try {
+    const q = qrcode(0, "M"); q.addData(url); q.make();
+    el.innerHTML = q.createSvgTag({ cellSize: cell, margin: 0, scalable: true });
+  } catch { el.textContent = url.replace(/^https?:\/\//, ""); }
 }
-document.querySelectorAll("[data-qr]").forEach((el) => qr(el, el.dataset.qr, 4));
 
 // ---- the games ----
 const GAMES = [
