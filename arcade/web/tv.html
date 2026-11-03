@@ -124,7 +124,7 @@ function qr(el, url, cell) {
 }
 
 // ---- the games ----
-const GAMES = [
+const TILES = [
   { path: "/substrate-siege", name: "Substrate Siege", color: "#38bdf8", unit: "Top runs", pitch: "3 minutes in a night city full of real agents. Freeze them, snapshot them, top the board." },
   { path: "/cluster-defense", name: "Cluster Defense", color: "#fb923c", unit: "Top pilots", pitch: "Subagents fill the cluster's workers. Fly a ship and suspend them before it's full." },
   { path: "/gateway-defense", name: "Gateway Defense", color: "#22d3ee", unit: "Top defenders", pitch: "Tower defense with real controls: prompt guard, rate limit, egress and suspend." },
@@ -144,9 +144,9 @@ function tile(g) {
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;
 }
 function showPage() {
-  const n = Math.ceil(GAMES.length / PER);
+  const n = Math.ceil(TILES.length / PER);
   page %= n;
-  $("tiles").innerHTML = GAMES.slice(page * PER, page * PER + PER).map(tile).join("");
+  $("tiles").innerHTML = TILES.slice(page * PER, page * PER + PER).map(tile).join("");
   $("tiles").querySelectorAll("[data-url]").forEach((el) => qr(el, el.dataset.url, 5));
   $("tiles").querySelectorAll("[data-board]").forEach((el) => Arcade.board(el, el.dataset.board, { n: 3, detail: false, empty: el.dataset.empty }));
   $("pageNo").textContent = `${page + 1} / ${n}`;
