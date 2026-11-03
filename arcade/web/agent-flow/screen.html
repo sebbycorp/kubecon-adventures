@@ -254,6 +254,13 @@ function stationCard(key) {
 let actorFeedAt = 0;
 const flow = startFlowScreen($("scene"), {
   camera: false, // a still view of the whole map; only the things on it move
+  onOp(o, game, color) {
+    if (o.kind === "turn" && o.phase === "start") heart.beat(0.35, game + " · turn");
+    if (o.kind !== "turn" || o.phase !== "end" || Date.now() - actorFeedAt < 2500) return;
+    actorFeedAt = Date.now();
+    const tok = o.tokens ? ` · ${o.tokens >= 1000 ? (o.tokens / 1000).toFixed(1) + "k" : o.tokens} tokens` : "";
+    feed(o.err ? "bad" : "", game, o.err ? "agent turn failed" : `agent turn${o.tools ? ` · ${o.tools} tool${o.tools > 1 ? "s" : ""}` : ""}${tok}`, fmtMs(o.ms), color);
+  },
   onActor(m, game, color) {
     if (m.kind === "new" || m.kind === "wake") heart.beat(0.5, game + " · " + (m.kind === "new" ? "new" : "woke"));
     if (Date.now() - actorFeedAt < 2500) return;
@@ -295,6 +302,7 @@ const flow = startFlowScreen($("scene"), {
     stat("firstNew", ms(t.run_new), "answer · new agent"); stat("firstRestored", ms(t.run_restored), "answer · restored");
     const workers = (sub.pools || []).reduce((n, p) => n + (p.workers || 0), 0);
     $("density").innerHTML = `<b>${(sub.actors ?? 0).toLocaleString()}</b> agents on <b>${workers}</b> sandboxes <span>·</span> <b>${(sub.suspended ?? 0).toLocaleString()}</b> asleep using <b>0 CPU</b>`;
+    stat("allTurns", flow ? flow.turnsPerMin() : 0, "turns/min · all games");
     stat("restore", ms(t.restore), "restore p50"); stat("snapshot", ms(t.snapshot), "snapshot p50");
     fleet(sub);
     lastState = s;

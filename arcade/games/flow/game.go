@@ -170,6 +170,9 @@ type ActorMove struct {
 // flowAgent is Agent Flow's own kagent Agent: its actors already ride the belt as runs.
 const flowAgent = "flowbot"
 
+// maxOps is how many recent kagent calls from other games the state carries.
+const maxOps = 120
+
 // maxActorMoves is how many recent actor changes the state carries.
 const maxActorMoves = 60
 
@@ -210,6 +213,7 @@ type Game struct {
 	moves   []Move
 	actors  map[string]kagent.ActorInfo // every Substrate actor at the last poll (nil before the first)
 	amoves  []ActorMove
+	ops     []kagent.Op // other games' kagent calls (OnOp), newest last
 	blocked int // runs stopped by agentgateway's prompt guard
 	limited int // runs stopped by agentgateway's rate limit
 	total   int
@@ -228,6 +232,21 @@ func (g *Game) Run(ctx context.Context) {
 	go g.hub.Run(ctx, func() any { return g.Snapshot() })
 	go g.runActorPoller(ctx)
 	go g.runFleetPoller(ctx)
+}
+
+// OnOp records one kagent call made by any other game (kagent.Observe), so the big screen
+// can move it through the factory. Agent Flow's own calls already ride the belt as runs.
+func (g *Game) OnOp(op kagent.Op) {
+	if op.Agent == flowAgent {
+		return
+	}
+	g.mu.Lock()
+	g.ops = append(g.ops, op)
+	if n := len(g.ops); n > 2*maxOps {
+		g.ops = slices.Clone(g.ops[n-maxOps:])
+	}
+	g.mu.Unlock()
+	g.hub.Poke()
 }
 
 // runFleetPoller watches every actor in Substrate, whatever game or harness made it, and
@@ -774,6 +793,7 @@ type State struct {
 	Limited   int                             `json:"limited"`
 	Moves     []Move                          `json:"moves"`
 	Actors    []ActorMove                     `json:"actors"` // lifecycle changes of every other game's actors
+	Ops       []kagent.Op                     `json:"ops"`    // every other game's kagent calls, newest last
 	Fleet     map[string]AgentInfo            `json:"fleet"` // by player ID
 	Cluster   Cluster                         `json:"cluster"`
 	Agents    int                             `json:"agents"`
@@ -787,7 +807,7 @@ type State struct {
 func (g *Game) Snapshot() State {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Actors: slices.Clone(g.amoves), Blocked: g.blocked, Limited: g.limited, Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
+	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Actors: slices.Clone(g.amoves), Ops: slices.Clone(g.ops[max(0, len(g.ops)-maxOps):]), Blocked: g.blocked, Limited: g.limited, Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
 		Substrate: g.p.Substrate(), Now: time.Now().UnixMilli(), Fleet: map[string]AgentInfo{}, Cluster: g.cluster}
 	for id, a := range g.agents {
 		if a.sessionID == "" {

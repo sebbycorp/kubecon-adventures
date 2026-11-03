@@ -66,8 +66,8 @@ func (k *Kagent) ctx(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, "x-user-id", k.userID)
 }
 
-// CreateSession starts a new actor for the agent and waits until it is ready.
-func (k *Kagent) CreateSession(ctx context.Context, name string) (string, error) {
+// createSession starts a new actor for the agent and waits until it is ready.
+func (k *Kagent) createSession(ctx context.Context, name string) (string, error) {
 	request := &apiv1.CreateSessionRequest{
 		Agent:     k.agent,
 		RequestId: fmt.Sprintf("%s-%d", name, time.Now().UnixNano()), // same ID on retries
@@ -150,8 +150,8 @@ func (r Reply) Decode(v any) error {
 	return json.Unmarshal([]byte(raw), v)
 }
 
-// Prompt sends one message to a session and waits for the agent's reply.
-func (k *Kagent) Prompt(ctx context.Context, sessionID, text string) (Reply, error) {
+// prompt sends one message to a session and waits for the agent's reply.
+func (k *Kagent) prompt(ctx context.Context, sessionID, text string) (Reply, error) {
 	var reply Reply
 	client, err := k.gateway.A2A.ForSession(ctx, sessionID)
 	if err != nil {
@@ -185,9 +185,9 @@ type StreamEvent struct {
 	Tokens int64    // LLM tokens of the call that produced a tool_call or text
 }
 
-// PromptStream is Prompt over A2A streaming: on sees the agent start working, each
+// promptStream is prompt over A2A streaming: on sees the agent start working, each
 // LLM-chosen tool call, each tool result and the final text as they happen.
-func (k *Kagent) PromptStream(ctx context.Context, sessionID, text string, on func(StreamEvent)) (Reply, error) {
+func (k *Kagent) promptStream(ctx context.Context, sessionID, text string, on func(StreamEvent)) (Reply, error) {
 	client, err := k.gateway.A2A.ForSession(ctx, sessionID)
 	if err != nil {
 		return Reply{}, err
@@ -312,10 +312,10 @@ func taskUsage(task *a2atype.Task) Usage {
 	return u
 }
 
-// Checkpoint saves a session's latest finished turn (its Substrate snapshot, copied to a
+// checkpoint saves a session's latest finished turn (its Substrate snapshot, copied to a
 // tag) so it can be forked. kagent answers FailedPrecondition until the turn's snapshot is
 // durable, so this retries until the checkpoint is READY.
-func (k *Kagent) Checkpoint(ctx context.Context, sessionID, headTaskID string) (string, error) {
+func (k *Kagent) checkpoint(ctx context.Context, sessionID, headTaskID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	cps := apiv1.NewCheckpointServiceClient(k.conn)
@@ -377,8 +377,8 @@ func (k *Kagent) ListCheckpointIDs(ctx context.Context, sessionID string) ([]str
 	}
 }
 
-// Suspend snapshots the session's actor and frees its sandbox.
-func (k *Kagent) Suspend(ctx context.Context, sessionID string) error {
+// suspend snapshots the session's actor and frees its sandbox.
+func (k *Kagent) suspend(ctx context.Context, sessionID string) error {
 	if err := retryBusy(ctx, func() error {
 		_, err := k.sessions.SuspendSession(k.ctx(ctx), &apiv1.SuspendSessionRequest{SessionId: sessionID})
 		return err
@@ -388,8 +388,8 @@ func (k *Kagent) Suspend(ctx context.Context, sessionID string) error {
 	return k.waitState(ctx, sessionID, apiv1.RuntimeState_RUNTIME_STATE_SUSPENDED)
 }
 
-// Resume restores the session's actor from its snapshot.
-func (k *Kagent) Resume(ctx context.Context, sessionID string) error {
+// resume restores the session's actor from its snapshot.
+func (k *Kagent) resume(ctx context.Context, sessionID string) error {
 	if err := retryBusy(ctx, func() error {
 		_, err := k.sessions.ResumeSession(k.ctx(ctx), &apiv1.ResumeSessionRequest{SessionId: sessionID})
 		return err
@@ -399,7 +399,7 @@ func (k *Kagent) Resume(ctx context.Context, sessionID string) error {
 	return k.waitState(ctx, sessionID, apiv1.RuntimeState_RUNTIME_STATE_READY)
 }
 
-func (k *Kagent) Delete(ctx context.Context, sessionID string) error {
+func (k *Kagent) delete(ctx context.Context, sessionID string) error {
 	_, err := k.api.Session.DeleteSession(ctx, &apiv1.DeleteSessionRequest{SessionId: sessionID})
 	return err
 }

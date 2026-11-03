@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
+	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
 )
 
 func TestFleetDiff(t *testing.T) {
@@ -40,5 +41,21 @@ func TestFleetDiff(t *testing.T) {
 
 	if g.fleetDiff(map[string]kagent.ActorInfo{"k/d1": a("duck", "SUSPENDED"), "k/f1": a(flowAgent, "RUNNING")}, 4) {
 		t.Fatal("SUSPENDING to SUSPENDED counted as a change")
+	}
+}
+
+func TestOnOpSkipsFlowAndCaps(t *testing.T) {
+	g := &Game{hub: platform.NewHub()}
+	g.OnOp(kagent.Op{Agent: flowAgent, Kind: "turn"})
+	for i := range 3 * maxOps {
+		g.OnOp(kagent.Op{Agent: "duck", Kind: "turn", At: int64(i)})
+	}
+	if len(g.ops) > 2*maxOps || g.ops[len(g.ops)-1].At != 3*maxOps-1 {
+		t.Fatalf("ops = %d, newest at %d", len(g.ops), g.ops[len(g.ops)-1].At)
+	}
+	for _, op := range g.ops {
+		if op.Agent == flowAgent {
+			t.Fatal("Agent Flow's own op kept")
+		}
 	}
 }

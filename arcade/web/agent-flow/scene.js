@@ -591,11 +591,21 @@ function createScene(svg, opts = {}) {
     if (pal.tag) el("text", { x: a, y: b - 12 * k, fill: pal.st, "font-size": 9 * k, "text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "letter-spacing": "0.06em" }, g).textContent = pal.tag.toUpperCase();
   }
 
+  // drawMini draws another game's agent turn: a small cube in its game's colour, with the
+  // game's name over it (red when the turn failed).
+  function drawMini(g, x, y, color, name, bad) {
+    g.innerHTML = "";
+    const st = bad ? "#ff6b6b" : color;
+    const top = agentShape(g, x, y, 0.42, 0, { st, f1: "#151b18", f2: "#101512", f3: "#0c100e", text: st });
+    const [a, b] = P(x, y, top + 0.32);
+    el("text", { x: a, y: b, fill: st, "font-size": 9, "text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", opacity: 0.85 }, g).textContent = name;
+  }
+
   svg.appendChild(L.cubes); // cubes on top: above the labels and click targets, so a cube can be picked
   L.front = el("g", { "pointer-events": "none" }, svg); // scenery in front of the cubes (the gate's near pillar)
   svg.appendChild(L.fx); // bubbles stay on top of everything
   const alarm = () => { M.alarmUntil = performance.now() + 3000; };
-  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, actor, drawCube, bubble, ripple, awake, trail, tour, machines, spot, wall, alarm };
+  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, actor, drawCube, drawMini, bubble, ripple, awake, trail, tour, machines, spot, wall, alarm };
 }
 
 function fmtMs(ms) {
@@ -633,7 +643,7 @@ function shapeOf(id) {
 // stream to the caller, which feeds states in through the returned apply.
 // With camera, the view zooms in and follows the newest live request (or the idle tour).
 // onPick(key) is called when a station is clicked; clicking a cube follows that request.
-function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor, me, compact, camera, live = true }) {
+function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor, onOp, me, compact, camera, live = true }) {
   let picked = null, pickedUntil = 0, pinned = null;
   const sc = createScene(svg, { compact, me, onPick: onPick && ((key) => { picked = key; pickedUntil = Date.now() + 9000; sc.ripple(key); sc.flash(key); onPick(key); }) });
   const VW = 1360, VH = 762, cam = { x: 700, y: 410 }; // the whole map, with room to breathe
@@ -642,6 +652,13 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor
   const seenSteps = new Map(); // run ID -> steps already announced
   let seenHook = Date.now() - 2000, seenMove = Date.now() - 2000, seenActor = Date.now() - 2000;
   const saidAt = {}; // station -> when it last got an actor bubble
+  // Other games' turns (kagent Ops): a mini cube per session rides the belt from the
+  // gateway out to the LLM and back. lastOp is the newest Op already shown.
+  const minis = new Map(); // session -> {g, s, target, color, game, bad, final}
+  const MAXMINI = 28;
+  let lastOp = null, opsSeen = false;
+  const opAgentAt = {}; // agent -> when its last Op arrived (its poll moves are then skipped)
+  const turnTimes = []; // when each other-game turn started, for the turns-a-minute stat
   let firstState = true;
 
   function apply(st) {
@@ -693,6 +710,46 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor
       const live = [...cubes.entries()].filter(([, c]) => !c.final && !c.other).sort((a, b) => b[1].started - a[1].started);
       if (live.length) { focusId = live[0][0]; focusUntil = 0; } else if (!fc) focusId = null;
     }
+    // Every other game's kagent calls, newest last; only the ones after lastOp are new.
+    const ops = st.ops || [];
+    let from = 0;
+    if (lastOp) {
+      const i = ops.findLastIndex((o) => o.at === lastOp.at && o.session === lastOp.session && o.kind === lastOp.kind && o.phase === lastOp.phase);
+      from = i >= 0 ? i + 1 : ops.findIndex((o) => o.at > lastOp.at) >>> 0;
+    }
+    const fresh = opsSeen ? ops.slice(from) : [];
+    if (ops.length) { lastOp = ops[ops.length - 1]; opsSeen = true; }
+    if (!opsSeen && st.ops) opsSeen = true;
+    for (const o of fresh) {
+      if (me) break;
+      const [game, color] = gameOf(o.agent);
+      opAgentAt[o.agent] = Date.now();
+      switch (o.kind) {
+        case "turn": {
+          let m = minis.get(o.session);
+          if (o.phase === "start") {
+            turnTimes.push(Date.now());
+            if (!m && minis.size < MAXMINI) {
+              m = { g: document.createElementNS(NS, "g"), s: DIST[NODE.gw], color, game };
+              sc.L.cubes.prepend(m.g);
+              minis.set(o.session, m);
+            }
+            if (m) Object.assign(m, { target: DIST[NODE.llm], final: false, bad: false });
+          } else if (m) {
+            Object.assign(m, { target: DIST[NODE.gw], final: true, bad: o.err });
+          }
+          break;
+        }
+        case "create": if (!o.err) { sc.actor("new", color); sc.ripple("ate"); } break;
+        case "suspend": if (!o.err) sc.actor("sleep", color); break;
+        case "resume": if (!o.err) sc.actor("wake", color); break;
+        case "checkpoint": if (!o.err) sc.orb([13, 9], [16.6, 11.1], "#ffd23d", 5); break;
+        case "delete": if (!o.err) sc.actor("gone", color); break;
+      }
+      onOp && onOp(o, game, color);
+    }
+    while (turnTimes.length && Date.now() - turnTimes[0] > 60000) turnTimes.shift();
+
     // Every other game's actors: orbs in their game's colour (a few per batch), a bubble per
     // station at most every 1.2 s, and the awake cubes coloured by game.
     for (const m of st.actors || []) {
@@ -700,6 +757,7 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor
       seenActor = Math.max(seenActor, m.at);
       if (firstState || me) continue;
       const [game, color] = gameOf(m.agent);
+      if (Date.now() - (opAgentAt[m.agent] || 0) < 15000 && m.kind !== "gone") continue; // its Ops already drew this
       for (let i = 0; i < Math.min(m.n, 4); i++) sc.actor(m.kind, color, i * 140);
       const where = { new: [7, 9, 2.6], wake: [18.6, 10.6, 1.2], sleep: [18.6, 10.6, 1.2], gone: [18.6, 10.6, 1.2] }[m.kind];
       const verb = { new: "new actor", wake: "woke", sleep: "asleep", gone: "deleted" }[m.kind];
@@ -782,8 +840,20 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor
       if (c.stage === "schedule" && Math.abs(d) < 0.01) glow.idp = true;
       if ((c.stage === "restore" || c.stage === "snapshot")) glow.rf = true;
     }
+    for (const [id, m] of minis) {
+      const d = m.target - m.s;
+      m.s += Math.sign(d) * Math.min(Math.abs(d), 13 * dt);
+      const [x, y] = posAt(m.s);
+      sc.drawMini(m.g, x, y, m.color, m.game, m.bad);
+      if (Math.abs(d) < 0.01) {
+        if (m.target === DIST[NODE.llm]) glow.llm = true;
+        if (m.final) { m.g.remove(); minis.delete(id); }
+      } else if (now - (m.trailAt || 0) > 90) { m.trailAt = now; sc.trail(x, y); }
+      const n = NODES.find((q) => Math.abs(DIST[NODE[q.key]] - m.s) < 0.6);
+      if (n) glow[n.key] = true;
+    }
     // The belts speed up with the number of requests in flight.
-    const busy = [...cubes.values()].filter((c) => !c.final).length;
+    const busy = [...cubes.values()].filter((c) => !c.final).length + Math.ceil(minis.size / 3);
     const dur = Math.max(0.45, 1.8 - busy * 0.3).toFixed(2) + "s";
     if (svg.style.getPropertyValue("--flowdur") !== dur) svg.style.setProperty("--flowdur", dur);
     for (const k in sc.ORB) {
@@ -822,16 +892,17 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor
   }
   requestAnimationFrame(frame);
 
-  const active = () => [...cubes.values()].some((c) => !c.final);
+  const active = () => [...cubes.values()].some((c) => !c.final) || minis.size > 0;
+  const turnsPerMin = () => turnTimes.length;
   const tour = (i) => { tourAt = sc.tour(i); };
   const focus = () => (picked ? null : focusId);
   const pickedKey = () => picked;
-  if (!live) return { apply, tour, active, focus, picked: pickedKey };
+  if (!live) return { apply, tour, active, focus, picked: pickedKey, turnsPerMin };
   let es;
   (function connect() {
     es = new EventSource("/agent-flow/api/events");
     es.onmessage = (m) => apply(JSON.parse(m.data));
     es.onerror = () => { es.close(); setTimeout(connect, 2000); };
   })();
-  return { apply, tour, active, focus, picked: pickedKey };
+  return { apply, tour, active, focus, picked: pickedKey, turnsPerMin };
 }
