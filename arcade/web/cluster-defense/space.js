@@ -357,6 +357,8 @@ export function startSpace(canvas, opts) {
     if (s && performance.now() - s.t < showFor) bubble(x, y + bob - r * 1.8, `“${s.say}”`, Math.max(9, phone ? 1.05 * u : 0.9 * u), R.color);
   }
 
+  const kagentLogo = new Image();
+  kagentLogo.src = new URL("kagent.png", import.meta.url).href;
   // A ship: a rounded rocket in the player's colour, nose along its heading.
   function drawShip(s, p, h, mine, t) {
     const c = shipColor(s.color), u = scale * K * (mine ? 1.15 : 1), x = sx(p.x), y = sy(p.y);
@@ -401,11 +403,14 @@ export function startSpace(canvas, opts) {
     ctx.quadraticCurveTo(0.9 * u, 1.0 * u, 1.9 * u, 0);
     ctx.fill();
     if (mine) { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 0.2 * u; ctx.stroke(); }
-    // cockpit
-    ctx.fillStyle = "#cdefff";
-    ctx.beginPath(); ctx.ellipse(0.55 * u, 0, 0.55 * u, 0.4 * u, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.8)";
-    ctx.beginPath(); ctx.ellipse(0.7 * u, -0.12 * u, 0.2 * u, 0.12 * u, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+    // The cockpit window shows the kagent logo, kept upright whichever way the ship flies.
+    const wx = x + Math.cos(h) * 0.45 * u, wy = y + Math.sin(h) * 0.45 * u, wr = 0.62 * u;
+    ctx.save();
+    if (!s.online) ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = shade(c); ctx.lineWidth = 0.12 * u;
+    ctx.beginPath(); ctx.arc(wx, wy, wr, 0, TAU); ctx.fill(); ctx.stroke();
+    if (kagentLogo.complete && kagentLogo.naturalWidth) ctx.drawImage(kagentLogo, wx - wr * 0.78, wy - wr * 0.72, wr * 1.56, wr * 1.56);
     ctx.restore();
     label(x, y - 2.3 * u, s.nick, mine ? "#ffffff" : c, Math.max(9, (mine ? 1.0 : 0.85) * scale));
   }
