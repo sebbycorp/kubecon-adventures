@@ -12,6 +12,7 @@ package heist
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 )
@@ -105,7 +106,9 @@ func (w *World) allySpawned(r Result) {
 	delete(w.pending, r.Target)
 	if !r.OK {
 		w.Stash[p.owner] = append(w.Stash[p.owner], p.parts...)
-		w.Events = append(w.Events, Event{Kind: "rig-failed", Target: r.Target, Player: p.owner, Text: r.Err})
+		// The raw error stays in the log: events go to every screen and phone.
+		slog.Warn("grand theft agent: rig failed", "ally", r.Target, "owner", p.owner, "err", r.Err)
+		w.Events = append(w.Events, Event{Kind: "rig-failed", Target: r.Target, Player: p.owner, Text: "rig failed to boot"})
 		return
 	}
 	d := w.City.Dispatch

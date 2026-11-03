@@ -183,14 +183,18 @@ if (webglOK()) {
 }
 
 // ---- the socket: a spectator (?screen=1) needs no cookie and sends nothing ----
-let snap = null, lastSnapAt = 0, full = false;
+let snap = null, lastSnapAt = 0, full = false, down = false;
 const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/grand-theft-agent/ws?screen=1`, onSnap, {
   cookie: false,
   onStatus(st) {
     if (st === "full") {
       full = true;
       message("<b>Eight big screens are already watching this city.</b><br>This one will keep trying, every few seconds.");
-    } else if (st === "closed" && !full) message(snap ? "" : "Connecting to the city…");
+    } else if (st === "closed" && !full) {
+      // After a snapshot the city stays drawn (frozen), so say why it stopped moving.
+      down = true;
+      message(snap ? "<b>Reconnecting…</b>" : "Connecting to the city…");
+    }
     $("live").classList.toggle("off", st !== "open");
   },
 });
@@ -202,7 +206,7 @@ const steps = new Map(); // target ID -> last step seen, for step and spawn beat
 let primed = false;
 function onSnap(s) {
   if (full) { full = false; message(""); }
-  if (!snap) message("");
+  if (!snap || down) { down = false; message(""); }
   if (snap && s.now < snap.now - 0.5) { steps.clear(); primed = false; } // admin reset
   snap = s; lastSnapAt = Date.now();
   if (view) view.apply(s);

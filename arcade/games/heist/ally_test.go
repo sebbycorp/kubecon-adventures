@@ -157,8 +157,14 @@ func TestAllySpawnPlacesAlly(t *testing.T) {
 	if got := partIDs(x.w.Stash["a"]); !slices.Equal(got, []string{"extra", "qb", "qc", "qd", "qr"}) {
 		t.Fatalf("stash after refund = %v", got)
 	}
-	if countKind(x.w.DrainEvents(), "rig-failed") != 1 {
+	ev = x.w.DrainEvents()
+	if countKind(ev, "rig-failed") != 1 {
 		t.Fatal("no rig-failed event")
+	}
+	for _, e := range ev { // events are public: a fixed reason, never the raw error
+		if e.Kind == "rig-failed" && e.Text != "rig failed to boot" {
+			t.Fatalf("rig-failed text %q", e.Text)
+		}
 	}
 	if _, err := x.w.BuildRig("a"); err != nil { // the failed one no longer counts
 		t.Fatalf("rebuild after refund: %v", err)

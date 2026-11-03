@@ -152,9 +152,9 @@ A multiplayer extraction shooter in a stylised night city (`games/heist`, design
 Levels: 1 Rookie (freeze one target, 90 s), 2 Booking (freeze and book it, 120 s), 3 The Crew (three targets whose crew springs them, 180 s). Each needs the previous one won. Hunters shoot back; a downed player drops the parts they haven't banked. The leaderboard ranks by takedowns (freezes landed, your ally's count as yours); cash only breaks ties.
 
 - A turn whose reply fails the agent's output validation falls back to a fixed line, so a target never stalls on a bad reply.
-- Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process, and refuses new missions and rigs until that list is in.
+- Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process (with their checkpoints), and refuses new missions and rigs until that list is in. Booked targets' checkpoints are deleted by the admin reset and on shutdown.
 - `manifests/heist-policies.yaml` gives the heist agents their own LLM route (`/heist/v1`) with a prompt guard and a budget of 300k tokens and 400 requests a minute; a policy stop shows on the screen.
 - The phone switches to low quality (lower pixel ratio, no shadows) by itself on a slow first few seconds; MENU has a switch for it.
 - The big screen (`/grand-theft-agent/screen`) shows the whole city, a QR code, the leaderboard, the mission feed and live suspend, resume and checkpoint times.
 
-Booth load (24 players for 5 minutes, `TestBoothLoad`, measured numbers in the design doc): no op errors and no stuck missions. Reset the round with `curl -XPOST localhost:8090/admin/grand-theft-agent/api/reset`.
+Booth load (24 players for 5 minutes, `TestBoothLoad`): no op errors and no stuck missions, but three targets were missed under bot load: freeze p95 4.8 s (target 1 s, including the wait for the target's turn to end; the suspend call alone is 66 ms), spring p95 8.7 s (target 6 s) and LLM tokens at 331k in the busiest minute (budget 300k). The measured numbers and why are in the [design doc](docs/grand-theft-agent.md#booth-load-measured-2026-11-02). Reset the round with `curl -XPOST localhost:8090/admin/grand-theft-agent/api/reset`.
