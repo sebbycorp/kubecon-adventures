@@ -118,6 +118,16 @@ func (w *World) allySpawned(r Result) {
 	w.Events = append(w.Events, Event{Kind: "ally", Target: r.Target, Player: p.owner, Text: fmt.Sprintf("DDR%d", p.tier)})
 }
 
+// cancelRig refunds a rig whose spawn the scheduler refused.
+func (w *World) cancelRig(id string) {
+	p := w.pending[id]
+	if p == nil {
+		return
+	}
+	delete(w.pending, id)
+	w.Stash[p.owner] = append(w.Stash[p.owner], p.parts...)
+}
+
 // startAlly marks al busy with an op by player and returns its intent.
 func (w *World) startAlly(al *Ally, kind, player string) Intent {
 	al.Busy, al.opBy = true, player

@@ -74,6 +74,10 @@ type Scheduler struct {
 	// ExtractUsesResume makes "extract" take a resume slot (resume-first extraction).
 	ExtractUsesResume bool
 
+	// onSubmit, if set, is told the kind and target of every accepted op (after s.mu
+	// is released). The Game uses it to keep its record of submitted ops.
+	onSubmit func(kind, target string)
+
 	ops     Ops
 	timeout time.Duration
 	results chan Result
@@ -140,17 +144,21 @@ func (s *Scheduler) Submit(kind, target, sessionID string, step, steps int) bool
 	}
 	j := job{kind: kind, target: target, sessionID: sessionID, step: step, steps: steps, class: s.classOf(kind)}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	l := laneOf(kind, target)
 	if s.closed || s.busy[l] {
+		s.mu.Unlock()
 		return false
 	}
 	s.busy[l] = true
 	if j.class != classNone && s.running[j.class] >= s.limit[j.class] {
 		s.queue[j.class] = append(s.queue[j.class], j)
-		return true
+	} else {
+		s.startLocked(j)
 	}
-	s.startLocked(j)
+	s.mu.Unlock()
+	if s.onSubmit != nil {
+		s.onSubmit(kind, target)
+	}
 	return true
 }
 

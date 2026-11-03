@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/a2aproject/a2a-go/v2 v2.6.0
+	github.com/coder/websocket v1.8.15
 	// kagent v1.0.0-alpha17. Its tags are repo-root, so the go/ module is pinned by commit.
 	github.com/kagent-dev/kagent/go v0.0.0-20261021161150-8392184232e9
 	google.golang.org/grpc v1.84.0
