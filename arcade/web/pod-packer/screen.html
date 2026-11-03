@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pod Packer · big screen</title>
+<link rel="icon" href="/agent-flow/static/kagent-icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  /* A 1920x1080 stage scaled to the screen. */
+  :root { --fg: #eef1f5; --mute: #8b93a1; --green: #5fd068; --pink: #f472b6; --gold: #ffd23d; --line: #2a2f3b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c10; color: var(--fg); font: 20px/1.35 Inter, system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #stage { position: absolute; width: 1920px; height: 1080px; transform-origin: 0 0; display: grid; grid-template-columns: 560px 1fr 520px; gap: 30px; padding: 40px 44px; }
+  .panel { border-radius: 22px; background: #12141aee; border: 1px solid var(--line); box-shadow: 0 20px 60px #0008; padding: 22px 24px; }
+  h1 { margin: 0; font: 700 70px/1 "Chakra Petch", sans-serif; letter-spacing: .02em; }
+  h1 span { color: var(--pink); }
+  h2 { margin: 0 0 14px; font: 700 30px "Chakra Petch", sans-serif; }
+  .left { display: grid; grid-template-rows: auto auto 1fr; gap: 22px; min-height: 0; }
+  .tag { color: var(--mute); font-size: 21px; margin-top: 12px; }
+  .hero { display: grid; grid-template-columns: repeat(8, 34px); gap: 4px; margin-bottom: 16px; }
+  .hero i { width: 34px; height: 34px; border-radius: 8px; }
+  #qr { display: flex; gap: 20px; align-items: center; }
+  #qrcode { width: 230px; height: 230px; background: #fff; border-radius: 18px; padding: 12px; flex: none; color: #111; font-size: 14px; word-break: break-all; }
+  #qrcode svg { width: 100%; height: 100%; display: block; }
+  #qr b { font: 700 32px "Chakra Petch", sans-serif; display: block; }
+  #qr .u { color: var(--pink); font-size: 18px; margin: 6px 0 12px; display: block; }
+  #qr .how { color: #d4dae4; font-size: 18px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: start; }
+  .st { border-radius: 16px; background: #0e1016; border: 1px solid var(--line); padding: 12px 16px; }
+  .st b { display: block; font: 700 46px/1 "Chakra Petch", sans-serif; font-variant-numeric: tabular-nums; }
+  .st.g b { color: var(--green); }
+  .st.p b { color: var(--pink); }
+  .st span { color: var(--mute); font-size: 16px; }
+  .mid { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+  #board { display: grid; gap: 10px; align-content: start; }
+  .rw { display: grid; grid-template-columns: 64px 18px 1fr auto; gap: 16px; align-items: center; padding: 12px 20px; border-radius: 16px; background: #0e1016; border: 1px solid var(--line);
+    transition: transform .6s cubic-bezier(.2, .9, .3, 1.2); }
+  .rw.first { background: linear-gradient(90deg, #3a1027, #1a0d14 70%); border-color: var(--pink); }
+  .rw .n { font: 700 34px "Chakra Petch", sans-serif; color: var(--mute); text-align: center; }
+  .rw.first .n { color: var(--gold); }
+  .rw i { width: 16px; height: 16px; border-radius: 50%; }
+  .rw .who b { display: block; font: 700 28px "Chakra Petch", sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rw .who small { color: var(--mute); font-size: 16px; }
+  .rw .sc { font: 700 40px "Chakra Petch", sans-serif; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .rw.new { animation: glow 2.2s ease-out; }
+  @keyframes glow { 0% { box-shadow: 0 0 0 4px #f472b6, 0 0 60px #f472b6; } 100% { box-shadow: none; } }
+  .empty { color: var(--mute); font-size: 24px; padding: 30px 10px; text-align: center; }
+  .right { display: grid; grid-template-rows: 1fr auto; gap: 22px; min-height: 0; }
+  #feed { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .ev { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; border-radius: 14px; background: #0e1016; border: 1px solid var(--line); font-size: 18px; animation: in .5s ease-out; }
+  .ev i { width: 12px; height: 12px; border-radius: 50%; margin-top: 7px; flex: none; }
+  .ev em { font-style: normal; color: var(--green); }
+  .ev.over em { color: #fbcfe8; }
+  .ev.best { border-color: var(--gold); }
+  @keyframes in { from { opacity: 0; transform: translateX(20px); } }
+  #cta { justify-content: center; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="stage">
+  <section class="left">
+    <div class="panel">
+      <div class="hero" id="hero"></div>
+      <h1>POD <span>PACKER</span></h1>
+      <div class="tag">Tetris where every block is a real AI agent pod. Every row you clear snapshots real agents on Agent Substrate.</div>
+    </div>
+    <div class="panel" id="qr"><div id="qrcode"></div><div><b>SCAN TO PLAY</b><span class="u" id="joinUrl"></span><span class="how">Pack the cluster's nodes. Clear rows to free them; Substrate snapshots the agents for real.</span></div></div>
+    <div class="stats">
+      <div class="st g"><b id="sAwake">–</b><span>agent pods awake</span></div>
+      <div class="st p"><b id="sSnaps">–</b><span>agents snapshotted</span></div>
+      <div class="st"><b id="sSnap">–</b><span>snapshot p50</span></div>
+      <div class="st"><b id="sRuns">–</b><span>packing now</span></div>
+    </div>
+  </section>
+  <section class="panel mid">
+    <h2>🏆 Best packers today</h2>
+    <div id="board"></div>
+  </section>
+  <section class="right">
+    <div class="panel" style="display:grid;grid-template-rows:auto 1fr;min-height:0"><h2>Nodes freed, live</h2><div id="feed"></div></div>
+    <div class="panel"><div id="cta"></div></div>
+  </section>
+</div>
+
+<script src="/static/qrcode-1.4.4.min.js"></script>
+<script src="/static/arcade.js?v=4"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const dot = (c) => ({ green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" })[c] || "#8a8f94";
+const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
+const COLORS = ["#22d3ee", "#facc15", "#a78bfa", "#4ade80", "#f87171", "#60a5fa", "#fb923c"];
+$("hero").innerHTML = COLORS.concat(["#22d3ee"]).map((c) => `<i style="background:${c}"></i>`).join("");
+
+function fit() {
+  const k = Math.min(innerWidth / 1920, innerHeight / 1080), st = $("stage");
+  st.style.transform = `scale(${k})`;
+  st.style.left = (innerWidth - 1920 * k) / 2 + "px";
+  st.style.top = (innerHeight - 1080 * k) / 2 + "px";
+}
+addEventListener("resize", fit);
+fit();
+
+const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+const joinUrl = new URLSearchParams(location.search).get("join") || (local ? "https://kubecon.agentpwned.ai/pod-packer" : location.origin + "/pod-packer");
+$("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
+try { const qr = qrcode(0, "M"); qr.addData(joinUrl); qr.make(); $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); }
+catch { $("qrcode").textContent = joinUrl; }
+Arcade.ctas($("cta"), "lg");
+
+let prev = new Map();
+function board(rows) {
+  if (!rows || !rows.length) { $("board").innerHTML = `<div class="empty">No packers yet. Scan the code and be the first!</div>`; prev = new Map(); return; }
+  $("board").innerHTML = rows.map((r, i) => {
+    const cls = prev.size && !prev.has(r.nick) ? "new" : "";
+    return `<div class="rw ${i === 0 ? "first" : ""} ${cls}"><span class="n">${i + 1}</span><i style="background:${dot(r.color)}"></i><span class="who"><b>${esc(r.nick)}</b><small>${esc(r.detail || "")}</small></span><span class="sc">${Number(r.score).toLocaleString()}</span></div>`;
+  }).join("");
+  prev = new Map(rows.map((r, i) => [r.nick, i + 1]));
+}
+let seenAt = 0;
+function feed(events) {
+  for (const e of events || []) {
+    if (e.at <= seenAt) continue;
+    seenAt = e.at;
+    const who = `<i style="background:${dot(e.color)}"></i>`;
+    const node = `node-${String(e.node || 0).padStart(2, "0")}`;
+    let html = "";
+    if (e.type === "clear") html = `${who}<span><b>${esc(e.nick)}</b> freed ${e.lines === 4 ? "4 nodes with a TETRIS" : e.lines > 1 ? e.lines + " nodes" : node}${e.snaps ? ` · <em>${e.snaps} agent${e.snaps > 1 ? "s" : ""} snapshotted in ${ms(e.ms)}</em>` : ""}</span>`;
+    else if (e.type === "over") html = `${who}<span><b>${esc(e.nick)}</b>'s cluster filled up at <em>${Number(e.score).toLocaleString()}</em> · ${e.lines} lines</span>`;
+    else if (e.type === "best") html = `🏆<span><b>${esc(e.nick)}</b> takes #1 with <em>${Number(e.score).toLocaleString()}</em>!</span>`;
+    if (!html) continue;
+    const d = document.createElement("div");
+    d.className = "ev " + e.type;
+    d.innerHTML = html;
+    $("feed").prepend(d);
+    while ($("feed").children.length > 9) $("feed").lastChild.remove();
+    if (e.type === "clear") rain(e.lines);
+  }
+}
+function apply(s) {
+  $("sAwake").textContent = `${s.awake}/${s.workers}`;
+  $("sSnaps").textContent = (s.snaps || 0).toLocaleString();
+  $("sSnap").textContent = ms(s.timings?.suspend?.p50);
+  $("sRuns").textContent = s.runs;
+  board(s.board);
+  feed(s.events);
+}
+(function connect() {
+  const es = new EventSource("/pod-packer/api/events");
+  es.onmessage = (m) => apply(JSON.parse(m.data));
+  es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+})();
+
+// ---- a backdrop of slowly falling agent pods ----
+const cv = $("bg"), cx = cv.getContext("2d");
+const drops = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), s: 18 + Math.random() * 26, v: 0.02 + Math.random() * 0.04, c: COLORS[Math.floor(Math.random() * 7)] }));
+function rain(n) { for (let i = 0; i < n * 6; i++) drops.push({ x: Math.random(), y: -0.05, s: 20 + Math.random() * 20, v: 0.15 + Math.random() * 0.1, c: COLORS[Math.floor(Math.random() * 7)], burst: true }); }
+function bg(now) {
+  const w = innerWidth, h = innerHeight;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  cx.fillStyle = "#0b0c10"; cx.fillRect(0, 0, w, h);
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    d.y += d.v / 60;
+    if (d.y > 1.05) { if (d.burst) { drops.splice(i, 1); continue; } d.y = -0.05; d.x = Math.random(); }
+    cx.globalAlpha = d.burst ? 0.5 : 0.12;
+    cx.fillStyle = d.c;
+    cx.beginPath(); cx.roundRect ? cx.roundRect(d.x * w, d.y * h, d.s, d.s, d.s * 0.22) : cx.rect(d.x * w, d.y * h, d.s, d.s); cx.fill();
+  }
+  cx.globalAlpha = 1;
+  requestAnimationFrame(bg);
+}
+requestAnimationFrame(bg);
+</script>
+</body>
+</html>

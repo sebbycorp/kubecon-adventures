@@ -45,6 +45,10 @@ echo "==> Flappy Substrate: flappy WorkerPool and octo Agent"
 k apply -f manifests/flappy-agent.yaml
 k -n kagent wait agent/octo --for=condition=Ready --timeout 5m
 
+echo "==> Pod Packer: podpacker WorkerPool and packer Agent"
+k apply -f manifests/podpacker-agent.yaml
+k -n kagent wait agent/packer --for=condition=Ready --timeout 5m
+
 echo "==> arcade image"
 IMAGE=localhost:5001/arcade:$(date +%Y%m%d-%H%M%S)
 docker build -q -t "$IMAGE" .
@@ -75,6 +79,7 @@ echo
 echo "Arcade:     http://localhost:8090/"
 echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen)"
 echo "Flappy:     http://localhost:8090/flappy (big screen: /flappy/screen)"
+echo "Pod Packer: http://localhost:8090/pod-packer (big screen: /pod-packer/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
 echo "Siege:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
 echo "Defense:    http://localhost:8090/cluster-defense (big screen: /cluster-defense/screen)"

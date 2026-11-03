@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c10">
+<title>Pod Packer</title>
+<meta name="description" content="Tetris where every block is a real AI agent pod. Pack the cluster's nodes; every row you clear snapshots real agents on kagent + Agent Substrate.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Pod Packer · Tetris with real AI agents">
+<meta property="og:description" content="Tetris where every block is a real AI agent pod. Pack the cluster's nodes; every row you clear snapshots real agents on kagent + Agent Substrate.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/pod-packer">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/pod-packer.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Pod Packer · Tetris with real AI agents">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pod Packer · Tetris with real AI agents">
+<meta name="twitter:description" content="Tetris where every block is a real AI agent pod. Pack the cluster's nodes; every row you clear snapshots real agents on kagent + Agent Substrate.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/pod-packer.png">
+<link rel="icon" href="/agent-flow/static/kagent-icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0b0c10; --panel: #12141a; --line: #262a33; --fg: #eef1f5; --mute: #8b93a1; --green: #5fd068; --pink: #f472b6; --gold: #ffd23d; --cyan: #22d3ee; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 15px/1.4 Inter, system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  .hidden { display: none !important; }
+  .cp { font-family: "Chakra Petch", Inter, sans-serif; }
+  #app { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; padding: calc(env(safe-area-inset-top) + 8px) 10px calc(env(safe-area-inset-bottom) + 8px); gap: 8px; }
+
+  /* HUD */
+  #hud { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  .stats { display: flex; gap: 6px; }
+  .stat { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 4px 10px; min-width: 64px; }
+  .stat small { display: block; font-size: 10px; letter-spacing: .14em; color: var(--mute); }
+  .stat b { font: 700 19px/1.1 "Chakra Petch", sans-serif; font-variant-numeric: tabular-nums; }
+  #menuBtn { border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 10px; padding: 8px 12px; font: 700 13px "Chakra Petch", sans-serif; letter-spacing: .08em; }
+  #pods { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mute); min-height: 18px; }
+  #pods i { width: 9px; height: 9px; border-radius: 50%; background: #475060; flex: none; }
+  #pods.on i { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  #pods b { color: var(--fg); font-weight: 600; }
+
+  #well { position: relative; min-height: 0; }
+  #well canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* Controls */
+  #pad { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+  #pad button { height: 62px; border-radius: 14px; border: 1px solid #2d3340; background: linear-gradient(180deg, #1b1f28, #12151c); color: var(--fg);
+    font: 700 22px "Chakra Petch", sans-serif; touch-action: none; box-shadow: 0 3px 0 #07080b; }
+  #pad button small { display: block; font: 600 9px Inter, sans-serif; letter-spacing: .1em; color: var(--mute); margin-top: 1px; }
+  #pad button.on, #pad button:active { transform: translateY(2px); box-shadow: 0 1px 0 #07080b; background: #232836; }
+  #pad #drop { background: linear-gradient(180deg, #f472b6, #db2777); border-color: #f9a8d4; color: #fff; box-shadow: 0 3px 0 #831843, 0 0 18px #f472b655; }
+  #pad #drop small { color: #fde7f3; }
+
+  /* Cards */
+  .card { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(380px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow: auto;
+    border-radius: 20px; background: linear-gradient(180deg, #161922f5, #0e1016f8); border: 1px solid #343a48; box-shadow: 0 20px 60px #000c, 0 0 40px #f472b622; padding: 20px 18px 18px; text-align: center; touch-action: pan-y; }
+  .card h1 { margin: 4px 0 0; font: 700 40px/1 "Chakra Petch", sans-serif; letter-spacing: .02em; }
+  .card h1 span { color: var(--pink); }
+  .card .tag { color: var(--mute); margin: 8px 0 12px; font-size: 14px; }
+  .hero { display: grid; grid-template-columns: repeat(4, 22px); gap: 3px; justify-content: center; margin: 4px 0 8px; }
+  .hero i { width: 22px; height: 22px; border-radius: 5px; }
+  .how { display: grid; gap: 7px; text-align: left; margin: 6px 0 14px; font-size: 13.5px; color: #d4dae4; }
+  .how div { display: flex; gap: 10px; }
+  .how b { color: #fff; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 15px; font: 700 20px "Chakra Petch", sans-serif; letter-spacing: .06em; color: #fff;
+    background: linear-gradient(180deg, #f472b6, #db2777); box-shadow: 0 5px 0 #831843, 0 0 24px #f472b655; margin-top: 6px; cursor: pointer; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #831843; }
+  .btn.ghost { background: none; color: var(--fg); border: 1px solid #343a48; box-shadow: none; font-size: 14px; padding: 11px; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row .btn { margin: 0; }
+  .big { font: 700 58px/1 "Chakra Petch", sans-serif; margin: 4px 0; font-variant-numeric: tabular-nums; }
+  .sub { color: var(--mute); font-size: 14px; }
+  .full { display: inline-block; margin: 2px 0 8px; padding: 4px 12px; border-radius: 999px; background: #3b0d22; border: 1px solid #f472b6; color: #fbcfe8; font: 700 13px "Chakra Petch", sans-serif; letter-spacing: .08em; }
+  .snap { margin: 10px 0 2px; padding: 8px 12px; border-radius: 12px; background: #0b0c10; border: 1px solid var(--line); font-size: 13px; color: #d4dae4; }
+  .snap b { color: var(--green); }
+  .rank { margin: 12px 0 4px; font: 700 20px "Chakra Petch", sans-serif; color: var(--gold); }
+  .beat { color: #fff; font-size: 14px; margin-bottom: 8px; }
+  .board { text-align: left; margin: 8px 0 4px; --ab-accent: var(--pink); font-size: 14px; }
+  .lbl { text-align: left; font-size: 11px; letter-spacing: .14em; color: var(--mute); margin: 12px 0 6px; }
+  .ctas { justify-content: center; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="stats">
+      <div class="stat"><small>SCORE</small><b id="sScore">0</b></div>
+      <div class="stat"><small>LEVEL</small><b id="sLevel">1</b></div>
+      <div class="stat"><small>LINES</small><b id="sLines">0</b></div>
+    </div>
+    <button id="menuBtn">MENU</button>
+    <div id="pods"><i></i><span id="podsTxt">connecting to Agent Substrate…</span></div>
+  </div>
+  <div id="well"><canvas id="cv"></canvas></div>
+  <div id="pad">
+    <button id="bHold">⇄<small>HOLD</small></button>
+    <button id="bLeft">←<small>LEFT</small></button>
+    <button id="bRot">↻<small>ROTATE</small></button>
+    <button id="bRight">→<small>RIGHT</small></button>
+    <button id="bSoft">↓<small>SOFT</small></button>
+    <button id="drop">⤓<small>DROP</small></button>
+  </div>
+</div>
+
+<div id="title" class="card">
+  <div class="hero" id="heroPods"></div>
+  <h1>POD <span>PACKER</span></h1>
+  <div class="tag">Tetris, where every block is a real AI agent pod and every row is a worker node.</div>
+  <div class="how">
+    <div>🧱 <span><b>Pack the cluster.</b> Fill a node (a row) and it's freed.</span></div>
+    <div>📦 <span>Every row you clear <b>snapshots real agents</b> on Agent Substrate: a real suspend, with the real time.</span></div>
+    <div>⚡ <span>Substrate wakes them again in the background, so the cluster runs more agents than it has room for.</span></div>
+    <div>🎮 <span><b>Buttons</b> or <b>gestures</b>: tap to rotate, swipe to move, swipe down to drop.</span></div>
+  </div>
+  <button class="btn" id="play">PLAY</button>
+  <div class="row"><button class="btn ghost" id="boardBtn">LEADERBOARD</button><button class="btn ghost" id="soundBtn">SOUND: ON</button></div>
+</div>
+
+<div id="end" class="card hidden">
+  <div class="full">CLUSTER FULL · NO ROOM TO SCHEDULE</div>
+  <div class="big" id="endScore">0</div>
+  <div class="sub" id="endDetail"></div>
+  <div class="snap" id="endSnap"></div>
+  <div class="rank" id="endRank"></div>
+  <div class="beat" id="endBeat"></div>
+  <div id="endShare" style="--ab-accent: #f472b6"></div>
+  <button class="btn" id="again">PLAY AGAIN</button>
+  <div class="lbl">TOP 5</div>
+  <div class="board" id="endBoard"></div>
+  <div class="ctas" id="endCta"></div>
+</div>
+
+<div id="menu" class="card hidden">
+  <h1 style="font-size:28px">MENU</h1>
+  <div class="lbl">LEADERBOARD</div>
+  <div class="board" id="menuBoard"></div>
+  <button class="btn ghost" id="soundBtn2">SOUND: ON</button>
+  <div class="row"><button class="btn ghost" id="resume">CLOSE</button><a class="btn ghost" href="/pod-packer/screen" target="_blank" style="text-decoration:none">BIG SCREEN</a></div>
+  <div class="lbl">LEARN MORE</div>
+  <div class="ctas" id="menuCta"></div>
+  <div class="row"><a class="btn ghost" href="/" style="text-decoration:none">ARCADE</a></div>
+</div>
+
+<script src="/static/arcade.js?v=4"></script>
+<script src="/pod-packer/static/packer.js"></script>
+</body>
+</html>

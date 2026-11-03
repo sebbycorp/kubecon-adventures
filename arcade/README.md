@@ -10,6 +10,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
 | Gateway Defense | The platform's controls (prompt guard, rate limit, egress, suspend) as towers, each kill a real call; solo tower defense | Playable | [below](#gateway-defense) |
 | Flappy Substrate (at `/flappy`) | Resume and suspend of your own agent: you are the Agent Substrate octopus, woken to swim and snapshotted when you crash | Playable | [below](#flappy-substrate) |
+| Pod Packer (at `/pod-packer`) | Suspend and resume at scale: Tetris where every block is an agent pod; every row cleared snapshots real agents to free a node | Playable | [below](#pod-packer) |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
 ## Start
@@ -29,6 +30,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
 | Gateway Defense phone / big screen | http://localhost:8090/gateway-defense, http://localhost:8090/gateway-defense/screen |
 | Flappy Substrate phone / big screen | http://localhost:8090/flappy, http://localhost:8090/flappy/screen |
+| Pod Packer phone / big screen | http://localhost:8090/pod-packer, http://localhost:8090/pod-packer/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -185,3 +187,15 @@ What is real:
 - **No LLM in play.** Each pool session ran one short placing turn when the arcade started (it puts the actor on a worker); the game makes no other LLM calls. The pool is rebuilt at every start (leftover `octo` sessions are deleted) and deleted on shutdown.
 
 The swim runs on the phone on a fixed 120 Hz step, with the course the server serves (`/flappy/api/rules`, from `games/flappy/rules.go`). The server checks every reported score against those rules before it reaches the board: the gaps must be reachable in the run's time at the course's speed, and there is at most one bubble per gap. The big screen shows a QR code, the animated top 10, a live feed (wakes, crashes with their snapshot times, new #1s), and the awake octopuses with the snapshot and wake-up p50. Admin: `POST /admin/flappy/api/reset` clears the board.
+
+## Pod Packer
+
+Tetris on the phone at `/pod-packer`, where the well is the cluster (each of the 20 rows is a worker node, `node-01` at the bottom) and every block is an agent pod. The point is Agent Substrate's: run more agents than you have room for. Standard guideline rules: a 7-bag, SRS rotation with wall kicks, a ghost piece, HOLD, a 0.5 s lock delay, levels every 10 lines, and 100/300/500/800 times the level for 1-4 lines, with back-to-back tetrises and combos. On-screen buttons (hold, left, rotate, right, soft drop, hard drop) or gestures (tap rotates, drag moves, swipe down drops); arrow keys, space and C work on desktop.
+
+What is real:
+
+- **The pods.** The game keeps a pool of 6 `packer` sessions (agent `packer`, harness and WorkerPool `podpacker`, 4 workers). While anyone plays, up to 4 are awake (a real `Resume` each). Every line a player clears snapshots one awake pod with a real `Suspend`, all of a tetris's four at once, and the phone shows it over the cleared rows: "node-07 freed · 2 agents snapshotted in 140 ms". The pool wakes them again in the background, so the next clear has pods to snapshot. With nobody playing for a minute, the awake pods go back to sleep.
+- **Never blocking.** A clear waits at most 4 s for its snapshots; with no pod awake yet it says so ("no pod awake to snapshot yet") and play goes on.
+- **No LLM in play.** Each pool session ran one short placing turn when the arcade started; the pool is rebuilt at every start (leftover `packer` sessions are deleted) and deleted on shutdown.
+
+The pieces fall on the phone with the rules the server serves (`/pod-packer/api/rules`, from `games/podpacker/rules.go`). Each clear is reported as it happens (`POST /pod-packer/api/clear`, at most one every 150 ms), and the server checks the final score against the rules before it reaches the board: lines no more than the server saw cleared, every cleared cell coming from a placed piece, pieces no faster than 5 a second, tetrises no more than lines allow, and the score no higher than the scoring table could give at the level reached. For the all-games board, 20,000 points is par (1,000 arcade points). Game over ("cluster full, no room to schedule") shows the run's real snapshots and their median time, the rank and the share button. The big screen shows a QR code, the top 10, a live feed of freed nodes with their real snapshot times, and the pods awake, agents snapshotted and snapshot p50. Admin: `POST /admin/pod-packer/api/reset` clears the board.

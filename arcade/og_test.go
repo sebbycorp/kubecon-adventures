@@ -16,7 +16,7 @@ func TestOGImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := http.StripPrefix("/static/", http.FileServerFS(shared))
-	for _, key := range []string{"arcade", "substrate-siege", "cluster-defense", "gateway-defense", "agent-flow", "duck-hunt", "flappy"} {
+	for _, key := range []string{"arcade", "substrate-siege", "cluster-defense", "gateway-defense", "agent-flow", "duck-hunt", "flappy", "pod-packer"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/og/"+key+".png", nil))
 		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
@@ -26,7 +26,7 @@ func TestOGImages(t *testing.T) {
 	// Each page that has a preview names its own image.
 	for page, key := range map[string]string{"web/index.html": "arcade", "web/substrate-siege/phone.html": "substrate-siege",
 		"web/cluster-defense/phone.html": "cluster-defense", "web/gateway-defense/phone.html": "gateway-defense",
-		"web/agent-flow/phone.html": "agent-flow", "web/flappy/phone.html": "flappy"} {
+		"web/agent-flow/phone.html": "agent-flow", "web/flappy/phone.html": "flappy", "web/pod-packer/phone.html": "pod-packer", "web/duck-hunt/phone.html": "duck-hunt"} {
 		b, err := fs.ReadFile(webFS, page)
 		if err != nil {
 			t.Fatal(err)

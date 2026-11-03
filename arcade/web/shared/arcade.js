@@ -123,6 +123,10 @@
       `My octopus swam through ${n(f.gaps)} gaps in Flappy Substrate: ${n(o.score)} points 🐙`,
       `${n(o.score)} points in Flappy Substrate! I was the agent, and I kept it swimming 🐙`,
       `Flappy Substrate: ${n(f.gaps)} gaps, ${n(o.score)} points before my octopus hit the coral 🐙`],
+    "/pod-packer": (o, f) => [
+      `I packed ${n(f.lines)} rows of AI agent pods in Pod Packer: ${n(o.score)} points 🧱`,
+      `${n(o.score)} points in Pod Packer${has(f.tetrises) ? `, ${pl(f.tetrises, "tetris", "tetrises")}` : ""}: Tetris where every block is a real AI agent 🧱`,
+      `Pod Packer: ${n(f.lines)} lines, level ${n(f.level)}, ${n(o.score)} points before my cluster filled up 🧱`],
     "/agent-flow": (o, f) => [
       `My own AI agent just ${f.task || "finished a task"}${has(f.answerMs) ? ` in ${(f.answerMs / 1000).toFixed(1)}s` : ""} 🤖`,
       `I gave an AI agent a job at the booth: it ${f.task || "did it"}${has(f.answerMs) ? ` in ${(f.answerMs / 1000).toFixed(1)}s` : ""}.`],
@@ -136,6 +140,8 @@
     const g = o.path;
     if (g === "/gateway-defense" && (has(f.b403) || has(f.b429) || has(f.suspends)))
       out.push(`Every block was a real agentgateway call: ${n(f.b403)} prompt-guard 403s, ${n(f.b429)} rate-limit 429s, ${n(f.suspends)} Agent Substrate suspends.`);
+    if (g === "/pod-packer" && has(f.snaps))
+      out.push(`Every row I cleared snapshotted real agents: ${n(f.snaps)} kagent + Agent Substrate snapshots${has(f.snapshotMs) ? `, ${n(f.snapshotMs)} ms each` : ""}.`);
     if (has(f.snapshotMs) && has(f.wakeMs)) out.push(`My agent was snapshotted in ${n(f.snapshotMs)} ms and woke in ${n(f.wakeMs)} ms on kagent + Agent Substrate.`);
     if (has(f.hosted) && has(f.slots)) out.push(`kagent + Agent Substrate hosted ${n(f.hosted)} agents on ${n(f.slots)} workers by snapshotting the idle ones.`);
     if (has(f.restoreMs)) out.push(`It woke from a snapshot in ${n(f.restoreMs)} ms on kagent + Agent Substrate.`);

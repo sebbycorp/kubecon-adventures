@@ -1,0 +1,54 @@
+# Pod Packer: the pods are "packer" sessions, each its own Substrate actor on the small
+# "podpacker" WorkerPool. While anyone plays, up to 4 are awake (one per worker); every
+# line a player clears snapshots one of them to object storage (a real suspend) and the
+# game wakes it again (a real resume). The pool's 6 sessions each ran one short placing
+# turn when the arcade started; the game itself makes no LLM calls.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: podpacker
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: podpacker
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 4
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: podpacker
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: podpacker
+    snapshotPolicy:
+      location: s3://ate-snapshots/podpacker/
+---
+# packer uses Duck Hunt's model (duck-model, the shared /v1 route and its budget): it only
+# ever runs the one placing turn per pool session.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: packer
+  namespace: kagent
+spec:
+  harnessRef:
+    name: podpacker
+  template:
+    inline:
+      description: An agent pod in Pod Packer; each session is a pod a line clear snapshots
+      modelConfig:
+        name: duck-model
+      systemPrompt: |
+        You are a tiny agent pod in a Tetris-style arcade game at KubeCon. Reply in at most
+        five friendly words. Never use tools.

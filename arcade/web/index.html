@@ -175,15 +175,15 @@
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="gateway"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/gateway-defense/screen" target="_blank">big screen ↗</a></object>
     </a>
-    <a class="card" href="/agent-flow" style="--c: var(--flow)">
-      <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/agent-flow.webp" aria-label="Agent Flow: a player's agent moving through agentgateway, kagent, Substrate and its gVisor sandbox" width="720" height="450"><source src="/static/loops/agent-flow.webm" type="video/webm"><source src="/static/loops/agent-flow.mp4" type="video/mp4"></video>
-      <div class="head"><div class="ico">🧭</div><div><h2>AGENT FLOW</h2><div class="tag">your own agent</div></div></div>
-      <div class="body"><p>Give your own agent a task and watch it travel through agentgateway, kagent, Substrate and its sandbox, live on the big screen.</p>
-        <div class="real"><span>Sandbox</span><span>Egress policy</span><span>Snapshot</span></div></div>
-      <div class="meta"><div><div class="ab-h">Top agents</div><div data-ab-board="/agent-flow" data-ab-n="5" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
-        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/agent-flow"></div>scan to play</div></div>
-      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="flow"><i></i><span>–</span></span></div>
-      <object><a class="screen" href="/agent-flow/screen" target="_blank">big screen ↗</a></object>
+    <a class="card" href="/pod-packer" style="--c: #f472b6">
+      <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/pod-packer.webp" aria-label="Pod Packer: Tetris pieces made of little agent pods falling into a well of worker nodes, with a row clearing as real agents are snapshotted" width="720" height="450"><source src="/static/loops/pod-packer.webm" type="video/webm"><source src="/static/loops/pod-packer.mp4" type="video/mp4"></video>
+      <div class="head"><div class="ico">🧱</div><div><h2>POD PACKER</h2><div class="tag">Tetris · run more agents than you have room for</div></div></div>
+      <div class="body"><p>Tetris where every block is an agent pod and every row is a worker node. Clear a row and real agents are snapshotted on Agent Substrate to free it.</p>
+        <div class="real"><span>Suspend</span><span>Resume</span><span>Worker pool</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top packers</div><div data-ab-board="/pod-packer" data-ab-n="5" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/pod-packer"></div>scan to play</div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="packer"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/pod-packer/screen" target="_blank">big screen ↗</a></object>
     </a>
     <a class="card" href="/duck-hunt" style="--c: var(--duck)">
       <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/duck-hunt.webp" aria-label="Duck Hunt: agent birds flying over a night city of server racks, one being shot into Snapshot Storage" width="720" height="450"><source src="/static/loops/duck-hunt.webm" type="video/webm"><source src="/static/loops/duck-hunt.mp4" type="video/mp4"></video>
@@ -216,7 +216,7 @@
     </a>
   </section>
 
-  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a></footer>
+  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a> · <a href="/pod-packer/screen">Pod Packer</a><br>Give your own agent a task: <a href="/agent-flow">Agent Flow</a></footer>
 </div>
 
 <script>
@@ -253,7 +253,7 @@ document.querySelectorAll(".card:not(.ext)").forEach((c) => c.addEventListener("
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
 const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
 function players(s) {
-  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players };
+  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players, packer: s.podPacker_players };
 }
 async function poll() {
   try {
