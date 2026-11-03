@@ -270,6 +270,8 @@ type Game struct {
 	actors  map[string]kagent.ActorInfo // every Substrate actor at the last poll (nil before the first)
 	amoves  []ActorMove
 	ops     []kagent.Op       // other games' kagent calls (OnOp), newest last
+	opCount map[string]int64  // every game's successful kagent calls by kind, since opSince
+	opSince time.Time
 	scores  map[string]*score // by player ID: the leaderboard
 	blocked int               // runs stopped by agentgateway's prompt guard
 	limited int               // runs stopped by agentgateway's rate limit
@@ -294,10 +296,17 @@ func (g *Game) Run(ctx context.Context) {
 // OnOp records one kagent call made by any other game (kagent.Observe), so the big screen
 // can move it through the factory. Agent Flow's own calls already ride the belt as runs.
 func (g *Game) OnOp(op kagent.Op) {
+	g.mu.Lock()
+	if op.Phase == "end" && !op.Err {
+		if g.opCount == nil {
+			g.opCount, g.opSince = map[string]int64{}, time.Now()
+		}
+		g.opCount[op.Kind]++
+	}
 	if op.Agent == flowAgent {
+		g.mu.Unlock()
 		return
 	}
-	g.mu.Lock()
 	g.ops = append(g.ops, op)
 	if n := len(g.ops); n > 2*maxOps {
 		g.ops = slices.Clone(g.ops[n-maxOps:])
@@ -891,5 +900,10 @@ func (g *Game) Snapshot() State {
 
 func (g *Game) Stats() map[string]any {
 	s := g.Snapshot()
-	return map[string]any{"agents": s.Agents, "runs": s.Total, "tokens": s.Tokens, "webhooks": len(s.Hooks), "blocked": s.Blocked, "rateLimited": s.Limited}
+	g.mu.Lock()
+	// Every game's lifecycle calls since the arcade started (the TV's KILLED and DESTROYED).
+	ops := map[string]any{"created": g.opCount["create"], "suspended": g.opCount["suspend"], "resumed": g.opCount["resume"],
+		"deleted": g.opCount["delete"], "turns": g.opCount["turn"], "since": g.opSince.UnixMilli()}
+	g.mu.Unlock()
+	return map[string]any{"agents": s.Agents, "runs": s.Total, "tokens": s.Tokens, "webhooks": len(s.Hooks), "blocked": s.Blocked, "rateLimited": s.Limited, "ops": ops}
 }

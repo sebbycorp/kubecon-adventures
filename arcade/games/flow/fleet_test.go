@@ -75,3 +75,19 @@ func TestTop(t *testing.T) {
 		t.Fatalf("top = %+v", got)
 	}
 }
+
+func TestOnOpCountsEveryGame(t *testing.T) {
+	g := &Game{hub: platform.NewHub()}
+	for _, op := range []kagent.Op{
+		{Agent: "duck", Kind: "suspend", Phase: "end"},
+		{Agent: flowAgent, Kind: "suspend", Phase: "end"}, // Agent Flow's own calls count too
+		{Agent: "heister", Kind: "suspend", Phase: "end", Err: true},
+		{Agent: "heister", Kind: "delete", Phase: "end"},
+		{Agent: "heister", Kind: "turn", Phase: "start"},
+	} {
+		g.OnOp(op)
+	}
+	if g.opCount["suspend"] != 2 || g.opCount["delete"] != 1 || g.opCount["turn"] != 0 || g.opSince.IsZero() {
+		t.Fatalf("counts = %v since %v", g.opCount, g.opSince)
+	}
+}

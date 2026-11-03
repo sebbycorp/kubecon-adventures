@@ -17,7 +17,17 @@
     background: linear-gradient(transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 100% 40px, linear-gradient(90deg, transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 40px 100%, var(--bg); }
 
   /* Left: live traffic. */
-  .left { display: grid; grid-template-rows: auto 1fr; gap: 18px; min-height: 0; }
+  .left { display: grid; grid-template-rows: auto auto 1fr; gap: 16px; min-height: 0; }
+  /* The big numbers: every agent on Substrate right now, and every kill since the arcade started. */
+  .big { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .bn { --c: var(--fg); border: 1px solid #2a2d30; border-radius: 16px; background: #111412; padding: 12px 16px 12px; position: relative; overflow: hidden; }
+  .bn::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); box-shadow: 0 0 18px var(--c); }
+  .bn b { display: block; font-size: 56px; line-height: 1; font-weight: 800; color: var(--c); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: text-shadow .3s; }
+  .bn b.bump { text-shadow: 0 0 26px var(--c); }
+  .bn span { display: block; margin-top: 6px; font-size: 16px; font-weight: 800; letter-spacing: .12em; color: var(--fg); }
+  .bn small { display: block; font-size: 14px; color: var(--mute); margin-top: 1px; }
+  .slim { display: flex; gap: 22px; color: var(--mute); font-size: 17px; margin-top: 6px; }
+  .slim b { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
   .hdr { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
   .hdr img { height: 40px; display: block; margin-bottom: 8px; }
   .hdr h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.01em; }
@@ -70,14 +80,16 @@
         <p>Every character is a real AI agent in its own gVisor sandbox.</p>
         <div class="live"><i></i>LIVE TRAFFIC FROM EVERY GAME</div>
       </div>
-      <div class="pills">
-        <div class="pill"><b id="nActors">–</b>agents</div>
-        <div class="pill green"><b id="nAwake">–</b>awake</div>
-        <div class="pill"><b id="nWorkers">–</b>sandboxes</div>
-        <div class="pill"><b id="nAsleep">–</b>asleep · 0 CPU</div>
-        <div class="pill"><b id="nRestore">–</b>wake-up p50</div>
-        <div class="pill"><b id="nTurns">0</b>turns/min</div>
+    </div>
+    <div>
+      <div class="big">
+        <div class="bn"><b id="nActors">–</b><span>AGENTS</span><small>on Agent Substrate</small></div>
+        <div class="bn" style="--c: var(--green)"><b id="nAwake">–</b><span>AWAKE</span><small>running in a sandbox</small></div>
+        <div class="bn" style="--c: #60a5fa"><b id="nAsleep">–</b><span>SUSPENDED</span><small>snapshots · 0 CPU</small></div>
+        <div class="bn" style="--c: #fbbf24"><b id="nKilled">–</b><span>KILLED</span><small>shot down &amp; suspended</small></div>
+        <div class="bn" style="--c: #f87171"><b id="nDestroyed">–</b><span>DESTROYED</span><small>sessions deleted</small></div>
       </div>
+      <div class="slim"><span><b id="nWorkers">–</b> sandboxes</span><span><b id="nRestore">–</b> wake-up p50</span><span><b id="nTurns">0</b> turns/min</span><span id="nSince"></span></div>
     </div>
     <div class="factory">
       <svg id="scene" viewBox="40 70 1320 650" preserveAspectRatio="xMidYMid meet" aria-label="Live map of every agent on Agent Substrate"></svg>
@@ -162,12 +174,21 @@ showPage();
 
 // ---- live numbers ----
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
+// bump sets a big number and flashes it when it went up.
+function bump(id, v) {
+  const el = $(id), txt = fmt(v ?? 0);
+  if (el.textContent !== txt && el.textContent !== "–") { el.classList.add("bump"); setTimeout(() => el.classList.remove("bump"), 600); }
+  el.textContent = txt;
+}
 const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
 async function poll() {
   try {
     const s = await (await fetch("/api/stats")).json();
     $("nActors").textContent = fmt(s.actors); $("nAwake").textContent = fmt(s.running); $("nWorkers").textContent = fmt(s.workers);
     $("nAsleep").textContent = fmt(s.suspended); $("nRestore").textContent = ms(s.restoreP50Ms);
+    const ops = s.agentFlow_ops || {};
+    bump("nKilled", ops.suspended); bump("nDestroyed", ops.deleted);
+    if (ops.since > 0) $("nSince").textContent = "kills since " + new Date(ops.since).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     $("density").textContent = s.actors && s.workers ? `${(s.actors / s.workers).toFixed(1)} agents per sandbox` : "–";
   } catch {}
 }
