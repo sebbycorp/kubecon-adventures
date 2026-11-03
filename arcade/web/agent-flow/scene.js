@@ -40,7 +40,7 @@ const DONE = new Set(["reply", "snapshot", "asleep", "error"]);
 // GAMES names the kagent Agents of every arcade game (and the stray test agents), with
 // the colour their actors get on the map. Agents not listed still show, in grey.
 const GAMES = {
-  duck: ["Duck Hunt", "#facc15"], "duck-direct": ["Duck Hunt test", "#a3893a"], "duck-noschema": ["Duck Hunt test", "#a3893a"],
+  duck: ["Agent Hunt", "#facc15"], "duck-direct": ["Agent Hunt test", "#a3893a"], "duck-noschema": ["Agent Hunt test", "#a3893a"],
   "hello-duck": ["kagent demo", "#9ca3af"], flowbot: ["Agent Flow", "#5fd068"], heister: ["Substrate Siege", "#38bdf8"],
   sidekick: ["Substrate Siege ally", "#7dd3fc"], subagent: ["Cluster Defense", "#fb923c"], rogue: ["Gateway Defense", "#22d3ee"], loadbot: ["load test", "#6b7280"],
 };

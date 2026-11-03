@@ -36,7 +36,7 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	kagentURL := flag.String("kagent-url", envOr("KAGENT_URL", "http://kagent-controller.kagent:8083"), "kagent controller URL")
 	namespace := flag.String("namespace", envOr("AGENT_NAMESPACE", "kagent"), "namespace of the games' Agents")
-	idle := flag.Int("idle", 20, "Duck Hunt: seconds before the Hunter shoots an idle duck")
+	idle := flag.Int("idle", 20, "Agent Hunt: seconds a target may fly before it is put back to sleep (8-30)")
 	atelet := flag.String("atelet-metrics", envOr("ATELET_METRICS", "dns:atelet-metrics.ate-system.svc.cluster.local:9090"),
 		`atelet Prometheus endpoints: "dns:<host>:<port>", a comma-separated URL list, or "" to disable`)
 	flag.Parse()
@@ -177,7 +177,7 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		}
 		platform.WriteJSON(w, out)
 	})
-	// Old Duck Hunt stats URL, kept for existing dashboards.
+	// Agent Hunt stats at its old Duck Hunt URL, kept for existing dashboards.
 	mux.HandleFunc("GET /duck-hunt/api/stats", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, duck.Stats()) })
 }
 
@@ -203,7 +203,7 @@ func arcadeBoards(n int, duck, flw, gta, cd, gd, missions topper) []GameBoard {
 		{"Cluster Defense", "/cluster-defense", "best round", cd.Top(n), false},
 		{"Gateway Defense", "/gateway-defense", "points", gd.Top(n), false},
 		{"Agent Flow", "/agent-flow", "tasks", flw.Top(n), false},
-		{"Duck Hunt", "/duck-hunt", "points", duck.Top(n), false},
+		{"Agent Hunt", "/duck-hunt", "points", duck.Top(n), false},
 		{"AI agentgateway missions", missionsURL, "pts", missions.Top(n), true},
 	}
 }

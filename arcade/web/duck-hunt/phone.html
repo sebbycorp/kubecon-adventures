@@ -2,220 +2,292 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
-<title>Duck Hunt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b2a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Agent Hunt</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/nes.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
 <style>
-  body { max-width: 480px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
-  #sky { display: block; width: calc(100% + 32px); margin: 0 -16px 8px; aspect-ratio: 16 / 9; background: var(--sky); }
-  #sound { position: absolute; right: 0; top: -2px; padding: 6px 8px; font-size: 8px; border-width: 2px; z-index: 1; }
-  .duck .actor { grid-column: 1 / -1; font-size: 8px; margin-top: 6px; color: var(--gray); word-break: break-all; }
-  .duck .actor b { font-weight: normal; }
-  .duck canvas.sv { grid-column: 1 / -1; width: 100%; height: auto; aspect-ratio: 320 / 220; margin-top: 10px; border: 2px solid #333; background: #000; }
-  .duck .timeline { grid-column: 1 / -1; margin-top: 10px; font-size: 8px; line-height: 1.7; }
-  .duck .timeline h3 { font-size: 8px; font-weight: normal; color: var(--orange); margin: 0 0 4px; }
-  .duck .timeline li { list-style: none; margin: 0 0 4px; padding-left: 10px; border-left: 2px solid #333; }
-  .duck .timeline .t { color: var(--gray); }
-  .k-kagent { border-color: var(--sky) !important; } .k-substrate { border-color: var(--yellow) !important; }
-  .k-llm { border-color: var(--green) !important; } .k-hunter { border-color: var(--red) !important; } .k-owner { border-color: var(--orange) !important; }
+  :root { --green: #5fd068; --purple: #7c5cff; --pink: #ff7ad9; --gold: #ffd23d; --fg: #f4f1ff; --mute: #a9a3c9;
+    --st: env(safe-area-inset-top, 0px); --sr: env(safe-area-inset-right, 0px); --sb: env(safe-area-inset-bottom, 0px); --sl: env(safe-area-inset-left, 0px); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0b2a; color: var(--fg); font: 14px/1.4 Inter, system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
   .hidden { display: none !important; }
-  #err { color: var(--red); min-height: 1.6em; text-align: center; margin: 8px 0; }
-  .duck { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
-  .duck canvas { width: 64px; height: 48px; background: var(--sky); border: 4px solid var(--white); }
-  .duck .name { color: var(--orange); }
-  .duck .status { margin: 2px 0; }
-  .duck .quack { background: var(--white); color: var(--black); padding: 8px; margin-top: 8px; grid-column: 1 / -1; font-size: 9px; }
-  .duck .actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
-  .duck .actions button { flex: 1; }
-  .duck .times { grid-column: 1 / -1; font-size: 8px; color: var(--gray); margin-top: 6px; }
-  .hud { display: flex; justify-content: space-between; font-size: 9px; color: var(--gray); margin: 4px 8px; }
-  footer { text-align: center; font-size: 8px; color: var(--gray); margin-top: 24px; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+
+  /* HUD */
+  #hud { position: fixed; top: calc(8px + var(--st)); left: calc(10px + var(--sl)); right: calc(10px + var(--sr)); display: flex; align-items: flex-start; gap: 10px; pointer-events: none; }
+  .chip { background: #120d33cc; border: 1px solid #3a2f7a; border-radius: 12px; padding: 4px 12px; backdrop-filter: blur(4px); }
+  #score { min-width: 92px; }
+  #score small, #timer small { display: block; font-size: 10px; letter-spacing: .14em; color: var(--mute); font-weight: 600; }
+  #score b { font: 900 22px Inter, sans-serif; font-variant-numeric: tabular-nums; }
+  #combo { align-self: center; font: 900 16px Inter, sans-serif; color: var(--pink); text-shadow: 0 0 12px #ff7ad988; transition: transform .12s; }
+  #combo.pop { transform: scale(1.35); }
+  #mid { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #timer { text-align: center; }
+  #timer b { font: 900 22px Inter, sans-serif; font-variant-numeric: tabular-nums; }
+  #timer.hurry b { color: #ff8a8a; }
+  #bar { width: min(260px, 40vw); height: 5px; border-radius: 3px; background: #2a2160; overflow: hidden; }
+  #bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); width: 100%; }
+  #wave { font: 800 11px Inter, sans-serif; letter-spacing: .14em; color: var(--gold); }
+  #menuBtn { pointer-events: auto; padding: 8px 12px; font-weight: 800; font-size: 12px; letter-spacing: .1em; }
+  #ticker { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(6px + var(--sb)); font-size: 11px; color: var(--mute); pointer-events: none; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Sheets */
+  .sheet { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: calc(10px + var(--st)) calc(14px + var(--sr)) calc(10px + var(--sb)) calc(14px + var(--sl));
+    background: radial-gradient(ellipse at 50% 40%, #1e1460e6, #0a0b2af2 70%); z-index: 5; touch-action: pan-y; }
+  .card { width: min(760px, 100%); max-height: 100%; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: center; }
+  .card.one { grid-template-columns: 1fr; width: min(460px, 100%); text-align: center; }
+  h1 { margin: 0; font: 900 clamp(26px, 7vh, 46px)/1 Inter, sans-serif; letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #fff, #c9b8ff 45%, var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { color: var(--mute); margin: 8px 0 12px; font-size: 13.5px; }
+  .lede b { color: var(--fg); }
+  .how { display: grid; gap: 4px; font-size: 12.5px; color: #d6d0f5; margin-bottom: 12px; }
+  .how span b { color: var(--gold); }
+  .play { width: 100%; padding: 14px; border-radius: 14px; background: linear-gradient(90deg, var(--green), #9cff7a); color: #06140a; font: 900 18px Inter, sans-serif; letter-spacing: .06em;
+    box-shadow: 0 0 30px #5fd06866; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .ghost { flex: 1; padding: 10px; border-radius: 12px; background: #120d33; border: 1px solid #3a2f7a; font-weight: 700; font-size: 13px; text-align: center; text-decoration: none; color: var(--fg); }
+  .board { background: #120d33cc; border: 1px solid #3a2f7a; border-radius: 16px; padding: 12px; }
+  .board h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .14em; color: var(--mute); }
+  .rowb { display: grid; grid-template-columns: 1.8em 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; font-size: 13px; }
+  .rowb:nth-child(odd) { background: #ffffff08; }
+  .rowb.you { background: #5fd06826; outline: 1px solid var(--green); }
+  .rowb .r { color: var(--mute); font-weight: 800; }
+  .rowb .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .rowb .s { font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--mute); font-size: 13px; padding: 6px; }
+  .big { font: 900 clamp(34px, 11vh, 60px)/1 Inter, sans-serif; color: #fff; text-shadow: 0 0 24px #7c5cff; font-variant-numeric: tabular-nums; }
+  .stats { color: var(--mute); font-size: 12.5px; margin: 6px 0; }
+  .rank { font: 900 18px Inter, sans-serif; color: var(--gold); margin-top: 6px; }
+  .beat { color: var(--pink); font-weight: 700; font-size: 13px; }
+  .cta { margin-top: 10px; display: flex; justify-content: center; }
+
+  #rotate { position: fixed; inset: 0; z-index: 9; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; padding: 24px;
+    background: radial-gradient(circle at 50% 40%, #241670, #0a0b2a 70%); }
+  #rotate .phone { width: 64px; height: 110px; border: 4px solid #fff; border-radius: 14px; position: relative; animation: turn 2s ease-in-out infinite; }
+  #rotate .phone::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 14px; height: 4px; margin-left: -7px; border-radius: 2px; background: #fff; }
+  @keyframes turn { 0%, 20% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+  #rotate h2 { margin: 0; font: 900 24px Inter, sans-serif; }
+  #rotate p { margin: 0; color: var(--mute); }
+  @media (orientation: portrait) { #rotate { display: flex; } }
 </style>
 </head>
 <body>
-<div class="title">DUCK<br>HUNT</div>
-<div class="sub" style="font-size:9px">AGENT SUBSTRATE EDITION</div>
+<canvas id="sky"></canvas>
 
-<section id="join" class="box hidden" style="margin-top:24px">
-  <form id="joinForm">
-    <label for="nick">ENTER YOUR NAME</label>
-    <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" required style="margin:12px 0">
-    <button type="submit" style="width:100%">START</button>
-  </form>
-</section>
+<div id="hud" class="hidden">
+  <div id="score" class="chip"><small>SCORE</small><b id="scoreV">0</b></div>
+  <div id="combo"></div>
+  <div id="mid"><div id="timer" class="chip"><small>TIME</small><b id="timeV">1:15</b></div><div id="bar"><i id="barI"></i></div><div id="wave">WAVE 1</div></div>
+  <button id="menuBtn" class="chip">MENU</button>
+</div>
+<div id="ticker"></div>
 
-<section id="game" class="hidden" style="position:relative">
-  <button id="sound" type="button">SOUND OFF</button>
-  <canvas id="sky" width="480" height="270" aria-label="The live Duck Hunt sky, same as the big screen"></canvas>
-  <div class="hud"><span id="who"></span><span id="flyCount"></span></div>
-  <div class="box">
-    <div style="margin-bottom:8px">SELECT A DUCK TO HATCH</div>
-    <ul class="menu">
-      <li><button data-kind="fast">FLY FAST</button></li>
-      <li><button data-kind="zigzag">ZIG-ZAG</button></li>
-      <li><button data-kind="showoff">SHOW OFF</button></li>
-    </ul>
+<div id="startSheet" class="sheet hidden">
+  <div class="card">
+    <div>
+      <h1>AGENT HUNT</h1>
+      <p class="lede">Every agent in this sky is a <b>real AI agent on Agent Substrate</b>. Tap one to shoot it: it's <b>snapshotted for real</b> and drops into Snapshot Storage.</p>
+      <div class="how"><span>🎯 Tap an agent to shoot. Hits in a row build a <b>combo up to ×5</b>.</span><span>⭐ <b>Golden</b> agents are worth 500. Swift ones 150.</span><span>⏱️ 75 seconds. Waves get faster. Don't let them escape.</span></div>
+      <button class="play" id="playBtn">PLAY</button>
+      <div class="row"><button class="ghost" id="soundBtn">🔊 Sound on</button><a class="ghost" href="/">Arcade</a></div>
+    </div>
+    <div class="board"><h3>TOP 10 · BEST RUNS</h3><div id="startBoard"><div class="empty">Loading…</div></div><div id="you" class="stats" style="margin-top:8px"></div></div>
   </div>
-  <div id="ducks"></div>
-  <div class="box" style="font-size:9px;--ab-accent:#facc15">
-    <div style="margin-bottom:8px">TOP PLAYERS</div>
-    <div data-ab-board="/duck-hunt" data-ab-n="5" data-ab-unit="0" data-ab-empty="HATCH A DUCK TO SCORE"></div>
-    <div style="margin:12px 0 6px">LEARN MORE</div>
-    <div data-ab-cta="sm"></div>
-  </div>
-  <footer>EACH DUCK IS AN AI AGENT IN ITS OWN GVISOR SANDBOX.<br>IDLE DUCKS GET SNAPSHOTTED BY THE HUNTER.<br><br>WATCH THE BIG SCREEN!</footer>
-</section>
+</div>
 
-<div id="err" role="alert"></div>
+<div id="endSheet" class="sheet hidden">
+  <div class="card">
+    <div style="text-align:center">
+      <div style="font:800 12px Inter;letter-spacing:.14em;color:var(--mute)">TIME! YOUR SCORE</div>
+      <div class="big" id="endScore">0</div>
+      <div class="stats" id="endStats"></div>
+      <div class="rank" id="endRank"></div>
+      <div class="beat" id="endBeat"></div>
+      <button class="play" id="againBtn" style="margin-top:12px">PLAY AGAIN</button>
+      <div class="row"><a class="ghost" href="/">Arcade</a><a class="ghost" href="/duck-hunt/screen" target="_blank" rel="noopener">Big screen ↗</a></div>
+      <div class="cta" id="endCta"></div>
+    </div>
+    <div class="board"><h3>LEADERBOARD</h3><div id="endBoard"></div></div>
+  </div>
+</div>
+
+<div id="menuSheet" class="sheet hidden">
+  <div class="card one">
+    <h1 style="font-size:28px">PAUSED? NOPE.</h1>
+    <p class="lede">The clock keeps running: the agents are real and still flying.</p>
+    <button class="play" id="resumeBtn">BACK TO THE HUNT</button>
+    <div class="row"><button class="ghost" id="soundBtn2">🔊 Sound on</button><button class="ghost" id="quitBtn">End run</button></div>
+    <div class="cta" id="menuCta"></div>
+  </div>
+</div>
+
+<div id="rotate"><div class="phone"></div><h2>Turn your phone sideways</h2><p>Agent Hunt plays in landscape.</p></div>
 
 <script src="/static/arcade.js?v=2"></script>
-<script src="/static/sprites.js"></script>
-<script src="/duck-hunt/static/sky.js"></script>
-<script src="/static/substrate-view.js"></script>
-<script>
-"use strict";
+<script type="module">
+import { startHunt } from "/duck-hunt/static/hunt.js";
 const $ = (id) => document.getElementById(id);
-const KIND_NAMES = { fast: "FLY FAST", zigzag: "ZIG-ZAG", showoff: "SHOW OFF" };
-let lastState = {}, me = null, hatched = {}, mine = [], idleSeconds = 20, serverNow = Date.now(), clockSkew = 0;
+const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+for (const id of ["endCta", "menuCta"]) Arcade.ctas($(id), "sm");
 
-async function api(path, body) {
-  const url = path === "join" || path === "me" ? "/api/" + path : "/duck-hunt/api/" + path;
-  const r = await fetch(url, {
-    method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || r.statusText);
-  return data;
+// The arcade's join: no player yet, the home page gives one a name and sends them back.
+const meR = await fetch("/api/me").catch(() => null);
+if (meR && meR.status === 401) { location.replace("/?next=/duck-hunt"); await new Promise(() => {}); }
+const me = meR && meR.ok ? await meR.json() : { nick: "?" };
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
 }
 
-function showError(e) { $("err").textContent = e ? String(e.message || e).toUpperCase() : ""; if (e) setTimeout(() => showError(null), 4000); }
+// ---- sound (WebAudio synth, no files) and vibration ----
+let soundOn = true, ac = null;
+try { soundOn = localStorage.getItem("hunt-sound") !== "off"; } catch {}
+function audio() { if (!ac) try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch {} if (ac && ac.state === "suspended") ac.resume(); return ac; }
+function tone(type, f0, f1, dur, vol, at = 0) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(dur, vol) {
+  const a = audio(); if (!a) return;
+  const b = a.createBuffer(1, Math.floor(a.sampleRate * dur), a.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
+  const s = a.createBufferSource(), g = a.createGain(), f = a.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 1800; g.gain.value = vol;
+  s.buffer = b; s.connect(f).connect(g).connect(a.destination); s.start();
+}
+function sfx(name) {
+  if (!soundOn) return;
+  switch (name) {
+    case "shot": noise(0.12, 0.35); tone("square", 180, 60, 0.08, 0.08); break;
+    case "hit": tone("square", 520, 1320, 0.14, 0.07); break;
+    case "goldhit": [660, 880, 1320, 1760].forEach((f, i) => tone("triangle", f, f * 1.01, 0.12, 0.08, i * 0.06)); break;
+    case "golden": tone("sine", 1200, 1800, 0.2, 0.05); break;
+    case "bin": tone("sine", 300, 600, 0.12, 0.06); break;
+    case "escape": tone("sawtooth", 500, 140, 0.35, 0.05); break;
+    case "end": [523, 659, 784, 1046].forEach((f, i) => tone("triangle", f, f, 0.18, 0.08, i * 0.12)); break;
+  }
+}
+const buzz = (p) => { if (soundOn && navigator.vibrate) try { navigator.vibrate(p); } catch {} };
+function setSound(on) {
+  soundOn = on;
+  try { localStorage.setItem("hunt-sound", on ? "on" : "off"); } catch {}
+  for (const id of ["soundBtn", "soundBtn2"]) $(id).textContent = on ? "🔊 Sound on" : "🔇 Sound off";
+}
+setSound(soundOn);
+$("soundBtn").onclick = () => setSound(!soundOn);
+$("soundBtn2").onclick = () => setSound(!soundOn);
 
-$("sound").onclick = () => {
-  const on = $("sound").textContent === "SOUND OFF";
-  if (on) Sfx.enable(); else Sfx.ctx?.suspend();
-  $("sound").textContent = on ? "SOUND ON" : "SOUND OFF";
+// ---- the game ----
+let runId = null, finishing = false;
+const api = {
+  launch: () => post("/duck-hunt/api/launch", { run: runId }),
+  hit: (flight) => post("/duck-hunt/api/hit", { run: runId, flight }),
+  escape: (flight) => post("/duck-hunt/api/escape", { run: runId, flight }),
 };
-
-$("joinForm").onsubmit = async (ev) => {
-  ev.preventDefault();
-  try { me = await api("join", { nick: $("nick").value }); start(); } catch (e) { showError(e); }
-};
-
-document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = async () => {
-  b.disabled = true;
-  try { await api("hatch/" + b.dataset.kind, {}); hatched[b.dataset.kind] = true; } catch (e) { showError(e); b.disabled = false; }
+let comboShown = 0;
+const hunt = startHunt($("sky"), api, {
+  onScore(g) {
+    $("scoreV").textContent = g.score.toLocaleString();
+    const m = g.combo >= 3 ? 1 + Math.min(4, (g.combo - 1) >> 1) : 0;
+    $("combo").textContent = m > 1 ? `×${m} COMBO` : "";
+    if (m !== comboShown && m > 1) { $("combo").classList.add("pop"); setTimeout(() => $("combo").classList.remove("pop"), 140); }
+    comboShown = m;
+  },
+  onEnd: () => finish(),
+  sfx, buzz,
 });
+window.__hunt = hunt; // for scripted test runs
 
-function start() {
-  $("join").classList.add("hidden");
-  $("game").classList.remove("hidden");
-  $("who").textContent = "P1 " + me.nick.toUpperCase();
-  startSky($("sky"), { me: me.id, onState });
-  requestAnimationFrame(animate);
+async function play() {
+  audio();
+  try { await document.documentElement.requestFullscreen?.({ navigationUI: "hide" }); } catch {}
+  try { await screen.orientation?.lock?.("landscape"); } catch {}
+  try {
+    const r = await post("/duck-hunt/api/start");
+    runId = r.run; finishing = false;
+    show("startSheet", false); show("endSheet", false); show("menuSheet", false); show("hud");
+    hunt.start(r.seconds || 75);
+  } catch (e) { alert(e.message); }
+}
+$("playBtn").onclick = play;
+$("againBtn").onclick = play;
+$("menuBtn").onclick = () => show("menuSheet");
+$("resumeBtn").onclick = () => show("menuSheet", false);
+$("quitBtn").onclick = () => { show("menuSheet", false); hunt.stop(); finish(); };
+
+async function finish() {
+  if (finishing || !runId) return;
+  finishing = true;
+  hunt.stop();
+  sfx("end");
+  show("hud", false);
+  const g = hunt.state;
+  let res = null;
+  try { res = await post("/duck-hunt/api/finish", { run: runId }); } catch {}
+  const score = res ? res.score : g.score;
+  $("endScore").textContent = score.toLocaleString();
+  const acc = g.shots ? Math.round((100 * (res ? res.hits : g.hits)) / g.shots) : 0;
+  $("endStats").textContent = `${res ? res.hits : g.hits} agents snapshotted · ${res ? res.escapes : g.escapes} escaped · ${acc}% accuracy · best combo ×${1 + Math.min(4, ((res ? res.bestCombo : g.bestCombo) - 1) >> 1)}` +
+    ((res ? res.golden : g.golden) ? ` · ${res ? res.golden : g.golden} golden` : "");
+  $("endRank").textContent = res && res.rank ? (res.rank === 1 ? "#1 ON THE BIG SCREEN" : `#${res.rank} on the big screen`) : score ? "" : "No hits this time";
+  $("endBeat").textContent = res && res.beat ? `Beat ${res.beat.nick} by ${res.beat.by.toLocaleString()} to reach #${res.beat.rank}` : res && res.rank === 1 ? "Nobody's ahead of you. Defend it." : "";
+  board($("endBoard"), res ? res.top : [], true);
+  show("endSheet");
+  runId = null;
 }
 
-function onState(s) {
-  lastState = s;
-  idleSeconds = s.settings.idleSeconds;
-  clockSkew = Date.now() - s.now;
-  mine = (s.ducks || []).filter((d) => d.playerId === me.id);
-  if (!mine.length && Object.keys(hatched).length && !s.ducks?.length) hatched = {}; // round was reset
-  for (const [kind, label] of Object.entries(KIND_NAMES)) {
-    const btn = document.querySelector(`[data-kind="${kind}"]`);
-    const used = mine.some((d) => d.kind === kind) || hatched[kind];
-    btn.disabled = !!used;
-    btn.textContent = used ? label + " ✓" : label;
-  }
-  $("flyCount").textContent = (s.ducks || []).filter((d) => d.state === "flying").length + " IN THE SKY";
-  renderDucks();
+function board(el, rows, mark) {
+  if (!rows || !rows.length) { el.innerHTML = `<div class="empty">No scores yet. Be the first.</div>`; return; }
+  el.innerHTML = rows.map((r, i) => `<div class="rowb${mark && r.nick === me.nick ? " you" : ""}"><span class="r">#${i + 1}</span><span class="n">${esc(r.nick)}${mark && r.nick === me.nick ? " · you" : ""}</span><span class="s">${Number(r.score).toLocaleString()}</span></div>`).join("");
 }
+async function loadBoard() {
+  try {
+    const rows = await (await fetch("/duck-hunt/api/board", { cache: "no-store" })).json();
+    board($("startBoard"), rows, true);
+    const mine = rows.findIndex((r) => r.nick === me.nick);
+    $("you").textContent = mine >= 0 ? `You're #${mine + 1} · playing as ${me.nick}` : `Playing as ${me.nick}`;
+  } catch { $("startBoard").innerHTML = `<div class="empty">Leaderboard unavailable.</div>`; }
+}
+loadBoard();
+show("startSheet");
 
-function renderDucks() {
-  const root = $("ducks");
-  for (const d of mine) {
-    let el = root.querySelector(`[data-id="${d.id}"]`);
-    if (!el) {
-      el = document.createElement("div");
-      el.className = "box duck";
-      el.dataset.id = d.id;
-      el.innerHTML = `<canvas width="32" height="24"></canvas>
-        <div><div class="name"></div><div class="status"></div></div>
-        <div class="quack hidden"></div>
-        <div class="actions"><button class="q">QUACK!</button><button class="r">REVIVE</button></div>
-        <div class="times"></div>
-        <div class="actor"></div>
-        <canvas class="sv" width="320" height="220" aria-label="Live diagram of how Agent Substrate runs this duck"></canvas>
-        <div class="timeline"><h3>WHAT JUST HAPPENED</h3><ul style="margin:0;padding:0"></ul></div>`;
-      el.querySelector(".q").onclick = () => act(d.id, "quack");
-      el.querySelector(".r").onclick = () => act(d.id, "revive");
-      root.append(el);
+// ---- HUD clock ----
+setInterval(() => {
+  if (!runId) return;
+  const t = hunt.timeLeft(), g = hunt.state;
+  $("timeV").textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  $("timer").classList.toggle("hurry", t < 10);
+  $("barI").style.width = `${(100 * t) / 75}%`;
+  $("wave").textContent = `WAVE ${g.wave}`;
+}, 200);
+
+// ---- live: your agents' lines, and other players' hits on the ticker ----
+let seen = Date.now();
+(function stream() {
+  const es = new EventSource("/duck-hunt/api/events");
+  es.onmessage = (m) => {
+    const s = JSON.parse(m.data);
+    for (const e of s.events || []) {
+      if (e.at <= seen) continue;
+      seen = Math.max(seen, e.at);
+      if (e.type === "say") hunt.say(e.flight, e.text);
+      if (e.type === "hit" && e.nick !== me.nick) $("ticker").textContent = `${e.nick} snapshotted a${e.kind === "agent" ? "n" : ""} ${e.kind} agent +${e.points}${e.ms ? ` · ${e.ms} ms` : ""}`;
     }
-    el.duck = d;
-    el.querySelector(".name").textContent = KIND_NAMES[d.kind] + " DUCK";
-    const quack = el.querySelector(".quack");
-    quack.textContent = d.flight?.quack ? "“" + d.flight.quack.toUpperCase() + "”" : "";
-    quack.classList.toggle("hidden", !d.flight?.quack);
-    el.querySelector(".q").disabled = d.state !== "flying" || d.busy;
-    el.querySelector(".r").disabled = d.state !== "shot" || d.busy;
-    el.querySelector(".r").classList.toggle("hidden", d.state !== "shot" && d.state !== "reviving");
-    el.querySelector(".q").classList.toggle("hidden", d.state === "shot" || d.state === "reviving");
-    el.querySelector(".times").textContent =
-      `HATCHED IN ${fmtMs(d.hatchMs)}` + (d.shots ? ` · SHOT ×${d.shots}` : "") + (d.revives ? ` · REVIVED ×${d.revives}` : "");
-    const a = d.actor, awake = a && ["RUNNING", "RESUMING", "SUSPENDING"].includes(a.state);
-    el.querySelector(".actor").innerHTML = a
-      ? `SUBSTRATE ACTOR #${a.name.slice(-4).toUpperCase()}<br>${a.name}<br>` +
-        `<b class="${awake ? "yellow" : "muted"}">${awake ? "⚡ SANDBOX AWAKE" : "ZZ ASLEEP AS SNAPSHOT"}</b> · ${a.state}` +
-        (a.node ? `<br>NODE ${a.node}` : "")
-      : d.sessionId ? `SESSION ${d.sessionId}` : "";
-    const steps = (d.timeline || []).slice(-6).reverse(), t0 = Date.parse(d.hatchedAt);
-    el.querySelector(".timeline ul").innerHTML = steps.map((st) =>
-      `<li class="k-${st.kind}"><span class="t">+${((st.at - t0) / 1000).toFixed(1)}S</span> ${escHTML(st.text).toUpperCase()}</li>`).join("");
-    el.querySelector(".timeline").classList.toggle("hidden", !steps.length);
-  }
-  for (const el of [...root.children]) if (!mine.some((d) => d.id === el.dataset.id)) el.remove();
-}
-
-function escHTML(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
-
-async function act(id, what) {
-  try { await api(`ducks/${id}/${what}`, {}); } catch (e) { showError(e); }
-}
-
-function statusText(d) {
-  switch (d.state) {
-    case "hatching": return ["HATCHING...", "yellow"];
-    case "reviving": return ["REVIVING...", "yellow"];
-    case "shot": return ["SHOT DOWN!", "red"];
-    case "failed": return ["EGG FAILED", "red"];
-  }
-  if (d.busy) return ["QUACKING...", "yellow"];
-  const left = Math.max(0, Math.ceil(idleSeconds - (Date.now() - clockSkew - Date.parse(d.lastActive)) / 1000));
-  return [`FLYING · HUNTER IN ${left}S`, left <= 5 ? "red" : "green"];
-}
-
-function animate(now) {
-  for (const el of $("ducks").children) {
-    const d = el.duck, c = el.querySelector("canvas"), g = c.getContext("2d");
-    g.imageSmoothingEnabled = false;
-    g.fillStyle = NES.sky; g.fillRect(0, 0, 32, 24);
-    if (d.state === "flying") drawSprite(g, duckSprite(FLAP[Math.floor(now / (160 - d.flight.speed * 10)) % 4], d.color), 1, 1);
-    else if (d.state === "shot" || d.state === "reviving") drawSprite(g, duckSprite("shot", d.color), 1, 2, false, true);
-    else drawSprite(g, eggSprite(d.color), 11, 8 + Math.sin(now / 90));
-    if (!el.view) el.view = new SubstrateView(el.querySelector(".sv"));
-    el.view.draw(d, lastState, now);
-    const [txt, cls] = statusText(d), st = el.querySelector(".status");
-    st.textContent = txt; st.className = "status " + cls;
-  }
-  requestAnimationFrame(animate);
-}
-
-(async () => {
-  try { me = await api("me"); start(); } catch { $("join").classList.remove("hidden"); $("nick").focus(); }
+  };
+  es.onerror = () => { es.close(); setTimeout(stream, 2000); };
 })();
 </script>
 </body>

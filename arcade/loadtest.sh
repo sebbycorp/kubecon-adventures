@@ -1,54 +1,45 @@
 #!/usr/bin/env bash
-# Load test: N players each hatch one duck at once, then the whole flock is shot and
-# revived in a burst. Uses real LLM calls (~1.1k tokens per prompt on gpt-4.1-mini).
-# Usage: ./loadtest.sh [ducks=50] [base=http://localhost:8090]
-# Starts a new round (deletes all sessions) first, and leaves the Hunter off at the end.
+# Agent Hunt load test: N bot players each play one run at once. A bot launches a target
+# (a real Substrate resume), waits like a player aiming, and shoots it (a real suspend).
+# Few LLM calls: only the occasional line a waking agent says.
+# Usage: ./loadtest.sh [players=10] [seconds=75] [base=http://localhost:8090]
 set -euo pipefail
-N=${1:-50}
-B=${2:-http://localhost:8090}
+N=${1:-10}
+SECS=${2:-75}
+B=${3:-http://localhost:8090}
 A=$B/duck-hunt/api
-export PATH=$HOME/.local/bin:$PATH
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-state() { curl -s "$B/admin/duck-hunt/api/state"; }
-count() { state | jq "[.ducks[] | select($1)] | length"; }
-wait_for() { # wait_for <jq filter for done ducks> <timeout s>
-  local t0=$SECONDS
-  while [ "$(count "$1")" -lt "$N" ] && [ $((SECONDS - t0)) -lt "$2" ]; do sleep 1; done
-  echo "$((SECONDS - t0))s"
+bot() { # bot <i>: one player's run; appends "resume_ms suspend_ms" lines to $WORK/<i>.ms
+  local i=$1 jar=$WORK/$1.jar run end flight body
+  curl -s -c "$jar" -b "$jar" -H 'Content-Type: application/json' -d "{\"nick\":\"bot$i\"}" "$B/api/join" >/dev/null
+  run=$(curl -s -c "$jar" -b "$jar" -X POST "$A/start" | jq -r .run)
+  end=$((SECONDS + SECS))
+  while [ $SECONDS -lt $end ]; do
+    body=$(curl -s -c "$jar" -b "$jar" -H 'Content-Type: application/json' -d "{\"run\":\"$run\"}" "$A/launch")
+    if [ "$(jq -r '.busy // false' <<<"$body")" = true ] || [ "$(jq -r '.flight // empty' <<<"$body")" = "" ]; then
+      echo busy >>"$WORK/$i.busy"
+      sleep 0.45
+      continue
+    fi
+    flight=$(jq -r .flight <<<"$body")
+    sleep "0.$((RANDOM % 6 + 4))" # 0.4-0.9 s: aiming
+    jq -r --argjson w "$(jq .wokeMs <<<"$body")" '"\($w) \(.ms)"' \
+      <(curl -s -c "$jar" -b "$jar" -H 'Content-Type: application/json' -d "{\"run\":\"$run\",\"flight\":\"$flight\"}" "$A/hit") >>"$WORK/$i.ms"
+  done
+  curl -s -c "$jar" -b "$jar" -H 'Content-Type: application/json' -d "{\"run\":\"$run\"}" "$A/finish" | jq -c '{score, hits, rank}' >"$WORK/$i.res"
 }
-summary() {
-  state | jq -r '
-    "  ducks: \([.ducks[] | .state] | group_by(.) | map("\(.[0])=\(length)") | join(" "))",
-    "  errors: \([.ducks[] | select(.error) | .error] | group_by(.) | map("\(length)x \(.[0][0:80])") | join("; ") | if . == "" then "none" else . end)",
-    (.timings | to_entries[] | "  \(.key): n=\(.value.count) p50=\(.value.p50)ms p95=\(.value.p95)ms"),
-    "  substrate: running=\(.substrate.running) actors=\(.substrate.actors) workers=\(.substrate.workers) busy=\(.substrate.busyWorkers) \(.substrate.byState)",
-    "  llm: calls=\(.llmCalls) tokens=\(.tokens.inputTokens + .tokens.outputTokens)"'
-  kubectl --context kind-kagent top nodes --no-headers 2>/dev/null | awk '{printf "  node %s cpu=%s mem=%s\n", $1, $2, $4}'
-}
 
-echo "==> New round, Hunter off"
-curl -s -X POST "$B/admin/duck-hunt/api/reset" >/dev/null
-curl -s -X POST "$B/admin/duck-hunt/api/settings" -d '{"hunterOn":false,"idleSeconds":20}' >/dev/null
+echo "==> $N bots, ${SECS}s runs against $B"
+for i in $(seq 1 "$N"); do bot "$i" & done
+wait
 
-echo "==> $N players join"
-seq "$N" | xargs -P 32 -I{} curl -s -c "$WORK/{}" -X POST "$B/api/join" -d '{"nick":"bot{}"}' -o /dev/null
-
-echo "==> $N ducks hatch at once"
-kinds=(fast zigzag showoff)
-seq "$N" | xargs -P "$N" -I{} sh -c 'curl -s -b "$1/$2" -X POST "$3/hatch/$4" -o /dev/null' _ "$WORK" {} "$A" "${kinds[0]}"
-echo "  all flying/failed after $(wait_for '.state == "flying" or .state == "failed"' 300)"
-summary
-
-echo "==> Hunter shoots the whole flock (idle 5s)"
-curl -s -X POST "$B/admin/duck-hunt/api/settings" -d '{"hunterOn":true,"idleSeconds":5}' >/dev/null
-echo "  all shot after $(wait_for '.state == "shot" or .state == "failed"' 120)"
-curl -s -X POST "$B/admin/duck-hunt/api/settings" -d '{"hunterOn":false,"idleSeconds":20}' >/dev/null
-
-echo "==> Every owner revives at once"
-state | jq -r '.ducks[] | select(.state == "shot") | "\(.nick | ltrimstr("bot")) \(.id)"' |
-  xargs -P "$N" -n 2 sh -c 'curl -s -b "$1/$3" -X POST "$2/ducks/$4/revive" -o /dev/null' _ "$WORK" "$A"
-echo "  all flying/failed after $(wait_for '(.state == "flying" and (.busy | not)) or .state == "failed"' 300)"
-summary
-echo "Hunter left off. Start a new round from /admin when done."
+pct() { sort -n | awk -v p="$1" '{a[NR]=$1} END {if (NR) print a[int((NR-1)*p)+1]; else print "-"}'; }
+cat "$WORK"/*.ms 2>/dev/null >"$WORK/all" || true
+hits=$(wc -l <"$WORK/all")
+echo "hits: $hits · busy retries: $(cat "$WORK"/*.busy 2>/dev/null | wc -l)"
+echo "wake (resume) ms p50 $(awk '{print $1}' "$WORK/all" | pct 0.5) p95 $(awk '{print $1}' "$WORK/all" | pct 0.95)"
+echo "snapshot (suspend) ms p50 $(awk '{print $2}' "$WORK/all" | pct 0.5) p95 $(awk '{print $2}' "$WORK/all" | pct 0.95)"
+echo "best scores: $(cat "$WORK"/*.res | jq -s -c 'sort_by(-.score) | .[0:3]')"
+curl -s "$B/admin/duck-hunt/api/state" | jq -c '{pool, awake, asleep, runs, hits, turns, tokens}'
