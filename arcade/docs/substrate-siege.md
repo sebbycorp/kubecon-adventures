@@ -19,6 +19,8 @@ The game was first built as "Grand Theft Agent" with levels and missions (2026-1
 | Loot | Parts drop on freezes and deletes and are picked up by walking over them. A strip shows the four rig parts; a full set deploys an ally by itself. A downed player drops what they carry |
 | Teams | Optional, folded under "Play with friends": one code, one clock, up to 4 |
 
+Booth load for runs (24 bots, 5 minutes, 2026-11-03): 403 freezes and 240 bookings with no stuck runs. Steps 8–12 s apart with 32 agents ran at 420–500k tokens a minute, so steps went to 12–16 s and the city to 24 agents. Even so, 24 runs starting at once burst to 584k in the first minute and then held at the 300k budget with 14% of LLM calls rate-limited; a freeze waits for the agent's turn, so freeze p95 was 33 s (p50 3.5 s) while the suspend call itself was p95 0.3 s. A queued step used to run after its agent was frozen, waking it and breaking its booking; a freeze now drops the queued step.
+
 ## Decisions (agreed 2026-11-02, first version)
 
 | Topic | Decision |
