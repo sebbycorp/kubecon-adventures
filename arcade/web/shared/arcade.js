@@ -56,6 +56,8 @@
     } catch {
       return;
     }
+    // Widgets whose element left the page (a TV page turn) are dropped.
+    for (let i = widgets.length - 1; i >= 0; i--) if (!widgets[i].el.isConnected) widgets.splice(i, 1);
     for (const w of widgets) draw(w);
   }
   function draw(w) {

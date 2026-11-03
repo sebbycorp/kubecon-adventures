@@ -69,6 +69,8 @@ func main() {
 	gta.Run(ctx)
 	cd.Run(ctx)
 	gd.Run(ctx)
+	missions := newExtBoard(missionsBoard)
+	go missions.run(ctx)
 
 	web := func(dir string) fs.FS {
 		sub, err := fs.Sub(webFS, path.Join("web", dir))
@@ -80,9 +82,10 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "index.html") })
+	mux.HandleFunc("GET /tv", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "tv.html") }) // the booth TV
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
-	arcadeAPI(mux, p, duck, flw, gta, cd, gd)
+	arcadeAPI(mux, p, duck, flw, gta, cd, gd, missions)
 	duck.Routes(mux, web("duck-hunt"))
 	flw.Routes(mux, web("agent-flow"))
 	gta.Routes(mux, web("substrate-siege"))
@@ -120,7 +123,7 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game, missions topper) {
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -142,7 +145,7 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 
 	// Every game's leaderboard, top 5 each, for the arcade home page.
 	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
-		platform.WriteJSON(w, arcadeBoards(5, duck, flw, gta, cd, gd))
+		platform.WriteJSON(w, arcadeBoards(5, duck, flw, gta, cd, gd, missions))
 	})
 
 	// Flat numbers for dashboards (Homepage customapi widgets).
@@ -179,11 +182,13 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 }
 
 // GameBoard is one game's leaderboard on the arcade home page: Unit names its score.
+// External games are not the arcade's: Path is their full URL.
 type GameBoard struct {
-	Game string              `json:"game"`
-	Path string              `json:"path"`
-	Unit string              `json:"unit"`
-	Rows []platform.BoardRow `json:"rows"`
+	Game     string              `json:"game"`
+	Path     string              `json:"path"`
+	Unit     string              `json:"unit"`
+	Rows     []platform.BoardRow `json:"rows"`
+	External bool                `json:"external,omitempty"`
 }
 
 // topper is a game with a leaderboard.
@@ -192,12 +197,13 @@ type topper interface {
 }
 
 // arcadeBoards is every game's top n, in the home page's order.
-func arcadeBoards(n int, duck, flw, gta, cd, gd topper) []GameBoard {
+func arcadeBoards(n int, duck, flw, gta, cd, gd, missions topper) []GameBoard {
 	return []GameBoard{
-		{"Substrate Siege", "/substrate-siege", "best run", gta.Top(n)},
-		{"Cluster Defense", "/cluster-defense", "best round", cd.Top(n)},
-		{"Gateway Defense", "/gateway-defense", "points", gd.Top(n)},
-		{"Agent Flow", "/agent-flow", "tasks", flw.Top(n)},
-		{"Duck Hunt", "/duck-hunt", "points", duck.Top(n)},
+		{"Substrate Siege", "/substrate-siege", "best run", gta.Top(n), false},
+		{"Cluster Defense", "/cluster-defense", "best round", cd.Top(n), false},
+		{"Gateway Defense", "/gateway-defense", "points", gd.Top(n), false},
+		{"Agent Flow", "/agent-flow", "tasks", flw.Top(n), false},
+		{"Duck Hunt", "/duck-hunt", "points", duck.Top(n), false},
+		{"AI agentgateway missions", missionsURL, "pts", missions.Top(n), true},
 	}
 }

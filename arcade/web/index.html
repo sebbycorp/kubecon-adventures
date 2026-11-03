@@ -43,22 +43,13 @@
   .factory .cap { position: absolute; left: 14px; bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
   .factory .cap span { font-size: 12px; color: var(--mute); background: #0d0e0fd9; border: 1px solid #2a2d30; border-radius: 999px; padding: 4px 10px; }
   .factory .cap b { color: var(--fg); font-weight: 600; }
-  .factory a.full { position: absolute; right: 12px; top: 12px; font-size: 12.5px; text-decoration: none; color: var(--green); border: 1px solid var(--greenDim);
+  .factory .links { position: absolute; right: 12px; top: 12px; display: flex; gap: 8px; }
+  .factory a.full { font-size: 12.5px; text-decoration: none; color: var(--green); border: 1px solid var(--greenDim);
     background: #111412e6; border-radius: 999px; padding: 6px 12px; box-shadow: 0 0 24px #5fd06818; }
   @media (max-width: 640px) { .factory svg { aspect-ratio: 1360 / 900; } .factory .cap { display: none; } }
 
-  /* Player */
-  .player { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 4px; }
-  .player .p1 { font-weight: 600; } .player .p1 b { color: var(--green); }
-  .player button.link { background: none; border: 0; color: var(--mute); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 0; }
-  form.join { display: flex; gap: 8px; width: 100%; max-width: 520px; }
-  form.join input { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 12px; border: 1px solid #2a2d30; background: #111412; color: #fff;
     font: 600 15px Inter, sans-serif; letter-spacing: .04em; text-transform: uppercase; outline: none; }
-  form.join input:focus { border-color: var(--green); box-shadow: 0 0 0 3px #5fd06826; }
-  form.join button { border: 1px solid #2a2d30; border-radius: 12px; padding: 0 16px; font: 600 14px Inter, sans-serif; cursor: pointer; }
-  #dice { background: #121314; color: #fff; font-size: 18px; }
-  #go { background: var(--green); border-color: var(--green); color: #06140a; }
-  #err { color: #ff8c8c; min-height: 1.4em; font-size: 13px; width: 100%; }
+  #err { color: #ff8c8c; min-height: 1.4em; font-size: 13px; margin-top: 10px; }
 
   /* Games: panels like the screen's story and QR cards. */
   .label { margin: 16px 0 10px; color: var(--mute); font: 11.5px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
@@ -77,8 +68,6 @@
   .card .qr { width: 86px; text-align: center; font-size: 10.5px; color: var(--mute); }
   .card .qr .code { background: #fff; border-radius: 8px; padding: 5px; line-height: 0; }
   .card .qr svg { width: 100%; height: auto; }
-  .cta { margin-top: 14px; }
-  footer .ab-ctas { justify-content: center; margin: 0 0 12px; }
   .card .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 21px; flex: none;
     background: #0d0e0f; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 22%, transparent); }
   .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -108,7 +97,6 @@
       <h1>Agent Arcade on Agent Substrate</h1>
       <p>Every character is a real AI agent in its own gVisor sandbox. Play a game, then watch your agents move through the platform below.</p>
       <div class="pill"><i></i><b>LIVE</b><span id="since">kagent · Agent Substrate · agentgateway</span></div>
-      <div class="cta" data-ab-cta="lg"></div>
     </div>
     <div class="stats">
       <div class="stat"><b id="nActors">–</b>agents</div>
@@ -123,19 +111,11 @@
   <section class="factory" aria-label="Live map of every agent on Agent Substrate">
     <svg id="scene" viewBox="20 59 1360 640" preserveAspectRatio="xMidYMid slice"></svg>
     <div class="vig"></div>
-    <a class="full" href="/agent-flow/screen">Full screen ↗</a>
+    <div class="links"><a class="full" href="/tv">📺 TV view</a><a class="full" href="/agent-flow/screen">Full screen ↗</a></div>
     <div class="cap"><span>Every cube is a real agent turn, from every game</span><span><b id="capDensity">–</b></span></div>
   </section>
 
-  <section class="player">
-    <div id="joined" class="hidden"><span class="p1">P1 <span id="who"></span></span> · <button class="link" id="rename">change name</button></div>
-    <form class="join hidden" id="joinForm">
-      <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" placeholder="YOUR NAME" aria-label="Player name" required>
-      <button type="button" id="dice" title="Random name" aria-label="Random name">🎲</button>
-      <button type="submit" id="go">PLAY</button>
-    </form>
-    <div id="err" role="alert"></div>
-  </section>
+  <div id="err" role="alert"></div>
 
   <div class="label">Pick a game</div>
   <section class="grid" id="games">
@@ -189,9 +169,18 @@
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="duck"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/duck-hunt/screen" target="_blank">big screen ↗</a></object>
     </a>
+    <a class="card ext" href="https://gd-frontend-413299367082.us-central1.run.app/" target="_blank" rel="noopener" style="--c: #a78bfa">
+      <img class="shot" src="/static/shots/agentgateway-missions.webp?v=1" alt="AI agentgateway missions: a pixel-art city street, the game's top 10 podium and its main menu" loading="lazy" width="720" height="450">
+      <div class="head"><div class="ico"><img src="/agent-flow/static/agentgateway-icon.svg" alt="" width="24" height="24"></div><div><h2>AI AGENTGATEWAY MISSIONS</h2><div class="tag">community game · by Solo Labs</div></div></div>
+      <div class="body"><p>Can you configure your AI gateway and climb the leaderboard? Take contracts on a real agentgateway, stack points and dodge the cops.</p>
+        <div class="real"><span>agentgateway config</span><span>Contracts</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top players</div><div data-ab-board="https://gd-frontend-413299367082.us-central1.run.app/" data-ab-n="3" data-ab-detail="0" data-ab-empty="Leaderboard in game."></div></div>
+        <div class="qr"><div class="code" data-qr="https://gd-frontend-413299367082.us-central1.run.app/"></div>scan to play</div></div>
+      <div class="foot"><span class="play">PLAY ↗</span><span class="now"><span>opens in a new tab</span></span></div>
+    </a>
   </section>
 
-  <footer><div data-ab-cta="md"></div>Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a></footer>
+  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a></footer>
 </div>
 
 <script>
@@ -201,40 +190,28 @@ const $ = (id) => document.getElementById(id);
 const next = new URLSearchParams(location.search).get("next");
 const safeNext = next && /^\/[\w\-\/]*$/.test(next) && !next.startsWith("//") ? next : null;
 
-function showJoined(p) {
-  if (safeNext) { location.replace(safeNext); return; }
-  $("joinForm").classList.add("hidden");
-  $("joined").classList.remove("hidden");
-  $("who").textContent = p.nick.toUpperCase();
-  document.body.classList.remove("locked");
-}
-function showJoin() {
-  $("joined").classList.add("hidden");
-  $("joinForm").classList.remove("hidden");
-  document.body.classList.add("locked");
-  if (!$("nick").value) $("nick").value = randomName();
-}
 const A = ["NEON", "TURBO", "PIXEL", "COSMIC", "HYPER", "MEGA", "ROGUE", "LASER", "QUANTUM", "SNEAKY", "ATOMIC", "GLITCH"];
 const B = ["DUCK", "POD", "AGENT", "KUBE", "SANDBOX", "GATEWAY", "SNAPSHOT", "NODE", "SHARD", "BYTE", "ACTOR", "SIDECAR"];
 const randomName = () => (A[Math.random() * A.length | 0] + B[Math.random() * B.length | 0]).slice(0, 16);
-$("dice").onclick = () => { $("nick").value = randomName(); $("nick").focus(); };
-$("rename").onclick = () => { $("nick").value = $("who").textContent; showJoin(); $("nick").select(); };
-$("joinForm").onsubmit = async (ev) => {
+// There is no sign-up form: a visitor without a player gets one with a random name the
+// moment they open a game (games send un-joined players here with ?next=).
+let joined = false;
+async function join() {
+  const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: randomName() }) });
+  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || r.statusText);
+  joined = true;
+}
+const me = fetch("/api/me").then((r) => { joined = r.ok; });
+if (safeNext) me.then(() => (joined ? null : join())).then(() => location.replace(safeNext)).catch((e) => { $("err").textContent = e.message; });
+document.querySelectorAll(".card:not(.ext)").forEach((c) => c.addEventListener("click", async (ev) => {
+  if (ev.target.closest(".screen")) return;
   ev.preventDefault();
-  $("err").textContent = "";
-  const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: $("nick").value }) });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) { $("err").textContent = data.error || r.statusText; return; }
-  showJoined(data);
-};
-// A game card clicked before joining joins with the name in the box first.
-document.querySelectorAll(".card").forEach((c) => c.addEventListener("click", async (ev) => {
-  if (ev.target.closest(".screen") || !document.body.classList.contains("locked")) return;
-  ev.preventDefault();
-  const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: $("nick").value || randomName() }) });
-  if (r.ok) location.href = c.getAttribute("href"); else $("err").textContent = ((await r.json().catch(() => ({}))).error) || r.statusText;
+  try {
+    await me;
+    if (!joined) await join();
+    location.href = c.getAttribute("href");
+  } catch (e) { $("err").textContent = e.message; }
 }));
-fetch("/api/me").then((r) => (r.ok ? r.json() : Promise.reject())).then(showJoined).catch(showJoin);
 
 // ---- live Substrate numbers ----
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
@@ -263,7 +240,7 @@ poll();
 setInterval(poll, 4000);
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-<script src="/static/arcade.js?v=1"></script>
+<script src="/static/arcade.js?v=2"></script>
 <script>
 // A QR code on every game card, to the game's public address.
 document.querySelectorAll("[data-qr]").forEach((el) => {
