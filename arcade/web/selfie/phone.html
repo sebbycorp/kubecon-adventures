@@ -190,8 +190,12 @@ async function openCam() {
   $("introErr").textContent = "";
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
-    $("video").srcObject = stream;
+    // Show the camera screen first, then start the video: some phones (iOS Safari) won't
+    // play a stream attached to a hidden element, which leaves the preview black.
     show("camera");
+    const v = $("video");
+    v.srcObject = stream;
+    await v.play().catch(() => {});
   } catch (e) {
     $("introErr").textContent = "No camera here (or it was blocked). Choose a photo instead.";
   }
@@ -204,8 +208,11 @@ $("shutter").onclick = async () => {
   for (const t of ["3", "2", "1"]) { $("count").textContent = t; await new Promise((r) => setTimeout(r, 750)); }
   $("count").textContent = "";
   const v = $("video");
-  takeFrom(v, v.videoWidth, v.videoHeight, true);
+  // Wait (up to 3 s) for a real frame: a camera that hasn't produced one yet has no size.
+  for (let i = 0; i < 30 && !(v.videoWidth && v.readyState >= 2); i++) await new Promise((r) => setTimeout(r, 100));
   $("shutter").disabled = false;
+  if (!v.videoWidth) { stopCam(); $("introErr").textContent = "The camera didn't start. Try again, or choose a photo instead."; show("intro"); return; }
+  takeFrom(v, v.videoWidth, v.videoHeight, true);
 };
 $("pick").onchange = async (e) => {
   const f = e.target.files && e.target.files[0];
@@ -216,13 +223,13 @@ $("pick").onchange = async (e) => {
 // takeFrom keeps the picture (mirrored like the preview for selfies), at most 768 px on
 // its long side: that is all the model sees, and all that leaves the phone.
 function takeFrom(src, w, h, mirror) {
-  stopCam();
   const s = Math.min(1, 768 / Math.max(w, h));
   const cv = $("shot");
   cv.width = Math.round(w * s); cv.height = Math.round(h * s);
   const c = cv.getContext("2d");
   if (mirror) { c.translate(cv.width, 0); c.scale(-1, 1); }
   c.drawImage(src, 0, 0, cv.width, cv.height);
+  stopCam(); // only after the frame is copied: a stopped camera's video is black
   shot = cv;
   show("review");
 }
