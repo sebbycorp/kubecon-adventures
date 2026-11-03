@@ -118,7 +118,7 @@
   </section>
 
   <section class="right">
-    <div class="rhead"><h2>Scan a code to play</h2><span>7 games · every character is a real agent</span></div>
+    <div class="rhead"><h2>Scan a code to play</h2><span>8 games · every character is a real agent</span></div>
     <div id="lb" aria-live="polite"><div class="lh"><div><small>LEADERBOARD</small><b id="lbGame">–</b><span class="new">NEW #1</span></div><div class="dots" id="lbDots"></div></div><div class="rows" id="lbRows"></div></div>
     <div class="tiles" id="tiles"></div>
   </section>
@@ -162,6 +162,8 @@ const TILES = [
   { path: "/pod-packer", name: "Pod Packer", color: "#f472b6", unit: "Top packers", pitch: "Tetris where every block is a real agent pod. Clear a row and real agents are snapshotted to free the node." },
   { path: "/duck-hunt", name: "Duck Hunt", color: "#facc15", unit: "Top hunters", pitch: "Turn your phone sideways and shoot real agents into Snapshot Storage." },
   { path: "/flappy", name: "Flappy Substrate", color: "#4ade80", unit: "Top swimmers", still: true, pitch: "Tap to keep the octopus swimming. Crash and your agent is snapshotted; play again wakes it." },
+  { path: "/selfie", name: "Substrate Selfie", color: "#c084fc", unit: "Selfies", img: "selfie", note: "No leaderboard · snap a selfie and share it",
+    pitch: "Snap a selfie and land in 10 funny scenes with the Agent Substrate octopus. Captions via agentgateway." },
   { path: MISSIONS, name: "AI agentgateway missions", color: "#a78bfa", unit: "Top players", ext: true, img: "agentgateway-missions",
     pitch: "Configure a real agentgateway, take contracts, stack points and dodge the cops." },
 ];
@@ -170,7 +172,7 @@ function tile(g) {
   return `<div class="tile" style="--c:${g.color}">
     ${g.still ? `<img class="shot" src="/static/shots/${img}.webp?v=5" alt="${esc(g.name)}">` : `<video class="shot" autoplay muted loop playsinline preload="auto" poster="/static/shots/${img}.webp?v=5" aria-label="${esc(g.name)} gameplay"><source src="/static/loops/${img}.webm?v=2" type="video/webm"><source src="/static/loops/${img}.mp4?v=2" type="video/mp4"></video>`}
     <div class="info"><h3>${esc(g.name)}</h3>
-      <div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div></div>
+      ${g.note ? `<div class="top"><div class="ab-empty">${esc(g.note)}</div></div>` : `<div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div>`}</div>
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;
 }
 // Every game at once; the QR codes are drawn once and the boards refresh every 10 s.
