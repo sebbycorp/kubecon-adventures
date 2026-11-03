@@ -6,6 +6,20 @@
 <meta name="theme-color" content="#0b0f2e">
 <link rel="icon" href="data:,">
 <title>Cluster Defense</title>
+<meta name="description" content="Real kagent subagents spin up and fill the cluster&#x27;s workers. Fly a ship and suspend them on Agent Substrate before it&#x27;s full.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Cluster Defense · shoot subagents before the cluster fills">
+<meta property="og:description" content="Real kagent subagents spin up and fill the cluster&#x27;s workers. Fly a ship and suspend them on Agent Substrate before it&#x27;s full.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/cluster-defense">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/cluster-defense.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cluster Defense · shoot subagents before the cluster fills">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cluster Defense · shoot subagents before the cluster fills">
+<meta name="twitter:description" content="Real kagent subagents spin up and fill the cluster&#x27;s workers. Fly a ship and suspend them on Agent Substrate before it&#x27;s full.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/cluster-defense.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -111,13 +125,14 @@
   <div class="stats"><div><b id="oTime">0:00</b>SURVIVED</div><div><b id="oSus">0</b>SUSPENDED</div><div><b id="oPeak">0</b>PEAK HOSTED</div></div>
   <p id="oMine"></p>
   <p class="beat" id="oBeat"></p>
+  <div id="oShare" style="--ab-accent: #ffd23d"></div>
   <button class="big" id="again">PLAY AGAIN</button>
   <p id="oNext"></p>
   <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
 </div>
 <div id="status" class="panel hidden"></div>
 
-<script src="/static/arcade.js?v=2"></script>
+<script src="/static/arcade.js?v=3"></script>
 <script type="module">
 import { startSpace, roleOf, esc } from "/cluster-defense/static/space.js";
 import { connect } from "/cluster-defense/static/net.js";
@@ -194,6 +209,7 @@ function onEvent(e, s) {
   const who = (id) => { const p = s.ships.find((x) => x.id === id); return p ? esc(p.nick) : "someone"; };
   const mine = e.player === me.id;
   if (mine && e.kind === "hit") { sfx("hit"); buzz(8); }
+  if (mine && e.kind === "suspended" && e.ms) myMs.push(e.ms);
   if (mine && e.kind === "suspended") {
     const big = e.text === "boss" || e.text === "orchestrator" || e.text === "runaway" || e.text === "early";
     sfx(big ? "big" : "zip", e.combo); buzz(big ? [30, 40, 60] : 35);
@@ -236,6 +252,8 @@ function bigText(text, color) {
 }
 const POW = { rapid: ["⚡", "#ffe14d", 8], spread: ["🔱", "#ff8fd8", 8], shield: ["🛡️", "#6fd3ff", 10] };
 let lastPhase = "", lastAlarm = 0;
+let myMs = []; // this round's real suspend times of your shots, for the share button
+const median = (a) => (a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : 0);
 function hud() {
   const s = snap;
   if (!s) return;
@@ -273,6 +291,11 @@ function hud() {
   }
   if (r.phase !== lastPhase) {
     if (r.phase === "over" && r.reason === "full") bigText("CLUSTER FULL!", "#ff4d5e");
+    if (r.phase === "live") myMs = [];
+    if (r.phase === "over" && (s.score || 0) > 0)
+      Arcade.share($("oShare"), { game: "Cluster Defense", score: s.score || 0, path: "/cluster-defense",
+        facts: { wave: s.wave.n, suspends: s.suspends || 0, seconds: Math.round(r.survived), snapshotMs: median(myMs), hosted: r.hosted, slots: f.slots } });
+    if (r.phase !== "over") $("oShare").innerHTML = "";
     lastPhase = r.phase;
   }
 }

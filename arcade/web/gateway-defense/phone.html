@@ -6,6 +6,20 @@
 <meta name="theme-color" content="#070b1c">
 <link rel="icon" href="data:,">
 <title>Gateway Defense</title>
+<meta name="description" content="Rogue AI traffic marches on your cluster. Your towers are real agentgateway controls: prompt guard, rate limit, egress and a Substrate suspend.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Gateway Defense · tower defense with real agentgateway controls">
+<meta property="og:description" content="Rogue AI traffic marches on your cluster. Your towers are real agentgateway controls: prompt guard, rate limit, egress and a Substrate suspend.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/gateway-defense">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/gateway-defense.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Gateway Defense · tower defense with real agentgateway controls">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Gateway Defense · tower defense with real agentgateway controls">
+<meta name="twitter:description" content="Rogue AI traffic marches on your cluster. Your towers are real agentgateway controls: prompt guard, rate limit, egress and a Substrate suspend.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/gateway-defense.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet">
 <style>
@@ -170,6 +184,7 @@
   <div class="rank" id="endRank"></div>
   <div class="beat" id="endBeat"></div>
   <div class="lb" id="endTop"></div>
+  <div id="endShare" style="--ab-accent: #22d3ee"></div>
   <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
   <div class="row"><button class="big" id="again">PLAY AGAIN</button></div>
 </div>
@@ -177,7 +192,7 @@
 <div id="toast" class="hidden"></div>
 <div id="banner"></div>
 
-<script src="/static/arcade.js?v=2"></script>
+<script src="/static/arcade.js?v=3"></script>
 <script type="module">
 import { startGame } from "/gateway-defense/static/td.js";
 import { createSim, waveAt } from "/gateway-defense/static/sim.js";
@@ -276,6 +291,8 @@ setInterval(() => { if (run && game.phase() !== "over") loadBoard().then(() => t
 
 // ---- the game ----
 let run = null, ended = false, hudState = {};
+// This run's real blocks for the share button: prompt-guard 403s, rate-limit 429s, suspends.
+let realCalls = { b403: 0, b429: 0, suspends: 0 };
 const game = startGame($("board"), rules, {
   onHud: hud,
   onKill: queueKill,
@@ -392,6 +409,11 @@ setInterval(async () => {
     const r = await fetch("/gateway-defense/api/block", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run, tower: k.tower, creep: k.creep }) });
     if (!r.ok) return;
     const o = await r.json();
+    if (o.real && o.ok !== false) {
+      if (o.status === 403) realCalls.b403++;
+      else if (o.status === 429) realCalls.b429++;
+      else if (k.tower === "suspend") realCalls.suspends++;
+    }
     const color = o.ok === false && o.real ? "#f87171" : towerById[k.tower].color;
     let text = o.label;
     if (o.real && o.ms) text += ` · ${o.ms < 1000 ? o.ms + " ms" : (o.ms / 1000).toFixed(1) + " s"}`;
@@ -415,6 +437,7 @@ async function begin() {
   closeSheets(); show("end", false); show("start", false);
   show("top"); show("bottom");
   ended = false; tickRank = 0;
+  realCalls = { b403: 0, b429: 0, suspends: 0 };
   pending.length = 0;
   game.reset();
   game.arm();
@@ -437,6 +460,7 @@ async function finish(res) {
   $("endRank").textContent = "";
   $("endBeat").textContent = "";
   $("endTop").innerHTML = "";
+  Arcade.share($("endShare"), { game: "Gateway Defense", score: res.score, path: "/gateway-defense", facts: { wave: res.wave, ...realCalls } });
   show("end");
   sfx(res.won ? "victory" : "leak");
   if (!run) return;

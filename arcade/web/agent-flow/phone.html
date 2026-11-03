@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f0f12">
 <title>Agent Flow · kagent</title>
+<meta name="description" content="Your own kagent agent does a real task in its own gVisor sandbox. Watch it travel through agentgateway, kagent and Agent Substrate.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Agent Flow · give your own AI agent a task">
+<meta property="og:description" content="Your own kagent agent does a real task in its own gVisor sandbox. Watch it travel through agentgateway, kagent and Agent Substrate.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/agent-flow">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/agent-flow.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Agent Flow · give your own AI agent a task">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Agent Flow · give your own AI agent a task">
+<meta name="twitter:description" content="Your own kagent agent does a real task in its own gVisor sandbox. Watch it travel through agentgateway, kagent and Agent Substrate.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/agent-flow.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -163,6 +177,7 @@
         </details>
         <div class="empty" id="empty"><b>flowbot</b><span>Send a message to start a new conversation.</span></div>
         <div class="msgs" id="msgs" aria-live="polite"></div>
+        <div id="flowShare" class="hidden" style="--ab-accent: #5fd068; margin: 6px 0 14px"><div class="ab-h" style="font-size:11px;letter-spacing:.12em;opacity:.7;margin:0 0 4px">SHARE WHAT YOUR AGENT DID</div><div id="flowShareBtns"></div></div>
       </div>
       <div class="dock"><div class="inner">
         <div class="chips" id="chips"></div>
@@ -176,7 +191,7 @@
   </main>
 </div>
 
-<script src="/static/arcade.js?v=2"></script>
+<script src="/static/arcade.js?v=3"></script>
 <script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>
 <script src="/agent-flow/static/scene.js"></script>
 <script>
@@ -223,6 +238,11 @@ function start() {
   connect();
 }
 
+// What the agent did, for the share post, by task.
+const DID = { code: "wrote FizzBuzz and ran it in its own sandbox", webhook: "called the KubeCon booth webhook", resume: "picked up right where it left off after a snapshot",
+  joke: "fetched a dad joke through an egress policy", web: "tried a blocked website and egress stopped it", jailbreak: "got stopped by agentgateway's prompt guard",
+  explore: "explored its own gVisor sandbox", dice: "rolled three dice in bash", haiku: "wrote me a haiku about Kubernetes pods" };
+let sharedRun = null;
 function render() {
   const mine = (state.runs || []).filter((r) => r.playerId === me.id).slice(-6);
   const run = mine.at(-1);
@@ -281,6 +301,14 @@ function render() {
   const answers = mine.filter((r) => r.done).length;
   if (answers > lastCount && lastCount !== -1) setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }), 1200);
   lastCount = answers;
+  // Share your latest finished answer: what the agent did, how fast, and its wake-up time.
+  const fin = mine.filter((r) => r.done && r.answer && !r.error && !r.policy).at(-1);
+  $("flowShare").classList.toggle("hidden", !fin);
+  if (fin && fin.id !== sharedRun) {
+    sharedRun = fin.id;
+    Arcade.share($("flowShareBtns"), { game: "Agent Flow", score: 1, path: "/agent-flow", label: "SHARE WHAT MY AGENT DID",
+      facts: { task: DID[fin.task] || "answered my question", answerMs: fin.ms, restoreMs: fin.new ? 0 : fin.restoreMs } });
+  }
 
   const t = state.timings || {}, sub = state.substrate || {};
   const ms = (p) => (p && p.count ? (p.p50 >= 1000 ? (p.p50 / 1000).toFixed(1) + "s" : p.p50 + "ms") : "–");

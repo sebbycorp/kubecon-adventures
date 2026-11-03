@@ -6,6 +6,20 @@
 <meta name="theme-color" content="#000300">
 <link rel="icon" href="data:,">
 <title>Substrate Siege</title>
+<meta name="description" content="A 3-minute shooter in a night city full of real AI agents. Two hits freeze one with a real Agent Substrate snapshot. Built on kagent.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Substrate Siege · real AI agents in a night city">
+<meta property="og:description" content="A 3-minute shooter in a night city full of real AI agents. Two hits freeze one with a real Agent Substrate snapshot. Built on kagent.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/substrate-siege">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/substrate-siege.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Substrate Siege · real AI agents in a night city">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Substrate Siege · real AI agents in a night city">
+<meta name="twitter:description" content="A 3-minute shooter in a night city full of real AI agents. Two hits freeze one with a real Agent Substrate snapshot. Built on kagent.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/substrate-siege.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -197,6 +211,7 @@
   <h2>TIME!</h2>
   <div class="bigScore" id="resScore">0</div>
   <p id="resText" style="text-align:center"></p>
+  <div id="resShare" style="--ab-accent: var(--g)"></div>
   <button class="big play" id="resNext">▶ PLAY AGAIN</button>
   <div class="ab-block"><div class="ab-h">Top runs today</div><div data-ab-board="/substrate-siege" data-ab-n="5"></div></div>
   <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
@@ -210,12 +225,16 @@
 <div id="debug" class="panel hidden"></div>
 <div id="nogl" class="hidden"><h1>This device can't run 3D.</h1><p>Watch the city on the big screen instead.</p><a href="/substrate-siege/screen">Open the big screen</a></div>
 
-<script src="/static/arcade.js?v=2"></script>
+<script src="/static/arcade.js?v=3"></script>
 <script type="module">
 import { startCity, webglOK, colorOf, partColor, esc } from "/substrate-siege/static/city.js";
 import { connect } from "/substrate-siege/static/net.js";
 import { partIcon, fmtClock, runLine, minimap, RIG_KINDS } from "/substrate-siege/static/hud.js";
 
+// This run's facts for the share button: what you froze, booked and iced, and the real
+// snapshot times of your freezes.
+let runFacts = { freezes: 0, booked: 0, takedowns: 0, ms: [] };
+const median = (a) => (a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : 0);
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const SHEETS = ["start", "result", "menu"];
@@ -332,6 +351,7 @@ function syncMission() {
   const act = activeRun();
   // We (or a teammate) started one: drop into the game.
   if (act && !$("start").classList.contains("hidden")) sheet(null);
+  if (act && !dismissed.has("live:" + act.id)) runFacts = { freezes: 0, booked: 0, takedowns: 0, ms: [] }; // a new run
   if (act) dismissed.add("live:" + act.id);
   const done = snap.missions.find((m) => m.squad === mySquad && m.outcome && dismissed.has("live:" + m.id) && !dismissed.has(m.id));
   if (!act && done && $("result").classList.contains("hidden")) {
@@ -339,6 +359,8 @@ function syncMission() {
     $("resScore").textContent = snap.score || 0;
     const team = isSolo() ? "" : ` · team ${done.score}`;
     $("resText").innerHTML = `points${team}<br>best <b>${snap.best || 0}</b>${snap.rank ? ` · <b>#${snap.rank}</b> on the big screen` : ""}<br><small>Every freeze was a real Substrate suspend; every booking a real checkpoint.</small>`;
+    Arcade.share($("resShare"), { game: "Substrate Siege", score: snap.score || 0, path: "/substrate-siege",
+      facts: { freezes: runFacts.freezes, booked: runFacts.booked, takedowns: runFacts.takedowns, snapshotMs: median(runFacts.ms) } });
     sheet("result");
   }
 }
@@ -506,6 +528,9 @@ $("mSound").firstChild.textContent = soundOn ? "SOUND: ON" : "SOUND: OFF";
 
 const feed = [];
 function feedEvent(e) {
+  if (e.player === me.id && e.kind === "frozen") { runFacts.freezes++; if (e.ms) runFacts.ms.push(e.ms); }
+  if (e.player === me.id && e.kind === "booked") runFacts.booked++;
+  if (e.player === me.id && e.kind === "player-frozen") runFacts.takedowns++;
   if (e.player === me.id && e.kind === "frozen") { sfx("freeze"); buzz(40); }
   if (e.player === me.id && e.kind === "booked") { sfx("book"); buzz(25); }
   if (e.player === me.id && e.kind === "hit") { sfx("hurt"); buzz(20); }

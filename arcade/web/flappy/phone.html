@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#04324a">
 <title>Flappy Substrate</title>
+<meta name="description" content="Tap to keep the Agent Substrate octopus swimming. Crash and your real agent is snapshotted; play again and it wakes right back up.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Flappy Substrate · you are the agent">
+<meta property="og:description" content="Tap to keep the Agent Substrate octopus swimming. Crash and your real agent is snapshotted; play again and it wakes right back up.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/flappy">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/flappy.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Flappy Substrate · you are the agent">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Flappy Substrate · you are the agent">
+<meta name="twitter:description" content="Tap to keep the Agent Substrate octopus swimming. Crash and your real agent is snapshotted; play again and it wakes right back up.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/flappy.png">
 <link rel="icon" href="/flappy/static/octo-128.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -94,6 +108,7 @@
   <div class="snap" id="endSnap">📦 <span>snapshotting your agent…</span></div>
   <div class="rank" id="endRank"></div>
   <div class="beat" id="endBeat"></div>
+  <div id="endShare" style="--ab-accent: #4ade80"></div>
   <button class="btn" id="again">PLAY AGAIN</button>
   <div class="lbl">TOP 5</div>
   <div class="board" id="endBoard"></div>
@@ -111,7 +126,7 @@
   <div class="row"><a class="btn ghost" href="/" style="text-decoration:none">ARCADE</a></div>
 </div>
 
-<script src="/static/arcade.js?v=2"></script>
+<script src="/static/arcade.js?v=3"></script>
 <script src="/flappy/static/flappy.js"></script>
 </body>
 </html>

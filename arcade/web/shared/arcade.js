@@ -1,6 +1,7 @@
 // Arcade-wide bits any page can load (served at /static/arcade.js): a game's live
-// leaderboard from GET /api/boards, and the call-to-action buttons for kagent.dev and
-// agentgateway.dev. Classic script: it defines window.Arcade.
+// leaderboard from GET /api/boards, the call-to-action buttons for kagent.dev and
+// agentgateway.dev, and the share-my-score buttons for a game's end screen. Classic
+// script: it defines window.Arcade.
 "use strict";
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -35,7 +36,15 @@
 .ab-ctas.ab-sm .ab-cta { font-size: 11.5px; padding: 5px 10px 5px 7px; gap: 6px; }
 .ab-ctas.ab-sm .ab-cta img { width: 14px; height: 14px; }
 .ab-ctas.ab-lg .ab-cta { font-size: 15px; padding: 11px 18px 11px 13px; }
-.ab-ctas.ab-lg .ab-cta img { width: 22px; height: 22px; }`;
+.ab-ctas.ab-lg .ab-cta img { width: 22px; height: 22px; }
+.ab-share { display: grid; gap: 8px; margin: 10px 0 4px; }
+.ab-share-main { width: 100%; border: 0; border-radius: 12px; padding: 13px 16px; font: inherit; font-weight: 800; letter-spacing: .06em; cursor: pointer;
+  background: var(--ab-accent, #5fd068); color: #071012; box-shadow: 0 0 24px color-mix(in srgb, var(--ab-accent, #5fd068) 35%, transparent); }
+.ab-share-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ab-share-row button { border: 1px solid color-mix(in srgb, var(--ab-accent, #5fd068) 45%, #2a2d30); border-radius: 10px; padding: 8px 4px; font: inherit; font-size: .82em; font-weight: 700;
+  background: rgba(0,0,0,.35); color: inherit; cursor: pointer; white-space: nowrap; }
+.ab-share-row button:active, .ab-share-main:active { transform: scale(.97); }
+.ab-share-note { min-height: 1.2em; font-size: .8em; opacity: .75; text-align: center; }`;
   const style = document.createElement("style");
   style.textContent = css;
   document.head.appendChild(style);
@@ -85,7 +94,103 @@
     if (last) draw(w);
     if (!timer) { refresh(); timer = setInterval(refresh, 5000); }
   }
-  window.Arcade = { board, ctas };
+
+  // ---- share my score ----
+  // Post text for each game: a score line, then a line on what is real underneath, using the
+  // run's own numbers where the game has them. A few wordings each, picked at random, so the
+  // posts don't all read the same. Only the nickname and the run's numbers go in.
+  const SITE = "https://kubecon.agentpwned.ai";
+  const TAGS = ["#kagent #AgentSubstrate #agentgateway #KubeCon", "#kagent #AgentSubstrate #KubeCon", "#kagent #AgentSubstrate"];
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const n = (v) => Number(v || 0).toLocaleString("en-US");
+  const has = (v) => v != null && v !== "" && Number(v) > 0;
+  const pl = (v, one, many) => `${n(v)} ${Number(v) === 1 ? one : many}`;
+  let density = null; // {actors, workers} from /api/stats, fetched when a share widget is drawn
+  const SCORES = {
+    "/substrate-siege": (o, f) => [
+      `I scored ${n(o.score)} in Substrate Siege${has(f.freezes) ? `, freezing ${pl(f.freezes, "AI agent", "AI agents")}` : ""}${has(f.takedowns) ? ` and ${pl(f.takedowns, "player", "players")}` : ""} 🧊`,
+      `${n(o.score)} points in Substrate Siege: ${pl(f.freezes, "agent", "agents")} frozen${has(f.booked) ? `, ${n(f.booked)} booked into snapshots` : ""}${has(f.takedowns) ? `, ${pl(f.takedowns, "player", "players")} iced` : ""}.`,
+      `Just hunted rogue AI agents through a night city in Substrate Siege: ${n(o.score)} points 🏙️`],
+    "/cluster-defense": (o, f) => [
+      `I kept the cluster alive to wave ${n(f.wave)} in Cluster Defense${has(f.suspends) ? `, suspending ${n(f.suspends)} subagents` : ""} 🚀`,
+      `Cluster Defense: ${n(o.score)} points, wave ${n(f.wave)}${has(f.seconds) ? `, ${n(f.seconds)}s before the workers filled up` : ""}.`,
+      `Flew a ship, shot down ${n(f.suspends || o.score)} subagents before they filled the cluster 🚀`],
+    "/gateway-defense": (o, f) => [
+      `Wave ${n(f.wave)} in Gateway Defense, ${n(o.score)} points 🛡️`,
+      `I held off rogue AI traffic to wave ${n(f.wave)} in Gateway Defense: ${n(o.score)} points.`,
+      `${n(o.score)} points in Gateway Defense, my towers are real agentgateway controls 🛡️`],
+    "/flappy": (o, f) => [
+      `My octopus swam through ${n(f.gaps)} gaps in Flappy Substrate: ${n(o.score)} points 🐙`,
+      `${n(o.score)} points in Flappy Substrate! I was the agent, and I kept it swimming 🐙`,
+      `Flappy Substrate: ${n(f.gaps)} gaps, ${n(o.score)} points before my octopus hit the coral 🐙`],
+    "/agent-flow": (o, f) => [
+      `My own AI agent just ${f.task || "finished a task"}${has(f.answerMs) ? ` in ${(f.answerMs / 1000).toFixed(1)}s` : ""} 🤖`,
+      `I gave an AI agent a job at the booth: it ${f.task || "did it"}${has(f.answerMs) ? ` in ${(f.answerMs / 1000).toFixed(1)}s` : ""}.`],
+    "/duck-hunt": (o, f) => [
+      `${n(o.score)} points in Duck Hunt${has(f.hits) ? `: ${n(f.hits)} agents shot out of the sky` : ""} 🦆`,
+      `I shot ${n(f.hits || o.score)} AI agents out of the sky in Duck Hunt 🦆`],
+  };
+  // facts is the "why it's amazing" line, most specific first.
+  function factLines(o, f) {
+    const out = [];
+    const g = o.path;
+    if (g === "/gateway-defense" && (has(f.b403) || has(f.b429) || has(f.suspends)))
+      out.push(`Every block was a real agentgateway call: ${n(f.b403)} prompt-guard 403s, ${n(f.b429)} rate-limit 429s, ${n(f.suspends)} Agent Substrate suspends.`);
+    if (has(f.snapshotMs) && has(f.wakeMs)) out.push(`My agent was snapshotted in ${n(f.snapshotMs)} ms and woke in ${n(f.wakeMs)} ms on kagent + Agent Substrate.`);
+    if (has(f.hosted) && has(f.slots)) out.push(`kagent + Agent Substrate hosted ${n(f.hosted)} agents on ${n(f.slots)} workers by snapshotting the idle ones.`);
+    if (has(f.restoreMs)) out.push(`It woke from a snapshot in ${n(f.restoreMs)} ms on kagent + Agent Substrate.`);
+    if (has(f.snapshotMs)) out.push(`Every ${g === "/substrate-siege" ? "freeze" : "hit"} is a real kagent + Agent Substrate snapshot (${n(f.snapshotMs)} ms).`);
+    if (density && density.actors && density.workers)
+      out.push(`${n(density.actors)} real AI agents on ${n(density.workers)} sandboxes, thanks to kagent + Agent Substrate.`);
+    out.push(pick(["Every character is a real AI agent on kagent + Agent Substrate.", "Every character is a real AI agent, running on kagent + Agent Substrate.",
+      "Real AI agents, real snapshots: kagent + Agent Substrate."]));
+    return out;
+  }
+  // shareText builds the post: under 280 characters with the link, for X.
+  function shareText(o) {
+    const f = o.facts || {}, url = SITE + (o.path || "/");
+    const scores = (SCORES[o.path] || ((o) => [`I scored ${n(o.score)} ${o.unit || "points"} in ${o.game}.`]))(o, f);
+    const score = pick(scores), facts = factLines(o, f);
+    for (const fact of facts) for (const tags of TAGS) {
+      const text = `${score}\n${fact}`, full = `${text}\n${url}\n${tags}`;
+      if (full.length <= 280) return { text: `${text}\n${tags}`, url, full };
+    }
+    const text = score.slice(0, 280 - url.length - 30);
+    return { text: `${text}\n${TAGS[2]}`, url, full: `${text}\n${url}\n${TAGS[2]}` };
+  }
+  const open = (u) => window.open(u, "_blank", "noopener");
+  async function copy(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch {}
+    try { const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); const ok = document.execCommand("copy"); a.remove(); return ok; } catch { return false; }
+  }
+  // share renders SHARE MY SCORE (the phone's own share sheet where there is one) and
+  // X, LinkedIn, Bluesky and Copy into el. o: {game, score, unit, path, facts, label}.
+  function share(el, o) {
+    if (!el) return;
+    if (!density) fetch("/api/stats").then((r) => (r.ok ? r.json() : null)).then((s) => { if (s) density = { actors: s.actors, workers: s.workers }; }).catch(() => {});
+    el.classList.add("ab-share");
+    el.innerHTML = `<button type="button" class="ab-share-main">📣 ${esc(o.label || "SHARE MY SCORE")}</button>
+      <div class="ab-share-row"><button type="button" data-to="x">𝕏 Post</button><button type="button" data-to="li">LinkedIn</button><button type="button" data-to="bsky">🦋 Bluesky</button><button type="button" data-to="copy">⧉ Copy</button></div>
+      <div class="ab-share-note" aria-live="polite"></div>`;
+    const note = (t) => { el.querySelector(".ab-share-note").textContent = t; };
+    el.querySelector(".ab-share-main").onclick = async () => {
+      const p = shareText(o);
+      if (navigator.share) {
+        try { await navigator.share({ title: `${o.game} · kagent + Agent Substrate`, text: p.text, url: p.url }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+      }
+      note((await copy(p.full)) ? "Post text copied. Pick a network below, or paste it anywhere." : "Pick a network below.");
+    };
+    el.querySelectorAll("[data-to]").forEach((b) => (b.onclick = async () => {
+      const p = shareText(o);
+      switch (b.dataset.to) {
+        case "x": open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(p.text)}&url=${encodeURIComponent(p.url)}`); break;
+        case "li": await copy(p.full); note("Post text copied, paste it on LinkedIn."); open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(p.url)}`); break;
+        case "bsky": open(`https://bsky.app/intent/compose?text=${encodeURIComponent(p.full)}`); break;
+        case "copy": note((await copy(p.full)) ? "Copied. Paste it anywhere." : "Couldn't copy on this browser."); break;
+      }
+    }));
+  }
+  window.Arcade = { board, ctas, share, shareText };
   // Markup can ask for them too: data-ab-board="/duck-hunt" (data-ab-n, data-ab-detail="0",
   // data-ab-unit="0", data-ab-empty) and data-ab-cta="sm|md|lg".
   function mount() {

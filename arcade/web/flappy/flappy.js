@@ -124,6 +124,7 @@
     if (ms) toast.t = setTimeout(() => show("toast", false), ms);
   }
 
+  let wokeMs = 0; // this run's real wake-up time, for the share button
   async function play() {
     for (const id of ["title", "end", "menu"]) show(id, false);
     reset();
@@ -134,6 +135,7 @@
     let s = null;
     try { s = await post("/flappy/api/start"); } catch (e) { toast(esc(e.message), 2200); state = STATE.title; show("title"); return; }
     runID = s.run;
+    wokeMs = s.agent === "awake" ? s.wokeMs : 0;
     if (s.rules) R = s.rules;
     if (s.agent === "awake") {
       agentChip(true, `agent awake · woke in ${s.wokeMs} ms`);
@@ -184,6 +186,8 @@
     } else {
       $("endSnap").innerHTML = `⚠️ <span>${esc((res && res.error) || "couldn't reach the server")}</span>`;
     }
+    Arcade.share($("endShare"), { game: "Flappy Substrate", score: gaps + 5 * bubbles, path: "/flappy",
+      facts: { gaps, bubbles, snapshotMs: res && res.agent && res.asleep ? res.snapMs : 0, wakeMs: wokeMs } });
     show("end");
   }
   const dot = (c) => ({ green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" })[c] || "#8a8f94";
