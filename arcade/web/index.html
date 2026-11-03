@@ -65,10 +65,20 @@
   .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
   @media (min-width: 680px) { .grid { grid-template-columns: 1fr 1fr; } }
   @media (min-width: 1040px) { .grid { grid-template-columns: repeat(3, 1fr); } }
-  .card { --c: var(--green); position: relative; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 16px; border-radius: 14px; text-decoration: none;
+  .card { --c: var(--green); position: relative; display: flex; flex-direction: column; gap: 12px; padding: 0 0 16px; overflow: hidden; border-radius: 14px; text-decoration: none;
     border: 1px solid #2a2d30; background: #101311f2; transition: border-color .15s, box-shadow .15s, transform .15s; }
   .card:hover, .card:focus-visible { border-color: var(--c); box-shadow: 0 0 40px color-mix(in srgb, var(--c) 18%, transparent); transform: translateY(-1px); outline: none; }
-  .card .head { display: flex; align-items: center; gap: 12px; padding-right: 90px; }
+  .card > :not(.shot):not(object) { margin: 0 16px; }
+  .card .shot { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #0b0d0c; border-bottom: 1px solid #2a2d30; }
+  .card .head { display: flex; align-items: center; gap: 12px; }
+  .card .body { flex: 1; }
+  .card .meta { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; font-size: 12.5px; --ab-accent: var(--c); }
+  .card .meta .ab-h { font: 11px ui-monospace, monospace; letter-spacing: .08em; color: var(--mute); margin-bottom: 5px; text-transform: uppercase; }
+  .card .qr { width: 86px; text-align: center; font-size: 10.5px; color: var(--mute); }
+  .card .qr .code { background: #fff; border-radius: 8px; padding: 5px; line-height: 0; }
+  .card .qr svg { width: 100%; height: auto; }
+  .cta { margin-top: 14px; }
+  footer .ab-ctas { justify-content: center; margin: 0 0 12px; }
   .card .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 21px; flex: none;
     background: #0d0e0f; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 22%, transparent); }
   .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -98,6 +108,7 @@
       <h1>Agent Arcade on Agent Substrate</h1>
       <p>Every character is a real AI agent in its own gVisor sandbox. Play a game, then watch your agents move through the platform below.</p>
       <div class="pill"><i></i><b>LIVE</b><span id="since">kagent · Agent Substrate · agentgateway</span></div>
+      <div class="cta" data-ab-cta="lg"></div>
     </div>
     <div class="stats">
       <div class="stat"><b id="nActors">–</b>agents</div>
@@ -129,43 +140,58 @@
   <div class="label">Pick a game</div>
   <section class="grid" id="games">
     <a class="card" href="/substrate-siege" style="--c: var(--siege)">
+      <img class="shot" src="/static/shots/substrate-siege.webp?v=1" alt="Substrate Siege: a phone in the night city, freezing an agent named Fast Freddie" loading="lazy" width="720" height="450">
       <div class="head"><div class="ico">🌃</div><div><h2>SUBSTRATE SIEGE</h2><div class="tag">3-minute run · night city</div></div></div>
-      <div><p>Agents roam a night city doing jobs. Two hits freezes one, tap BOOK to snapshot it. Beat the big screen in three minutes.</p>
+      <div class="body"><p>Agents roam a night city doing jobs. Two hits freezes one, tap BOOK to snapshot it. Beat the big screen in three minutes.</p>
         <div class="real"><span>Suspend</span><span>Checkpoint</span><span>Delete</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top runs</div><div data-ab-board="/substrate-siege" data-ab-n="3" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/substrate-siege"></div>scan to play</div></div>
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="siege"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/substrate-siege/screen" target="_blank">big screen ↗</a></object>
     </a>
     <a class="card" href="/cluster-defense" style="--c: var(--defense)">
+      <img class="shot" src="/static/shots/cluster-defense.webp?v=1" alt="Cluster Defense: a rocket ship in space during a x2 combo" loading="lazy" width="720" height="450">
       <div class="head"><div class="ico">🚀</div><div><h2>CLUSTER DEFENSE</h2><div class="tag">co-op space shooter</div></div></div>
-      <div><p>Subagents spin up and fill the cluster's workers. Fly your ship and shoot them down before it's full. Everyone defends one cluster.</p>
+      <div class="body"><p>Subagents spin up and fill the cluster's workers. Fly your ship and shoot them down before it's full. Everyone defends one cluster.</p>
         <div class="real"><span>Suspend</span><span>Worker pool</span><span>Subagents</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top pilots</div><div data-ab-board="/cluster-defense" data-ab-n="3" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/cluster-defense"></div>scan to play</div></div>
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="defense"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/cluster-defense/screen" target="_blank">big screen ↗</a></object>
     </a>
     <a class="card" href="/gateway-defense" style="--c: var(--gateway)">
+      <img class="shot" src="/static/shots/gateway-defense.webp?v=1" alt="Gateway Defense: neon towers blocking rogue agents with a 403 from the prompt guard and a 429 from the rate limiter" loading="lazy" width="720" height="450">
       <div class="head"><div class="ico">🛡️</div><div><h2>GATEWAY DEFENSE</h2><div class="tag">tower defense · solo</div></div></div>
-      <div><p>Rogue agent traffic marches on your cluster. Build the real defenses. Every block is a real call through agentgateway.</p>
+      <div class="body"><p>Rogue agent traffic marches on your cluster. Build the real defenses. Every block is a real call through agentgateway.</p>
         <div class="real"><span>Prompt guard</span><span>Rate limit</span><span>Egress</span><span>Suspend</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top defenders</div><div data-ab-board="/gateway-defense" data-ab-n="3" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/gateway-defense"></div>scan to play</div></div>
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="gateway"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/gateway-defense/screen" target="_blank">big screen ↗</a></object>
     </a>
     <a class="card" href="/agent-flow" style="--c: var(--flow)">
+      <img class="shot" src="/static/shots/agent-flow.webp?v=1" alt="Agent Flow: a player's agent moving through agentgateway, kagent, Substrate and its gVisor sandbox" loading="lazy" width="720" height="450">
       <div class="head"><div class="ico">🧭</div><div><h2>AGENT FLOW</h2><div class="tag">your own agent</div></div></div>
-      <div><p>Give your own agent a task and watch it travel through agentgateway, kagent, Substrate and its sandbox, live on the big screen.</p>
+      <div class="body"><p>Give your own agent a task and watch it travel through agentgateway, kagent, Substrate and its sandbox, live on the big screen.</p>
         <div class="real"><span>Sandbox</span><span>Egress policy</span><span>Snapshot</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top agents</div><div data-ab-board="/agent-flow" data-ab-n="3" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/agent-flow"></div>scan to play</div></div>
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="flow"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/agent-flow/screen" target="_blank">big screen ↗</a></object>
     </a>
     <a class="card" href="/duck-hunt" style="--c: var(--duck)">
+      <img class="shot" src="/static/shots/duck-hunt.webp?v=1" alt="Duck Hunt: AI ducks flying over the grass while the hunter's dog holds one up" loading="lazy" width="720" height="450">
       <div class="head"><div class="ico">🦆</div><div><h2>DUCK HUNT</h2><div class="tag">classic · snapshots</div></div></div>
-      <div><p>Hatch AI ducks. Idle ducks sleep as snapshots, the hunter suspends them, and you bring them back.</p>
+      <div class="body"><p>Hatch AI ducks. Idle ducks sleep as snapshots, the hunter suspends them, and you bring them back.</p>
         <div class="real"><span>Snapshot</span><span>Resume</span></div></div>
+      <div class="meta"><div><div class="ab-h">Top hunters</div><div data-ab-board="/duck-hunt" data-ab-n="3" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
+        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/duck-hunt"></div>scan to play</div></div>
       <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="duck"><i></i><span>–</span></span></div>
       <object><a class="screen" href="/duck-hunt/screen" target="_blank">big screen ↗</a></object>
     </a>
   </section>
 
-  <footer>Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a></footer>
+  <footer><div data-ab-cta="md"></div>Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a></footer>
 </div>
 
 <script>
@@ -235,6 +261,14 @@ async function poll() {
 }
 poll();
 setInterval(poll, 4000);
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/static/arcade.js?v=1"></script>
+<script>
+// A QR code on every game card, to the game's public address.
+document.querySelectorAll("[data-qr]").forEach((el) => {
+  try { const q = qrcode(0, "M"); q.addData(el.dataset.qr); q.make(); el.innerHTML = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
+});
 </script>
 <script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>
 <script src="/agent-flow/static/scene.js"></script>
