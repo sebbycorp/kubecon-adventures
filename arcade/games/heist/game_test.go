@@ -1055,3 +1055,106 @@ func TestStartupSweepGatesStarts(t *testing.T) {
 	send(t, c, map[string]any{"t": "start", "level": 1})
 	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
 }
+
+// ---- mission limits (squad hopping) ----
+
+// TestSquadChangeRefusedDuringMission: while the player's squad has a mission running
+// or queued, create, join and solo are refused; once it ends they work again.
+func TestSquadChangeRefusedDuringMission(t *testing.T) {
+	g, _ := newManual(t)
+	g.join(platform.Player{ID: "b"})
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	code, err := g.squad("b", "create", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, err := g.start("a", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range []string{"create", "join", "solo"} {
+		if _, err := g.squad("a", op, code); err == nil {
+			t.Errorf("squad %s accepted while a's mission runs", op)
+		}
+	}
+	if a := g.w.Avatars["a"]; a.Squad != "solo-a" || g.q.Of("a") != "solo-a" {
+		t.Fatalf("squad changed to %q / %q", a.Squad, g.q.Of("a"))
+	}
+	// A queued mission counts too.
+	ms.Queued = true
+	if _, err := g.squad("a", "join", code); err == nil {
+		t.Error("join accepted while a's mission is queued")
+	}
+	ms.Queued = false
+	g.m.finish(ms, "failed", g.w)
+	if got, err := g.squad("a", "join", code); err != nil || got != code {
+		t.Fatalf("join after the mission = %q, %v", got, err)
+	}
+}
+
+// TestOneMissionPerPlayer: a player has at most one mission running or queued, even if
+// they end up in another squad.
+func TestOneMissionPerPlayer(t *testing.T) {
+	g, _ := newManual(t)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	ms, err := g.start("a", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := g.q.Create("a") // around the squad lock
+	g.w.Avatars["a"].Squad = code
+	if _, err := g.start("a", 1); err == nil {
+		t.Fatal("second mission started for the same player")
+	}
+	ms.Queued = true // queued counts
+	if _, err := g.start("a", 1); err == nil {
+		t.Fatal("second mission started while the first is queued")
+	}
+	g.m.finish(ms, "failed", g.w)
+	if _, err := g.start("a", 1); err != nil {
+		t.Fatalf("start after the first ended: %v", err)
+	}
+}
+
+// TestLiveTargetCap: at most maxLiveTargets targets live in the city; later missions
+// wait Queued ("waiting for a free safehouse") and launch, oldest first, as targets are
+// cleaned up.
+func TestLiveTargetCap(t *testing.T) {
+	ops := &liveOps{}
+	g := New(platform.New(nil), ops, nil)
+	t.Cleanup(func() { g.s.Close() })
+	var ms []*Mission
+	g.mu.Lock()
+	for i := range 15 { // 15 Level 3 missions, 3 targets each: 45 > 40
+		id := fmt.Sprintf("p%02d", i)
+		g.joinLocked(platform.Player{ID: id})
+		g.m.best["solo-"+id] = 2
+		m, err := g.start(id, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ms = append(ms, m)
+	}
+	g.mu.Unlock()
+	pumpUntil(t, g, "39 targets", func() bool { return len(g.w.Targets) == 39 })
+	for range 30 {
+		g.tick()
+	}
+	g.mu.Lock()
+	if n := len(g.w.Targets); n != 39 || !ms[13].Queued || !ms[14].Queued || len(ops.called("spawn")) != 39 {
+		t.Fatalf("%d targets, %d spawns, queued 13=%v 14=%v; want 39 and both queued", n, len(ops.called("spawn")), ms[13].Queued, ms[14].Queued)
+	}
+	g.m.finish(ms[0], "failed", g.w)
+	g.mu.Unlock()
+	pumpUntil(t, g, "mission 13 launched", func() bool { return !ms[13].Queued })
+	for range 30 {
+		g.tick()
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !ms[14].Queued || len(ops.called("spawn")) != 42 {
+		t.Fatalf("mission 14 queued=%v, %d spawns; want queued and 42", ms[14].Queued, len(ops.called("spawn")))
+	}
+}

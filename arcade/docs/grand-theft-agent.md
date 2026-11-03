@@ -8,7 +8,7 @@ Working title, my call: "Grand Theft Agent". It's a parody name. The art, sprite
 
 | Topic | Decision |
 |-------|----------|
-| World | **One shared city, separate missions.** Each solo player or squad starts its own mission at its own level. Its targets spawn in the shared city, where rivals can stun, spring or steal them. When the 24-step limit is full, new missions wait in a queue at Dispatch ("waiting for a free safehouse"). |
+| World | **One shared city, separate missions.** Each solo player or squad starts its own mission at its own level. Its targets spawn in the shared city, where rivals can stun, spring or steal them. When the 24-step limit is full, or a mission's targets would take the city past 40 live targets, new missions wait in a queue at Dispatch ("waiting for a free safehouse") and launch oldest first. A player has at most one mission running or queued, and can't change squad while their squad's mission runs or waits. |
 | Booth scope | **Levels 1–3 and the big screen** must be ready for the booth: Rookie, Booking, The Crew. Levels 4–6 and cars come after. |
 | Winner | **Whoever freezes the most agents.** The leaderboard ranks players by takedowns (freezes they landed). Cash from extractions and missions only breaks ties. Squads see each member's count and a squad total. |
 | Booth date | Not set yet |

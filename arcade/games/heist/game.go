@@ -410,7 +410,16 @@ func (g *Game) start(playerID string, level int) (*Mission, error) {
 	case a == nil:
 		return nil, errors.New("not in the city")
 	}
-	return g.m.Start(a.Squad, level, g.w, g.s)
+	for _, ms := range g.m.missions {
+		if ms.Outcome == "" && ms.Starter == playerID {
+			return nil, errors.New("you already have a mission running")
+		}
+	}
+	ms, err := g.m.Start(a.Squad, level, g.w, g.s)
+	if ms != nil {
+		ms.Starter = playerID
+	}
+	return ms, err
 }
 
 // build spends a rig from the player's stash and spawns the ally. g.mu is held.
@@ -432,8 +441,17 @@ func (g *Game) build(playerID string) error {
 	return nil
 }
 
-// squad changes the player's squad and returns its code. g.mu is held.
+// squad changes the player's squad and returns its code. It is refused while the
+// player's squad has a mission running or queued, so hopping squads can't start one
+// mission per squad. g.mu is held.
 func (g *Game) squad(playerID, op, code string) (string, error) {
+	cur := g.q.Of(playerID)
+	if a := g.w.Avatars[playerID]; a != nil {
+		cur = a.Squad
+	}
+	if g.m.active[cur] != nil {
+		return "", errors.New("finish your mission first")
+	}
 	switch op {
 	case "solo":
 		code = g.q.Solo(playerID)

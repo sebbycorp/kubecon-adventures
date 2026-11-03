@@ -29,8 +29,10 @@ type Level struct {
 var Levels = []Level{{1, "Rookie", 1, 4, 90, false}, {2, "Booking", 1, 4, 120, true}, {3, "The Crew", 3, 4, 180, true}}
 
 // Mission is one squad's run at a level. Outcome is "", "won", "failed" or "escaped".
+// Starter is the player who started it.
 type Mission struct {
 	ID, Squad     string
+	Starter       string
 	Level         Level
 	Targets       []string
 	Started, Ends float64
@@ -64,6 +66,7 @@ const (
 	stepJitter      = 10.0
 	spawnRetry      = 2.0
 	maxStepsBusy    = 24 // missions queue while this many steps are running
+	maxLiveTargets  = 40 // missions queue while their targets would take the city past this
 	sayMax          = 60
 )
 
@@ -101,8 +104,9 @@ func NewMissions(rnd *rand.Rand) *Missions {
 }
 
 // Start begins a mission for squad. Level 1 is always open; higher levels need the
-// previous one won, and a squad runs one mission at a time. When the step cap is full
-// the mission is Queued and its targets spawn on a later Tick.
+// previous one won, and a squad runs one mission at a time. When the step cap is full,
+// or its targets would take the city past maxLiveTargets, or older missions are still
+// queued, the mission is Queued and its targets spawn on a later Tick.
 func (m *Missions) Start(squad string, level int, w *World, s *Scheduler) (*Mission, error) {
 	if level < 1 || level > len(Levels) {
 		return nil, fmt.Errorf("no level %d", level)
@@ -121,12 +125,44 @@ func (m *Missions) Start(squad string, level int, w *World, s *Scheduler) (*Miss
 		ms.Targets = append(ms.Targets, id)
 		m.targets[id] = &track{ms: ms}
 	}
+	queued := slices.ContainsFunc(m.missions, func(o *Mission) bool { return o.Queued && o.Outcome == "" })
 	m.missions = append(m.missions, ms)
 	m.active[squad] = ms
-	if steps, _, _ := s.InFlight(); steps < maxStepsBusy {
+	if !queued && m.room(ms, w, s) {
 		m.launch(ms, w, s)
 	}
 	return ms, nil
+}
+
+// room reports whether ms can launch now: a step slot is free and its targets fit under
+// maxLiveTargets.
+func (m *Missions) room(ms *Mission, w *World, s *Scheduler) bool {
+	steps, _, _ := s.InFlight()
+	return steps < maxStepsBusy && m.live(w)+len(ms.Targets) <= maxLiveTargets
+}
+
+// live counts the targets that have (or are getting) a session: those of launched
+// missions that are spawning, or in the world and not yet booked or deleted. A target
+// the game has cleaned up is no longer in the world.
+func (m *Missions) live(w *World) int {
+	n := 0
+	for _, ms := range m.missions {
+		if ms.Queued {
+			continue
+		}
+		for _, id := range ms.Targets {
+			t, tr := w.Targets[id], m.targets[id]
+			switch {
+			case t != nil:
+				if t.State != Booked && t.State != Deleted {
+					n++
+				}
+			case tr != nil && (tr.spawning || !tr.spawned && ms.Outcome == ""):
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // launch starts a mission's timer and spawns its targets.
@@ -145,15 +181,16 @@ func (m *Missions) spawn(tr *track, id string, w *World, s *Scheduler) {
 	}
 }
 
-// Tick launches the oldest queued mission once a step slot is free, fails missions
-// whose time is up, and paces steps and crew revives.
+// Tick launches the oldest queued mission once there is room for it (a step slot and
+// safehouses for its targets), fails missions whose time is up, and paces steps and crew
+// revives.
 func (m *Missions) Tick(w *World, s *Scheduler) {
-	if steps, _, _ := s.InFlight(); steps < maxStepsBusy {
-		for _, ms := range m.missions {
-			if ms.Queued && ms.Outcome == "" {
+	for _, ms := range m.missions {
+		if ms.Queued && ms.Outcome == "" {
+			if m.room(ms, w, s) {
 				m.launch(ms, w, s)
-				break
 			}
+			break
 		}
 	}
 	for _, ms := range m.missions {
