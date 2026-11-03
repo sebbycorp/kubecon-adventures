@@ -503,17 +503,164 @@ func TestPolicyPrefix(t *testing.T) {
 	}
 }
 
-func TestPromptRetriesInvalidOutput(t *testing.T) {
+// The validation failures kagent reports when heister ends its turn without valid JSON:
+// the turn ran (its commands too), only the output processor failed.
+func TestStepValidationFailureFallsBack(t *testing.T) {
 	h, s := newFakes()
 	o := newAgentOps(h, s, "resume-first")
-	h.invalid = 2
-	r, err := o.Step(context.Background(), "h-sess-1", 1, 4)
-	if err != nil || r.Say != "on it" || len(h.prompts) != 3 {
-		t.Fatalf("got %+v, %v after %d prompts", r, err, len(h.prompts))
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	h.invalid = 1
+	r, err := o.Step(ctx, sid, 1, 4)
+	if err != nil {
+		t.Fatalf("validation failure must not fail the step: %v", err)
 	}
-	h.invalid = 3
-	if _, err := o.Step(context.Background(), "h-sess-1", 2, 4); err == nil {
-		t.Fatal("three invalid outputs: want error")
+	if !slices.Contains(stepQuips, r.Say) || !r.Done || r.Loot != 0 || r.Tokens != 0 {
+		t.Fatalf("fallback step %+v", r)
+	}
+	if len(h.prompts) != 1 {
+		t.Fatalf("resent %d times: no resend wanted", len(h.prompts)-1)
+	}
+	o.mu.Lock()
+	ss := *o.sessions[sid]
+	o.mu.Unlock()
+	// The failed turn is checkpointable (probed on the cluster): it is the new head.
+	if ss.lastTask != "task-1" || ss.staleHead || ss.lastStep != 1 {
+		t.Fatalf("session after a fallback step: %+v", ss)
+	}
+	if _, _, err := o.Extract(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.calls()[2:], "|"); got != "checkpoint "+sid+" task-1|delete "+sid {
+		t.Fatalf("extract after a fallback step: %s", got)
+	}
+}
+
+func TestStepQuipsVaryAndAreShort(t *testing.T) {
+	if n := len(stepQuips); n < 4 || n > 6 {
+		t.Fatalf("%d quips, want 4-6", n)
+	}
+	seen := map[string]bool{}
+	for step := 1; step <= 4; step++ {
+		q := stepQuip("h-sess-1", step)
+		if !slices.Contains(stepQuips, q) {
+			t.Fatalf("quip %q not from the table", q)
+		}
+		seen[q] = true
+	}
+	if len(seen) < 2 {
+		t.Fatal("the same quip for every step")
+	}
+	for _, q := range stepQuips {
+		if utf8.RuneCountInString(q) > maxSay {
+			t.Fatalf("quip %q over %d runes", q, maxSay)
+		}
+	}
+}
+
+func TestStepOtherErrorsStillFail(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	h.promptErr = errors.New("task ended in failed: LLM error: 429 Too Many Requests")
+	if _, err := o.Step(ctx, sid, 1, 4); err == nil || !strings.HasPrefix(err.Error(), "policy:") {
+		t.Fatalf("429: %v", err)
+	}
+	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
+	if _, err := o.Step(ctx, sid, 1, 4); err == nil {
+		t.Fatal("other failure: want error")
+	}
+	// A completed turn whose JSON is malformed is still an error (not a validation fail).
+	h.promptErr, h.reply = nil, `{"say": nope`
+	if _, err := o.Step(ctx, sid, 1, 4); err == nil {
+		t.Fatal("bad JSON: want error")
+	}
+	if len(h.prompts) != 3 {
+		t.Fatalf("%d prompts, want 3 (no resends)", len(h.prompts))
+	}
+}
+
+func TestValidationFailureWhileSuspendedStaysStale(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.invalid = 1 // the turn the freeze waited for ends in a validation failure
+	if _, err := o.Step(ctx, sid, 2, 4); err != nil {
+		t.Fatal(err)
+	}
+	o.mu.Lock()
+	stale := o.sessions[sid].staleHead
+	o.mu.Unlock()
+	if !stale {
+		t.Fatal("a failed turn recorded while suspended cleared staleHead")
+	}
+}
+
+func TestSpawnAllyValidationFallsBack(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	s.invalid = 1
+	sid, _, say, err := o.SpawnAlly(context.Background(), "ally-p1")
+	if err != nil || sid == "" || say != allyGreetFallback {
+		t.Fatalf("ally with a failed greeting: %q %q %v", sid, say, err)
+	}
+	if len(s.prompts) != 1 || slices.Contains(s.calls(), "delete "+sid) {
+		t.Fatalf("resent or discarded: %v", s.calls())
+	}
+	o.mu.Lock()
+	head := o.sessions[sid].lastTask
+	o.mu.Unlock()
+	if head != "task-1" {
+		t.Fatalf("ally head %q", head)
+	}
+}
+
+func TestSpringValidationFallsBackNoResend(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.invalid = 1
+	_, say, _, err := o.Spring(ctx, sid)
+	if err != nil || say != sprungFallback || len(h.prompts) != 2 {
+		t.Fatalf("spring: %q %v after %d prompts", say, err, len(h.prompts))
+	}
+	o.mu.Lock()
+	ss := *o.sessions[sid]
+	o.mu.Unlock()
+	if ss.lastTask != "task-2" || ss.staleHead {
+		t.Fatalf("after a fallback spring: %+v", ss)
+	}
+	aid, _, _, _ := o.SpawnAlly(ctx, "ally-p1")
+	_, _ = o.Freeze(ctx, aid)
+	s.invalid = 1
+	if _, say, _, err := o.Spring(ctx, aid); err != nil || say != allyFallback || len(s.prompts) != 2 {
+		t.Fatalf("ally spring: %q %v after %d prompts", say, err, len(s.prompts))
+	}
+}
+
+func TestBookedLineValidationFallsBack(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.invalid = 1
+	n := len(h.calls())
+	say, _, err := o.Extract(ctx, sid)
+	if err != nil || say != bookedFallback {
+		t.Fatalf("booked with a failed line: %q %v", say, err)
+	}
+	// No resend: the failed turn itself is checkpointed.
+	if got := strings.Join(h.calls()[n:], "|"); got != "resume "+sid+"|prompt "+sid+"|checkpoint "+sid+" task-2|delete "+sid {
+		t.Fatalf("calls: %s", got)
 	}
 }
 
@@ -523,7 +670,7 @@ func TestSpringFallsBackWhenLineFails(t *testing.T) {
 	ctx := context.Background()
 	sid, _, _ := o.Spawn(ctx, "m1-1")
 	_, _ = o.Freeze(ctx, sid)
-	h.invalid = 3
+	h.invalid = 1
 	_, say, _, err := o.Spring(ctx, sid)
 	if err != nil || say != sprungFallback {
 		t.Fatalf("spring with a failed line: %q %v", say, err)

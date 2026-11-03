@@ -191,6 +191,10 @@ func (g *Game) route(r Result) {
 		}
 		return
 	}
+	if !r.OK {
+		// Errors carry kagent's status reason, never the agent's reply text.
+		slog.Warn("grand theft agent: op failed", "kind", r.Kind, "target", r.Target, "ms", r.Ms, "err", r.Err)
+	}
 	switch r.Kind {
 	case "freeze", "spring", "extract":
 		if r.OK {

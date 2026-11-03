@@ -73,13 +73,29 @@ const (
 	bookedFallback = "Booked. I'll be back."
 	// Spring's line when the post-resume prompt fails (the resume itself worked).
 	sprungFallback = "I'm out! Back to the heist."
-	allyFallback   = "Rebooted and back on duty!"
-	// invalidRetries is how many times a prompt is resent when the model's reply fails
-	// kagent's output validation (gpt-4.1-mini sometimes answers in prose).
-	invalidRetries = 2
-	maxSay         = 60
-	stepsPerJob    = 4
+	// allyGreetFallback is the greeting when the ally's first turn fails validation.
+	allyGreetFallback = "Ally online. I've got your back!"
+	allyFallback      = "Rebooted and back on duty!"
+	maxSay            = 60
+	stepsPerJob       = 4
 )
+
+// stepQuips are a step's line when heister's turn fails kagent's output validation:
+// its own words are never shown (they may echo command output).
+var stepQuips = []string{
+	"Shh... working on it.",
+	"Nothing to see here, officer!",
+	"Almost got it, keep watch!",
+	"Smooth as silk. Next!",
+	"Easy money, easy does it.",
+}
+
+// stepQuip picks a fallback line by session and step.
+func stepQuip(sid string, step int) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(sid))
+	return stepQuips[(h.Sum32()+uint32(max(step, 0)))%uint32(len(stepQuips))]
+}
 
 // jobFor picks a session's job from its session ID, so a sprung session (same ID)
 // continues the same job.
@@ -247,27 +263,34 @@ func (o *agentOps) client(sid string) agentAPI {
 	return o.heister
 }
 
-// prompt sends text (retrying the settle window, and up to invalidRetries times when the
-// reply fails output validation) and remembers the reply's task ID.
+// validationFailed reports kagent's output_validation_failed: heister ended its turn
+// without valid JSON (often after looping on extra tool calls). The turn itself ran, so
+// it is not resent: callers use a fixed fallback line instead.
+func validationFailed(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "output_validation_failed")
+}
+
+// prompt sends text once (retrying only the settle window) and remembers the reply's
+// task ID as Checkpoint's head. A turn that failed output validation is a head too: it
+// ran to the end and Substrate checkpoints it (probed on the cluster); any other failed
+// turn never is.
 func (o *agentOps) prompt(ctx context.Context, k agentAPI, sid, text string) (kagent.Reply, error) {
 	var r kagent.Reply
-	var err error
-	for try := 0; try <= invalidRetries; try++ {
-		err = settle(ctx, func() (err error) {
-			r, err = k.Prompt(ctx, sid, text)
-			return err
-		})
-		if err == nil && r.Task != nil && r.Task.ID != "" { // a failed task never becomes Checkpoint's head
-			o.mu.Lock()
-			s := o.sessLocked(sid)
-			// A turn that ended just before a Freeze landed (Freeze waits for it) is
-			// already stale: keep staleHead while the session is suspended.
-			s.lastTask, s.staleHead = string(r.Task.ID), s.suspended
-			o.mu.Unlock()
-		}
-		if err == nil || !strings.Contains(err.Error(), "output_validation_failed") || ctx.Err() != nil {
-			break
-		}
+	err := settle(ctx, func() (err error) {
+		r, err = k.Prompt(ctx, sid, text)
+		return err
+	})
+	if (err == nil || validationFailed(err)) && r.Task != nil && r.Task.ID != "" {
+		o.mu.Lock()
+		s := o.sessLocked(sid)
+		// A turn that ended just before a Freeze landed (Freeze waits for it) is
+		// already stale: keep staleHead while the session is suspended.
+		s.lastTask, s.staleHead = string(r.Task.ID), s.suspended
+		o.mu.Unlock()
+	}
+	if validationFailed(err) {
+		// Never log the reply itself: it may echo command output.
+		slog.Warn("heist: agent reply failed output validation, using a fallback line", "session", sid)
 	}
 	return r, policyErr(err)
 }
@@ -304,6 +327,9 @@ func (o *agentOps) SpawnAlly(ctx context.Context, name string) (string, string, 
 	o.mu.Unlock()
 	say, err := func() (string, error) {
 		r, err := o.prompt(ctx, o.sidekick, sid, allyGreeting)
+		if validationFailed(err) {
+			return allyGreetFallback, nil
+		}
 		if err != nil {
 			return "", err
 		}
@@ -343,12 +369,17 @@ func parseSay(r kagent.Reply) (string, error) {
 
 func (o *agentOps) Step(ctx context.Context, sid string, step, steps int) (StepResult, error) {
 	r, err := o.prompt(ctx, o.heister, sid, stepPrompt(jobFor(sid), step, steps))
-	if err != nil {
+	var res StepResult
+	switch {
+	case validationFailed(err):
+		// The step's turn ran; only its reply was unreadable. Count it, with a quip.
+		res = StepResult{Say: stepQuip(sid, step), Done: true, Tokens: r.Usage.Input + r.Usage.Output}
+	case err != nil:
 		return StepResult{}, err
-	}
-	res, err := parseStep(r)
-	if err != nil {
-		return res, err
+	default:
+		if res, err = parseStep(r); err != nil {
+			return res, err
+		}
 	}
 	o.mu.Lock()
 	s := o.sessLocked(sid)
@@ -473,6 +504,10 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 	// spring's line, or a failed booked line) still has the stale pre-freeze head.
 	if suspended || stale {
 		r, err := o.prompt(ctx, k, sid, bookedLine)
+		if validationFailed(err) {
+			err = nil // the turn ran and is checkpointable; its line falls back below
+			r.JSON, r.Text = "", ""
+		}
 		if err != nil {
 			return fail(fmt.Errorf("booked line: %w", err))
 		}
