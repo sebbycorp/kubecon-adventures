@@ -5,84 +5,96 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Duck Hunt · big screen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
-  :root { --green: #5fd068; --gold: #ffd23d; --pink: #ff7ad9; --fg: #f4f1ff; --mute: #a9a3c9; --line: #3a2f7a; }
+  :root { --nes-green: #80d010; --orange: #fc9838; --blue: #3cbcfc; --gold: #ffe04a; --pink: #fc74b4; --fg: #fff; --mute: #bcbcbc; --b: max(3px, .28vw); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0b2a; color: var(--fg); font: 16px/1.4 Inter, system-ui, sans-serif; }
-  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font: 1vw/1.7 "Press Start 2P", ui-monospace, monospace; }
+  canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
   .ui { position: fixed; z-index: 2; }
-  .panel { background: #120d33d9; border: 1px solid var(--line); border-radius: 18px; backdrop-filter: blur(6px); }
-  #left { left: 2.2vw; top: 3vh; width: 30vw; display: flex; flex-direction: column; gap: 1.6vh; }
-  h1 { margin: 0; font: 900 4.4vw/1 Inter, sans-serif; letter-spacing: -0.02em; background: linear-gradient(90deg, #fff, #c9b8ff 45%, var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .sub { color: var(--mute); font-size: 1.05vw; margin-top: .6vh; }
-  .sub b { color: var(--fg); }
-  #qr { display: flex; gap: 1.2vw; align-items: center; padding: 1.2vw; }
-  #qrcode { width: 10vw; height: 10vw; background: #fff; border-radius: 12px; padding: .6vw; flex: none; }
+  .nes { background: #000; border: var(--b) solid #fff; box-shadow: 0 0 0 var(--b) #000; }
+  #left { left: 2vw; top: 3vh; width: 31vw; display: flex; flex-direction: column; gap: 2vh; }
+  #title { width: 100%; image-rendering: pixelated; display: block; }
+  .sub { font-size: .7vw; line-height: 2.1; padding: .8vw 1vw; }
+  .sub b { color: var(--nes-green); font-weight: 400; }
+  #qr { display: flex; gap: 1.2vw; align-items: center; padding: 1vw; }
+  #qrcode { width: 9.5vw; height: 9.5vw; background: #fff; padding: .5vw; flex: none; }
   #qrcode svg { width: 100%; height: 100%; display: block; }
-  #qr b { display: block; font: 900 1.6vw Inter, sans-serif; }
-  #qr span { color: var(--mute); font-size: .95vw; word-break: break-all; }
-  .how { padding: 1vw 1.2vw; display: grid; gap: .5vh; font-size: 1vw; color: #d6d0f5; }
-  .how b { color: var(--gold); }
-  #stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6vw; }
-  .st { padding: .8vw; text-align: center; }
-  .st b { display: block; font: 900 1.9vw Inter, sans-serif; font-variant-numeric: tabular-nums; }
-  .st span { color: var(--mute); font-size: .8vw; letter-spacing: .06em; }
-  .st.g b { color: var(--green); }
+  #qr b { display: block; font-size: 1.05vw; font-weight: 400; color: var(--orange); }
+  #qr span { color: var(--mute); font-size: .6vw; word-break: break-all; }
+  #stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8vw; }
+  .st { padding: .7vw .5vw; text-align: center; }
+  .st b { display: block; font-size: 1.25vw; font-weight: 400; color: #fff; }
+  .st span { color: var(--blue); font-size: .5vw; }
+  .st.g b { color: var(--nes-green); }
 
-  #right { right: 2.2vw; top: 3vh; width: 34vw; padding: 1.4vw; }
-  #right h2 { margin: 0 0 1vh; font: 800 1vw Inter, sans-serif; letter-spacing: .16em; color: var(--mute); display: flex; justify-content: space-between; }
-  #board { position: relative; height: calc(10 * 5.6vh); }
-  .row { position: absolute; left: 0; right: 0; height: 5vh; display: grid; grid-template-columns: 3vw 1.2vw 1fr auto; gap: .8vw; align-items: center; padding: 0 1vw; border-radius: 12px;
-    background: #ffffff08; transition: transform .7s cubic-bezier(.2, .9, .25, 1), background .4s; font-size: 1.25vw; }
-  .row.r1 { background: linear-gradient(90deg, #ffd23d33, #ffd23d0a); outline: 1px solid #ffd23d88; }
-  .row .rk { font-weight: 900; color: var(--mute); }
-  .row.r1 .rk { color: var(--gold); }
-  .row i { width: 1vw; height: 1vw; border-radius: 50%; }
-  .row .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .nm small { display: block; font-weight: 400; font-size: .75vw; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .sc { font: 900 1.5vw Inter, sans-serif; color: var(--gold); font-variant-numeric: tabular-nums; }
-  .row.flash { animation: flash 1.6s ease-out; }
-  @keyframes flash { 0% { background: #5fd06899; box-shadow: 0 0 40px #5fd068; } 100% { background: #ffffff08; box-shadow: none; } }
-  .empty { color: var(--mute); font-size: 1.2vw; padding: 1vw; }
+  #right { right: 2vw; top: 3vh; width: 33vw; padding: 1.2vw; }
+  #right h2, #feed h2 { margin: 0 0 1.2vh; font-size: .75vw; font-weight: 400; color: var(--blue); display: flex; justify-content: space-between; }
+  #board { position: relative; height: calc(10 * 4.6vh); }
+  .row { position: absolute; left: 0; right: 0; height: 4.2vh; display: grid; grid-template-columns: 2.6vw 1fr auto; gap: .8vw; align-items: center; padding: 0 .6vw;
+    transition: transform .7s steps(8), color .3s; font-size: .85vw; }
+  .row.r1 { color: var(--gold); }
+  .row .rk { color: var(--nes-green); }
+  .row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .nm small { display: block; font-size: .45vw; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.flash { animation: flash 1.2s steps(6); }
+  @keyframes flash { 0%, 33%, 66% { background: #fff; color: #000; } 16%, 50%, 83%, 100% { background: transparent; color: inherit; } }
+  .empty { color: var(--mute); font-size: .8vw; padding: 1vw; text-align: center; line-height: 2.2; }
 
-  #feed { right: 2.2vw; bottom: 3vh; width: 34vw; padding: 1vw 1.2vw; display: flex; flex-direction: column; gap: .7vh; }
-  #feed h2 { margin: 0; font: 800 .9vw Inter, sans-serif; letter-spacing: .16em; color: var(--mute); }
-  .ev { font-size: 1.05vw; display: flex; gap: .6vw; align-items: baseline; animation: in .4s ease-out; white-space: nowrap; overflow: hidden; }
-  .ev b { font-weight: 800; }
-  .ev .ms { margin-left: auto; color: var(--green); font: 700 .95vw ui-monospace, monospace; flex: none; }
-  .ev .say { color: #ffe9a8; font-style: italic; overflow: hidden; text-overflow: ellipsis; }
-  @keyframes in { from { opacity: 0; transform: translateX(14px); } }
-  #cta { left: 2.2vw; bottom: 3vh; }
+  #feed { right: 2vw; bottom: 16vh; width: 33vw; padding: 1vw 1.2vw; display: flex; flex-direction: column; gap: .8vh; }
+  .ev { font-size: .62vw; display: flex; gap: .6vw; align-items: baseline; white-space: nowrap; overflow: hidden; animation: in .4s steps(4); }
+  .ev .ms { margin-left: auto; color: var(--nes-green); flex: none; }
+  .ev .say { color: var(--gold); overflow: hidden; text-overflow: ellipsis; }
+  @keyframes in { from { opacity: 0; } }
+  #cta { left: 2vw; bottom: 17vh; font-family: Inter, system-ui, sans-serif; }
 </style>
 </head>
 <body>
 <canvas id="sky"></canvas>
 <div id="left" class="ui">
-  <div><h1>DUCK HUNT</h1><div class="sub">Every target is a <b>real AI agent</b> on Agent Substrate. A hit is a <b>real snapshot</b>.</div></div>
-  <div id="qr" class="panel"><div id="qrcode"></div><div><b>Scan to play</b><span id="joinUrl"></span><div class="sub" style="margin-top:.6vh">Turn your phone sideways and tap the agents.</div></div></div>
-  <div class="how panel"><span>🎯 Tap an agent: Substrate <b>suspends</b> it and it drops into Snapshot Storage.</span><span>☀️ New targets are sleeping agents Substrate <b>wakes up</b> for you.</span><span>⭐ Golden agents <b>+500</b> · combos up to <b>×5</b> · 75 seconds.</span></div>
+  <canvas id="title" width="1" height="1" aria-label="Duck Hunt"></canvas>
+  <div class="sub nes">EVERY DUCK IS A <b>REAL AI AGENT</b> ON AGENT SUBSTRATE.<br>A HIT IS A <b>REAL SNAPSHOT</b>. NEW DUCKS ARE AGENTS SUBSTRATE <b>WAKES UP</b>.</div>
+  <div id="qr" class="nes"><div id="qrcode"></div><div><b>SCAN TO PLAY</b><span id="joinUrl"></span><div style="font-size:.55vw;margin-top:1vh;color:#fff">TURN YOUR PHONE SIDEWAYS<br>AND SHOOT THE DUCKS.</div></div></div>
   <div id="stats">
-    <div class="st panel g"><b id="sPlaying">0</b><span>playing now</span></div>
-    <div class="st panel"><b id="sAwake">0</b><span>agents awake</span></div>
-    <div class="st panel"><b id="sAsleep">0</b><span>asleep · 0 CPU</span></div>
-    <div class="st panel g"><b id="sSuspend">–</b><span>snapshot p50</span></div>
-    <div class="st panel g"><b id="sResume">–</b><span>wake-up p50</span></div>
-    <div class="st panel"><b id="sHits">0</b><span>agents shot today</span></div>
+    <div class="st nes g"><b id="sPlaying">0</b><span>PLAYING</span></div>
+    <div class="st nes"><b id="sAwake">0</b><span>AWAKE</span></div>
+    <div class="st nes"><b id="sAsleep">0</b><span>ASLEEP</span></div>
+    <div class="st nes g"><b id="sSuspend">–</b><span>SNAPSHOT</span></div>
+    <div class="st nes g"><b id="sResume">–</b><span>WAKE-UP</span></div>
+    <div class="st nes"><b id="sHits">0</b><span>SHOT TODAY</span></div>
   </div>
 </div>
-<div id="right" class="ui panel"><h2><span>TOP 10 · BEST RUNS</span><span id="boardN"></span></h2><div id="board"><div class="empty">No scores yet. Scan the code and be the first.</div></div></div>
-<div id="feed" class="ui panel"><h2>LIVE FROM THE PHONES</h2><div id="events"></div></div>
+<div id="right" class="ui nes"><h2><span>TOP 10 HUNTERS</span><span id="boardN"></span></h2><div id="board"><div class="empty">NO SCORES YET.<br>SCAN THE CODE AND BE THE FIRST.</div></div></div>
+<div id="feed" class="ui nes"><h2>LIVE FROM THE PHONES</h2><div id="events"></div></div>
 <div id="cta" class="ui"></div>
 
 <script src="/static/qrcode-1.4.4.min.js"></script>
 <script src="/static/arcade.js?v=2"></script>
 <script type="module">
-import { KINDS } from "/duck-hunt/static/hunt.js";
+import { KINDS, pixelStage, scenery, duckFrames, mascotFrames, SKY } from "/duck-hunt/static/hunt.js";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" };
+const pad = (n) => String(Math.max(0, Math.floor(n))).padStart(6, "0");
 Arcade.ctas($("cta"), "md");
+
+// The title, in the same block letters as the phone.
+const GLYPHS = {
+  D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"], U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  C: ["01111", "10000", "10000", "10000", "10000", "10000", "01111"], K: ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+  H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"], N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+};
+(function title(cv) {
+  const cell = 3, w = 9 * 6 * cell, h = 7 * cell;
+  cv.width = w + 2; cv.height = h + 2;
+  const x = cv.getContext("2d");
+  [..."DUCK HUNT"].forEach((ch, ci) => (GLYPHS[ch] || []).forEach((row, ry) => [...row].forEach((bit, rx) => {
+    if (bit !== "1") return;
+    const px = ci * 6 * cell + rx * cell, py = ry * cell;
+    x.fillStyle = "#1858d8"; x.fillRect(px + 2, py + 2, cell, cell);
+    x.fillStyle = ci < 4 ? "#3cbcfc" : "#fc9838"; x.fillRect(px, py, cell, cell);
+  })));
+})($("title"));
 
 // QR: the phone page; a screen opened on localhost points at the public domain.
 const params = new URLSearchParams(location.search);
@@ -93,100 +105,105 @@ try { const qr = qrcode(0, "M"); qr.addData(joinUrl); qr.make(); $("qrcode").inn
 catch { $("qrcode").textContent = joinUrl; }
 
 // ---- the leaderboard: rows keyed by nick slide to their new rank ----
-const rowsEl = new Map(); // nick -> {el, rank, score}
+const rowsEl = new Map();
 function board(rows) {
-  $("boardN").textContent = rows.length ? `${rows.length} player${rows.length > 1 ? "s" : ""}` : "";
+  $("boardN").textContent = rows.length ? `${rows.length} PLAYER${rows.length > 1 ? "S" : ""}` : "";
   const box = $("board");
-  if (!rows.length) { box.innerHTML = `<div class="empty">No scores yet. Scan the code and be the first.</div>`; rowsEl.clear(); return; }
+  if (!rows.length) { box.innerHTML = `<div class="empty">NO SCORES YET.<br>SCAN THE CODE AND BE THE FIRST.</div>`; rowsEl.clear(); return; }
   box.querySelector(".empty")?.remove();
   const keep = new Set();
   rows.forEach((r, i) => {
     keep.add(r.nick);
     let o = rowsEl.get(r.nick);
-    if (!o) {
-      o = { el: document.createElement("div"), rank: 99, score: -1 };
-      o.el.style.transform = `translateY(${10 * 5.6}vh)`;
-      box.appendChild(o.el);
-      rowsEl.set(r.nick, o);
-    }
+    if (!o) { o = { el: document.createElement("div"), rank: 99, score: -1 }; o.el.style.transform = `translateY(${10 * 4.6}vh)`; box.appendChild(o.el); rowsEl.set(r.nick, o); }
     const up = i < o.rank || r.score > o.score;
     o.el.className = `row${i === 0 ? " r1" : ""}`;
-    o.el.innerHTML = `<span class="rk">#${i + 1}</span><i style="background:${COLORS[r.color] || "#8a8f94"}"></i><span class="nm">${esc(r.nick)}<small>${esc(r.detail || "")}</small></span><span class="sc">${Number(r.score).toLocaleString()}</span>`;
-    requestAnimationFrame(() => { o.el.style.transform = `translateY(${i * 5.6}vh)`; });
+    o.el.innerHTML = `<span class="rk">${i + 1}.</span><span class="nm">${esc(String(r.nick).toUpperCase())}<small>${esc(r.detail || "")}</small></span><span>${pad(r.score)}</span>`;
+    requestAnimationFrame(() => { o.el.style.transform = `translateY(${i * 4.6}vh)`; });
     if (up && o.score >= 0) { o.el.classList.remove("flash"); void o.el.offsetWidth; o.el.classList.add("flash"); }
-    else if (o.score < 0) setTimeout(() => { o.el.classList.add("flash"); }, 50);
+    else if (o.score < 0) setTimeout(() => o.el.classList.add("flash"), 50);
     o.rank = i; o.score = r.score;
   });
   for (const [nick, o] of rowsEl) if (!keep.has(nick)) { o.el.remove(); rowsEl.delete(nick); }
 }
 
 // ---- live feed ----
-let seen = -1; // first state: show its last few events, then only new ones
+let seen = -1;
 function feed(e) {
   const d = document.createElement("div");
   d.className = "ev";
-  const k = e.kind === "golden" ? "a GOLDEN agent" : e.kind === "swift" ? "a swift agent" : "an agent";
-  if (e.type === "hit") d.innerHTML = `<b style="color:${COLORS[e.color] || "#fff"}">${esc(e.nick)}</b><span>snapshotted ${k} <b style="color:var(--gold)">+${e.points}</b>${e.mult > 1 ? ` ×${e.mult}` : ""}</span><span class="ms">${e.ms ? `suspend ${e.ms} ms` : ""}</span>`;
-  else if (e.type === "say") d.innerHTML = `<span>🗨️</span><span class="say">“${esc(e.text)}”</span>`;
-  else if (e.type === "end") d.innerHTML = `<span>🏁</span><b>${esc(e.nick)}</b><span>finished a run with <b style="color:var(--gold)">${Number(e.points).toLocaleString()}</b></span>`;
+  const k = e.kind === "golden" ? "A GOLDEN DUCK" : e.kind === "swift" ? "A SWIFT DUCK" : "A DUCK";
+  if (e.type === "hit") d.innerHTML = `<span style="color:var(--orange)">${esc(String(e.nick).toUpperCase())}</span><span>GOT ${k} <span style="color:var(--gold)">+${e.points}</span>${e.mult > 1 ? ` x${e.mult}` : ""}</span><span class="ms">${e.ms ? `SNAP ${e.ms}MS` : ""}</span>`;
+  else if (e.type === "say") d.innerHTML = `<span>💬</span><span class="say">“${esc(e.text)}”</span>`;
+  else if (e.type === "end") d.innerHTML = `<span style="color:var(--orange)">${esc(String(e.nick).toUpperCase())}</span><span>FINISHED WITH <span style="color:var(--gold)">${pad(e.points)}</span></span>`;
   else return;
   const box = $("events");
   box.prepend(d);
-  while (box.children.length > 7) box.lastChild.remove();
+  while (box.children.length > 6) box.lastChild.remove();
 }
 
-// ---- the sky: decorative agents; a live hit shoots one down into Snapshot Storage ----
-const cv = $("sky"), cx = cv.getContext("2d");
-let W = 0, H = 0;
-const birds = [], falls = [], stars = [];
-function resize() { const d = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0);
-  stars.length = 0; for (let i = 0; i < 160; i++) stars.push({ x: Math.random() * W, y: Math.random() * H * 0.7, r: Math.random() * 1.6 + 0.4, p: Math.random() * 6 }); }
+// ---- the field: decorative ducks; a live hit shoots one down for the mascot ----
+const st = pixelStage($("sky"), 180);
+let sc = null;
+function resize() { st.resize(); sc = scenery(st.GW, st.GH, { treeX: st.GW * 0.5 }); }
 addEventListener("resize", resize); resize();
-function addBird(kind = "agent") { birds.push({ kind, x: Math.random() < 0.5 ? -60 : W + 60, y: H * (0.2 + Math.random() * 0.55), vx: 0, t: Math.random() * 6, s: H * (0.075 + Math.random() * 0.03) }); const b = birds[birds.length - 1]; b.vx = (b.x < 0 ? 1 : -1) * (60 + Math.random() * 80); }
-for (let i = 0; i < 8; i++) { addBird(i === 3 ? "golden" : i % 3 === 0 ? "swift" : "agent"); birds[i].x = W * (0.32 + Math.random() * 0.33); }
+const birds = [], falls = [];
+let mascot = null;
+function addBird(kind = "agent") {
+  const k = KINDS[kind];
+  const b = { kind, pal: k.pals[(Math.random() * k.pals.length) | 0], x: Math.random() < 0.5 ? -20 : st.GW + 20, y: 20 + Math.random() * (sc.grassTop - 50), t: Math.random() * 4, vy: 0 };
+  b.vx = (b.x < 0 ? 1 : -1) * (22 + Math.random() * 22) * k.speed;
+  b.vy = (Math.random() < 0.5 ? -1 : 1) * Math.abs(b.vx) * 0.5;
+  birds.push(b);
+  return b;
+}
+for (let i = 0; i < 7; i++) addBird(i === 3 ? "golden" : i % 3 === 0 ? "swift" : "agent").x = st.GW * (0.25 + Math.random() * 0.5);
 function shootDown(e) {
-  let b = birds.find((x) => x.kind === e.kind) || birds[0];
+  const b = birds.find((x) => x.kind === e.kind) || birds[0];
   if (!b) return;
   birds.splice(birds.indexOf(b), 1);
-  falls.push({ ...b, vy: -H * 0.2, rot: 0, label: `${e.nick} · ${e.ms ? e.ms + " ms" : "snapshot"}` });
+  falls.push({ ...b, shotAt: performance.now(), vy: 0, spin: 0, label: `${String(e.nick).toUpperCase()} ${e.ms ? e.ms + "MS" : ""}` });
+  flash = 1;
   addBird(Math.random() < 0.08 ? "golden" : Math.random() < 0.3 ? "swift" : "agent");
 }
-function drawBird(b, rot) {
-  const k = KINDS[b.kind] || KINDS.agent, s = b.s;
-  cx.save(); cx.translate(b.x, b.y); if (rot) cx.rotate(rot); cx.scale(b.vx >= 0 ? 1 : -1, 1);
-  const fl = Math.sin(b.t * 14);
-  cx.fillStyle = k.wing; cx.beginPath(); cx.ellipse(-s * 0.1, -s * 0.12, s * 0.34, s * 0.16 * (0.4 + Math.abs(fl)), -0.5 - fl * 0.6, 0, 7); cx.fill();
-  cx.fillStyle = k.body; cx.beginPath(); cx.ellipse(0, 0, s * 0.42, s * 0.32, 0, 0, 7); cx.fill();
-  cx.fillStyle = "#140c2e"; cx.fillRect(s * 0.1, -s * 0.38, s * 0.4, s * 0.3);
-  cx.fillStyle = rot ? "#9fffff" : "#7dffa0"; cx.fillRect(s * 0.18, -s * 0.3, s * 0.06, s * 0.12); cx.fillRect(s * 0.34, -s * 0.3, s * 0.06, s * 0.12);
-  cx.fillStyle = "#ffb13d"; cx.beginPath(); cx.moveTo(s * 0.5, -s * 0.24); cx.lineTo(s * 0.64, -s * 0.18); cx.lineTo(s * 0.5, -s * 0.12); cx.fill();
-  cx.restore();
-}
-let last = performance.now();
+let flash = 0, last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  const gr = cx.createLinearGradient(0, 0, 0, H);
-  gr.addColorStop(0, "#0a0b2a"); gr.addColorStop(0.6, "#2a1650"); gr.addColorStop(0.88, "#7a2d6b"); gr.addColorStop(1, "#ff8a5c");
-  cx.fillStyle = gr; cx.fillRect(0, 0, W, H);
-  for (const s of stars) { cx.globalAlpha = 0.4 + 0.4 * Math.sin(now / 800 + s.p); cx.fillStyle = "#fff"; cx.fillRect(s.x, s.y, s.r, s.r); }
-  cx.globalAlpha = 1;
-  // Snapshot Storage at the bottom middle.
-  const bx = W / 2, by = H * 0.97, bw = W * 0.14, bh = H * 0.08;
-  cx.fillStyle = "#111a18"; cx.fillRect(bx - bw / 2, by - bh, bw, bh); cx.strokeStyle = "#5fd068"; cx.lineWidth = 2; cx.strokeRect(bx - bw / 2, by - bh, bw, bh);
-  cx.fillStyle = "#5fd068"; cx.font = `800 ${H * 0.018}px Inter`; cx.textAlign = "center"; cx.fillText("SNAPSHOT STORAGE", bx, by - bh * 0.4);
-  for (const b of birds) { b.t += dt; b.x += b.vx * dt; b.y += Math.sin(b.t * 1.6) * 0.4; if (b.x < -80) b.x = W + 60; if (b.x > W + 80) b.x = -60; drawBird(b); }
-  for (let i = falls.length - 1; i >= 0; i--) {
-    const f = falls[i]; f.t += dt; f.rot += dt * 8; f.vy += H * 0.9 * dt; f.y += f.vy * dt; f.x += (bx - f.x) * Math.min(1, dt * 2);
-    drawBird(f, f.rot);
-    cx.fillStyle = "#9fffb0"; cx.font = `700 ${H * 0.02}px Inter`; cx.textAlign = "center"; cx.fillText(f.label, f.x, f.y - f.s * 0.8);
-    if (f.y > by - bh * 0.5) falls.splice(i, 1);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
+  const o = st.o;
+  o.fillStyle = SKY; o.fillRect(0, 0, st.GW, st.GH);
+  o.drawImage(sc.back, 0, 0);
+  for (const b of birds) {
+    b.t += dt * 10; b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.y < 14 || b.y > sc.grassTop - 18) b.vy = -b.vy;
+    if (b.x < -24) b.x = st.GW + 20; if (b.x > st.GW + 24) b.x = -20;
+    const f = duckFrames(b.pal), img = [f.up, f.mid, f.down, f.mid][Math.floor(b.t) % 4];
+    o.save(); o.translate(Math.round(b.x), Math.round(b.y)); if (b.vx < 0) o.scale(-1, 1); o.drawImage(img, -13, -10); o.restore();
   }
+  for (let i = falls.length - 1; i >= 0; i--) {
+    const f = falls[i];
+    if (now - f.shotAt > 380) { f.vy = Math.min(f.vy + 160 * dt, 120); f.y += f.vy * dt; f.spin += dt * 12; }
+    o.save(); o.translate(Math.round(f.x), Math.round(f.y)); o.rotate((Math.floor(f.spin) % 4) * Math.PI / 2); o.drawImage(duckFrames(f.pal).shot, -13, -10); o.restore();
+    if (f.y > sc.grassTop + 8) { falls.splice(i, 1); mascot = { x: Math.max(20, Math.min(st.GW - 20, f.x)), t: 0, pal: f.pal, label: f.label }; }
+  }
+  if (mascot) {
+    mascot.t += dt;
+    const k = mascot.t < 0.25 ? mascot.t / 0.25 : mascot.t > 1.6 ? Math.max(0, (1.85 - mascot.t) / 0.25) : 1;
+    const y = Math.round(sc.grassTop + 12 - 30 * k), x = Math.round(mascot.x);
+    o.drawImage(mascotFrames().hold, x - 12, y - 11);
+    o.drawImage(duckFrames(mascot.pal).shot, x - 13, y - 30);
+    if (mascot.t > 1.85) mascot = null;
+  }
+  o.drawImage(sc.front, 0, 0);
+  st.blit();
+  for (const f of falls) st.text(f.label, f.x, f.y - 14, 5, "#ffffff");
+  if (mascot) st.text(mascot.label, mascot.x, sc.grassTop - 32, 5, "#5fd068");
+  if (flash) { st.cx.setTransform(1, 0, 0, 1, 0, 0); st.cx.fillStyle = `rgba(255,255,255,${0.6 * flash})`; st.cx.fillRect(0, 0, st.cx.canvas.width, st.cx.canvas.height); flash = Math.max(0, flash - dt * 12); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 // ---- live state ----
-const ms = (n) => (n ? (n >= 1000 ? (n / 1000).toFixed(1) + " s" : n + " ms") : "–");
+const ms = (n) => (n ? (n >= 1000 ? (n / 1000).toFixed(1) + "S" : n + "MS") : "–");
 (function stream() {
   const es = new EventSource("/duck-hunt/api/events");
   es.onmessage = (m) => {

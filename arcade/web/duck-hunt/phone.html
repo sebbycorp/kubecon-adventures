@@ -3,77 +3,83 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0a0b2a">
+<meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Duck Hunt</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
-  :root { --green: #5fd068; --purple: #7c5cff; --pink: #ff7ad9; --gold: #ffd23d; --fg: #f4f1ff; --mute: #a9a3c9;
+  /* An 8-bit look: black panels with white borders, a pixel font, hard edges. */
+  :root { --green: #5fd068; --nes-green: #80d010; --orange: #fc9838; --blue: #3cbcfc; --gold: #ffe04a; --red: #e83a3a; --fg: #ffffff; --mute: #bcbcbc;
+    --hud: 60px; --px: 2px;
     --st: env(safe-area-inset-top, 0px); --sr: env(safe-area-inset-right, 0px); --sb: env(safe-area-inset-bottom, 0px); --sl: env(safe-area-inset-left, 0px); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0b2a; color: var(--fg); font: 14px/1.4 Inter, system-ui, sans-serif;
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font: 10px/1.6 "Press Start 2P", ui-monospace, monospace;
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; image-rendering: pixelated; }
   .hidden { display: none !important; }
-  button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+  a { color: inherit; }
+  .nes { background: #000; border: calc(var(--px) * 1.5) solid #fff; box-shadow: 0 0 0 calc(var(--px) * 1.5) #000; }
 
-  /* HUD */
-  #hud { position: fixed; top: calc(8px + var(--st)); left: calc(10px + var(--sl)); right: calc(10px + var(--sr)); display: flex; align-items: flex-start; gap: 10px; pointer-events: none; }
-  .chip { background: #120d33cc; border: 1px solid #3a2f7a; border-radius: 12px; padding: 4px 12px; backdrop-filter: blur(4px); }
-  #score { min-width: 92px; }
-  #score small, #timer small { display: block; font-size: 10px; letter-spacing: .14em; color: var(--mute); font-weight: 600; }
-  #score b { font: 900 22px Inter, sans-serif; font-variant-numeric: tabular-nums; }
-  #combo { align-self: center; font: 900 16px Inter, sans-serif; color: var(--pink); text-shadow: 0 0 12px #ff7ad988; transition: transform .12s; }
-  #combo.pop { transform: scale(1.35); }
-  #mid { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  #timer { text-align: center; }
-  #timer b { font: 900 22px Inter, sans-serif; font-variant-numeric: tabular-nums; }
-  #timer.hurry b { color: #ff8a8a; }
-  #bar { width: min(260px, 40vw); height: 5px; border-radius: 3px; background: #2a2160; overflow: hidden; }
-  #bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); width: 100%; }
-  #wave { font: 800 11px Inter, sans-serif; letter-spacing: .14em; color: var(--gold); }
-  #menuBtn { pointer-events: auto; padding: 8px 12px; font-weight: 800; font-size: 12px; letter-spacing: .1em; }
-  #ticker { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(6px + var(--sb)); font-size: 11px; color: var(--mute); pointer-events: none; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+  /* HUD on the dirt strip: R=, SHOT, HIT, SCORE and TIME. */
+  #hud { position: fixed; left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: 0; height: var(--hud); display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; pointer-events: none; padding-bottom: 2px; }
+  #hud .cell { height: calc(var(--hud) * 0.74); display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: clamp(8px, calc(var(--hud) * 0.2), 13px); }
+  #round { color: var(--nes-green); }
+  #shotC { flex-direction: column; justify-content: center; gap: 2px !important; }
+  #shotC .ammo { display: flex; gap: 4px; }
+  #shotC .ammo i { width: calc(var(--hud) * 0.1); height: calc(var(--hud) * 0.22); background: var(--orange); }
+  #shotC .ammo i.out { background: #333; }
+  .lbl { color: var(--blue); font-size: 0.82em; }
+  #hitC { flex: 1; max-width: 50%; justify-content: center; }
+  #hitC .ducks { display: flex; gap: 3px; flex-wrap: nowrap; }
+  #hitC .ducks img { width: calc(var(--hud) * 0.3); height: auto; image-rendering: pixelated; }
+  #scoreC { flex-direction: column; align-items: flex-end !important; justify-content: center; gap: 2px !important; }
+  #scoreV { color: #fff; }
+  #timeV { color: var(--gold); font-size: 0.85em; }
+  #timeV.hurry { color: var(--red); }
+  #combo { position: fixed; top: calc(10px + var(--st)); left: 50%; transform: translateX(-50%); color: #fc74b4; font-size: 14px; text-shadow: 2px 2px 0 #000; pointer-events: none; }
+  #menuBtn { position: fixed; top: calc(8px + var(--st)); right: calc(8px + var(--sr)); padding: 7px 10px; font-size: 10px; pointer-events: auto; }
+  #ticker { position: fixed; left: calc(8px + var(--sl)); top: calc(10px + var(--st)); font-size: 8px; color: #fff; text-shadow: 1px 1px 0 #000; pointer-events: none; white-space: nowrap; max-width: 45vw; overflow: hidden; text-overflow: ellipsis; }
 
-  /* Sheets */
-  .sheet { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: calc(10px + var(--st)) calc(14px + var(--sr)) calc(10px + var(--sb)) calc(14px + var(--sl));
-    background: radial-gradient(ellipse at 50% 40%, #1e1460e6, #0a0b2af2 70%); z-index: 5; touch-action: pan-y; }
-  .card { width: min(760px, 100%); max-height: 100%; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: center; }
+  /* Title card and end card: black screen, block-letter title, blinking prompts. */
+  .sheet { position: fixed; inset: 0; z-index: 5; background: #000; display: flex; align-items: center; justify-content: center; touch-action: pan-y;
+    padding: calc(10px + var(--st)) calc(14px + var(--sr)) calc(10px + var(--sb)) calc(14px + var(--sl)); }
+  .card { width: min(820px, 100%); max-height: 100%; overflow: auto; display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; align-items: center; }
   .card.one { grid-template-columns: 1fr; width: min(460px, 100%); text-align: center; }
-  h1 { margin: 0; font: 900 clamp(26px, 7vh, 46px)/1 Inter, sans-serif; letter-spacing: -0.02em;
-    background: linear-gradient(90deg, #fff, #c9b8ff 45%, var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .lede { color: var(--mute); margin: 8px 0 12px; font-size: 13.5px; }
-  .lede b { color: var(--fg); }
-  .how { display: grid; gap: 4px; font-size: 12.5px; color: #d6d0f5; margin-bottom: 12px; }
-  .how span b { color: var(--gold); }
-  .play { width: 100%; padding: 14px; border-radius: 14px; background: linear-gradient(90deg, var(--green), #9cff7a); color: #06140a; font: 900 18px Inter, sans-serif; letter-spacing: .06em;
-    box-shadow: 0 0 30px #5fd06866; }
-  .row { display: flex; gap: 8px; margin-top: 8px; }
-  .ghost { flex: 1; padding: 10px; border-radius: 12px; background: #120d33; border: 1px solid #3a2f7a; font-weight: 700; font-size: 13px; text-align: center; text-decoration: none; color: var(--fg); }
-  .board { background: #120d33cc; border: 1px solid #3a2f7a; border-radius: 16px; padding: 12px; }
-  .board h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .14em; color: var(--mute); }
-  .rowb { display: grid; grid-template-columns: 1.8em 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; font-size: 13px; }
-  .rowb:nth-child(odd) { background: #ffffff08; }
-  .rowb.you { background: #5fd06826; outline: 1px solid var(--green); }
-  .rowb .r { color: var(--mute); font-weight: 800; }
-  .rowb .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-  .rowb .s { font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; }
-  .empty { color: var(--mute); font-size: 13px; padding: 6px; }
-  .big { font: 900 clamp(34px, 11vh, 60px)/1 Inter, sans-serif; color: #fff; text-shadow: 0 0 24px #7c5cff; font-variant-numeric: tabular-nums; }
-  .stats { color: var(--mute); font-size: 12.5px; margin: 6px 0; }
-  .rank { font: 900 18px Inter, sans-serif; color: var(--gold); margin-top: 6px; }
-  .beat { color: var(--pink); font-weight: 700; font-size: 13px; }
-  .cta { margin-top: 10px; display: flex; justify-content: center; }
+  .title { display: block; width: 100%; max-width: min(260px, 34vh); image-rendering: pixelated; margin: 0 auto 8px; }
+  .lede { color: #fff; margin: 0 0 10px; font-size: 9px; line-height: 1.9; text-align: center; }
+  .lede b { color: var(--nes-green); font-weight: 400; }
+  .opts { display: grid; gap: 8px; margin: 8px auto 6px; width: fit-content; }
+  .opt { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--orange); padding: 4px 0; }
+  .opt::before { content: "▶"; color: #fff; visibility: hidden; }
+  .opt:focus-visible::before, .opt:hover::before, .opt.sel::before { visibility: visible; }
+  .opt.sel::before { animation: blink 0.8s steps(1) infinite; }
+  @keyframes blink { 50% { visibility: hidden; } }
+  .top { color: var(--nes-green); font-size: 10px; text-align: center; margin-top: 6px; }
+  .small { font-size: 8px; color: var(--mute); text-align: center; margin-top: 8px; }
+  .small a { color: var(--blue); }
+  .board { padding: 12px; }
+  .board h3 { margin: 0 0 10px; font-size: 9px; font-weight: 400; color: var(--blue); text-align: center; }
+  .rowb { display: grid; grid-template-columns: 2.6em 1fr auto; gap: 8px; align-items: center; padding: 5px 4px; font-size: 9px; }
+  .rowb.you { color: var(--gold); }
+  .rowb .r { color: var(--nes-green); }
+  .rowb .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .empty { color: var(--mute); font-size: 9px; padding: 6px; text-align: center; }
+  .big { font-size: clamp(22px, 9vh, 40px); color: #fff; letter-spacing: 2px; margin: 8px 0; }
+  .stats { color: var(--mute); font-size: 8px; line-height: 2; margin: 6px 0; }
+  .rank { font-size: 12px; color: var(--gold); margin-top: 8px; }
+  .beat { color: #fc74b4; font-size: 9px; margin-top: 6px; line-height: 1.8; }
+  .cta { margin-top: 10px; display: flex; justify-content: center; font-family: Inter, system-ui, sans-serif; }
 
-  #rotate { position: fixed; inset: 0; z-index: 9; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; padding: 24px;
-    background: radial-gradient(circle at 50% 40%, #241670, #0a0b2a 70%); }
-  #rotate .phone { width: 64px; height: 110px; border: 4px solid #fff; border-radius: 14px; position: relative; animation: turn 2s ease-in-out infinite; }
-  #rotate .phone::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 14px; height: 4px; margin-left: -7px; border-radius: 2px; background: #fff; }
+  #rotate { position: fixed; inset: 0; z-index: 9; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 20px; text-align: center; padding: 24px; background: #000; }
+  #rotate .phone { width: 56px; height: 96px; border: 4px solid #fff; position: relative; animation: turn 2s steps(4) infinite; }
+  #rotate .phone::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 12px; height: 4px; margin-left: -6px; background: #fff; }
   @keyframes turn { 0%, 20% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
-  #rotate h2 { margin: 0; font: 900 24px Inter, sans-serif; }
-  #rotate p { margin: 0; color: var(--mute); }
+  #rotate h2 { margin: 0; font-size: 14px; font-weight: 400; color: var(--orange); }
+  #rotate p { margin: 0; color: #fff; font-size: 9px; line-height: 2; }
   @media (orientation: portrait) { #rotate { display: flex; } }
 </style>
 </head>
@@ -81,61 +87,96 @@
 <canvas id="sky"></canvas>
 
 <div id="hud" class="hidden">
-  <div id="score" class="chip"><small>SCORE</small><b id="scoreV">0</b></div>
-  <div id="combo"></div>
-  <div id="mid"><div id="timer" class="chip"><small>TIME</small><b id="timeV">1:15</b></div><div id="bar"><i id="barI"></i></div><div id="wave">WAVE 1</div></div>
-  <button id="menuBtn" class="chip">MENU</button>
+  <div class="cell nes" id="roundC"><span id="round">R=1</span></div>
+  <div class="cell nes" id="shotC"><div class="ammo" id="ammo"><i></i><i></i><i></i></div><span class="lbl">SHOT</span></div>
+  <div class="cell nes" id="hitC"><span class="lbl">HIT</span><div class="ducks" id="ducks"></div></div>
+  <div class="cell nes" id="scoreC"><span id="scoreV">000000</span><span id="timeV">1:15</span></div>
 </div>
+<div id="combo"></div>
 <div id="ticker"></div>
+<button id="menuBtn" class="nes hidden">MENU</button>
 
 <div id="startSheet" class="sheet hidden">
   <div class="card">
     <div>
-      <h1>DUCK HUNT</h1>
-      <p class="lede">Every agent in this sky is a <b>real AI agent on Agent Substrate</b>. Tap one to shoot it: it's <b>snapshotted for real</b> and drops into Snapshot Storage.</p>
-      <div class="how"><span>🎯 Tap an agent to shoot. Hits in a row build a <b>combo up to ×5</b>.</span><span>⭐ <b>Golden</b> agents are worth 500. Swift ones 150.</span><span>⏱️ 75 seconds. Waves get faster. Don't let them escape.</span></div>
-      <button class="play" id="playBtn">PLAY</button>
-      <div class="row"><button class="ghost" id="soundBtn">🔊 Sound on</button><a class="ghost" href="/">Arcade</a></div>
+      <canvas class="title" id="title1" width="1" height="1" aria-label="Duck Hunt"></canvas>
+      <p class="lede">EVERY DUCK IS A <b>REAL AI AGENT</b>.<br>SHOOT ONE: IT IS <b>SNAPSHOTTED</b> FOR REAL.</p>
+      <div class="opts">
+        <button class="opt sel" id="playBtn">GAME A &nbsp;75 SEC HUNT</button>
+        <button class="opt" id="soundBtn">SOUND ON</button>
+        <a class="opt" href="/">ARCADE</a>
+      </div>
+      <div class="top" id="topScore">TOP SCORE = 000000</div>
+      <div class="small" id="you"></div>
     </div>
-    <div class="board"><h3>TOP 10 · BEST RUNS</h3><div id="startBoard"><div class="empty">Loading…</div></div><div id="you" class="stats" style="margin-top:8px"></div></div>
+    <div class="board nes"><h3>TOP 5 HUNTERS</h3><div id="startBoard"><div class="empty">LOADING…</div></div></div>
   </div>
 </div>
 
 <div id="endSheet" class="sheet hidden">
   <div class="card">
     <div style="text-align:center">
-      <div style="font:800 12px Inter;letter-spacing:.14em;color:var(--mute)">TIME! YOUR SCORE</div>
-      <div class="big" id="endScore">0</div>
+      <div style="font-size:10px;color:var(--blue)">TIME UP!</div>
+      <div class="big" id="endScore">000000</div>
       <div class="stats" id="endStats"></div>
       <div class="rank" id="endRank"></div>
       <div class="beat" id="endBeat"></div>
-      <button class="play" id="againBtn" style="margin-top:12px">PLAY AGAIN</button>
-      <div class="row"><a class="ghost" href="/">Arcade</a><a class="ghost" href="/duck-hunt/screen" target="_blank" rel="noopener">Big screen ↗</a></div>
+      <div class="opts">
+        <button class="opt sel" id="againBtn">PLAY AGAIN</button>
+        <a class="opt" href="/duck-hunt/screen" target="_blank" rel="noopener">BIG SCREEN</a>
+        <a class="opt" href="/">ARCADE</a>
+      </div>
       <div class="cta" id="endCta"></div>
     </div>
-    <div class="board"><h3>LEADERBOARD</h3><div id="endBoard"></div></div>
+    <div class="board nes"><h3>TOP 5 HUNTERS</h3><div id="endBoard"></div></div>
   </div>
 </div>
 
 <div id="menuSheet" class="sheet hidden">
   <div class="card one">
-    <h1 style="font-size:28px">PAUSED? NOPE.</h1>
-    <p class="lede">The clock keeps running: the agents are real and still flying.</p>
-    <button class="play" id="resumeBtn">BACK TO THE HUNT</button>
-    <div class="row"><button class="ghost" id="soundBtn2">🔊 Sound on</button><button class="ghost" id="quitBtn">End run</button></div>
+    <div style="font-size:14px;color:var(--orange);margin-bottom:12px">PAUSE? NOPE.</div>
+    <p class="lede">THE CLOCK KEEPS RUNNING:<br>THE AGENTS ARE REAL AND STILL FLYING.</p>
+    <div class="opts">
+      <button class="opt sel" id="resumeBtn">BACK TO THE HUNT</button>
+      <button class="opt" id="soundBtn2">SOUND ON</button>
+      <button class="opt" id="quitBtn">END RUN</button>
+    </div>
     <div class="cta" id="menuCta"></div>
   </div>
 </div>
 
-<div id="rotate"><div class="phone"></div><h2>Turn your phone sideways</h2><p>Duck Hunt plays in landscape.</p></div>
+<div id="rotate"><div class="phone"></div><h2>TURN YOUR PHONE</h2><p>DUCK HUNT PLAYS<br>IN LANDSCAPE.</p></div>
 
 <script src="/static/arcade.js?v=2"></script>
 <script type="module">
-import { startHunt } from "/duck-hunt/static/hunt.js";
+import { startHunt, duckIcon } from "/duck-hunt/static/hunt.js";
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const pad = (n) => String(Math.max(0, Math.floor(n))).padStart(6, "0");
 for (const id of ["endCta", "menuCta"]) Arcade.ctas($(id), "sm");
+
+// ---- the title: "DUCK HUNT" in our own 5x7 block letters, two-tone ----
+const GLYPHS = {
+  D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"], U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  C: ["01111", "10000", "10000", "10000", "10000", "10000", "01111"], K: ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+  H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"], N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+};
+function title(cv) {
+  const lines = ["DUCK", "HUNT"], cell = 3, gap = 1;
+  const w = 4 * (5 * cell + gap * cell) + cell, h = 2 * (7 * cell) + 3 * cell;
+  cv.width = w + 2; cv.height = h + 2;
+  const x = cv.getContext("2d");
+  lines.forEach((line, li) => [...line].forEach((ch, ci) => GLYPHS[ch].forEach((row, ry) => [...row].forEach((bit, rx) => {
+    if (bit !== "1") return;
+    const px = ci * (5 * cell + gap * cell) + rx * cell, py = li * (7 * cell + 3 * cell) + ry * cell;
+    x.fillStyle = "#1858d8"; x.fillRect(px + 2, py + 2, cell, cell); // drop shadow
+    x.fillStyle = li ? "#fc9838" : "#3cbcfc"; x.fillRect(px, py, cell, cell);
+    x.fillStyle = "#ffffff"; if (ry === 0) x.fillRect(px, py, cell, 1); // a highlight on the top row
+  }))));
+}
+title($("title1"));
 
 // The arcade's join: no player yet, the home page gives one a name and sends them back.
 const meR = await fetch("/api/me").catch(() => null);
@@ -149,46 +190,63 @@ async function post(path, body) {
   return j;
 }
 
-// ---- sound (WebAudio synth, no files) and vibration ----
+// ---- 8-bit sound: square and triangle waves and a noise burst, all synthesised ----
 let soundOn = true, ac = null;
 try { soundOn = localStorage.getItem("hunt-sound") !== "off"; } catch {}
 function audio() { if (!ac) try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch {} if (ac && ac.state === "suspended") ac.resume(); return ac; }
 function tone(type, f0, f1, dur, vol, at = 0) {
   const a = audio(); if (!a) return;
   const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
-  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + dur * 0.85); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
 }
 function noise(dur, vol) {
   const a = audio(); if (!a) return;
   const b = a.createBuffer(1, Math.floor(a.sampleRate * dur), a.sampleRate), d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
-  const s = a.createBufferSource(), g = a.createGain(), f = a.createBiquadFilter();
-  f.type = "lowpass"; f.frequency.value = 1800; g.gain.value = vol;
-  s.buffer = b; s.connect(f).connect(g).connect(a.destination); s.start();
+  let v = 0; for (let i = 0; i < d.length; i++) { if (i % 6 === 0) v = Math.random() * 2 - 1; d[i] = v * (1 - i / d.length) ** 2; } // stepped, NES-like
+  const s = a.createBufferSource(), g = a.createGain(); g.gain.value = vol;
+  s.buffer = b; s.connect(g).connect(a.destination); s.start();
 }
+// melody: [freq, beats] pairs on a square wave (our own tunes).
+function melody(notes, beat = 0.09, vol = 0.05, type = "square") { let t = 0; for (const [f, b] of notes) { if (f) tone(type, f, f, beat * b * 0.95, vol, t); t += beat * b; } }
 function sfx(name) {
   if (!soundOn) return;
   switch (name) {
-    case "shot": noise(0.12, 0.35); tone("square", 180, 60, 0.08, 0.08); break;
-    case "hit": tone("square", 520, 1320, 0.14, 0.07); break;
-    case "goldhit": [660, 880, 1320, 1760].forEach((f, i) => tone("triangle", f, f * 1.01, 0.12, 0.08, i * 0.06)); break;
-    case "golden": tone("sine", 1200, 1800, 0.2, 0.05); break;
-    case "bin": tone("sine", 300, 600, 0.12, 0.06); break;
-    case "escape": tone("sawtooth", 500, 140, 0.35, 0.05); break;
-    case "end": [523, 659, 784, 1046].forEach((f, i) => tone("triangle", f, f, 0.18, 0.08, i * 0.12)); break;
+    case "shot": noise(0.18, 0.4); break;
+    case "quack": tone("square", 520, 380, 0.07, 0.05); tone("square", 500, 340, 0.08, 0.05, 0.1); break;
+    case "hit": tone("square", 880, 1320, 0.06, 0.05); break;
+    case "goldhit": melody([[784, 1], [988, 1], [1175, 1], [1568, 2]], 0.06); break;
+    case "golden": melody([[1568, 1], [2093, 1]], 0.05, 0.04, "triangle"); break;
+    case "fall": tone("square", 1400, 220, 0.75, 0.04); break;
+    case "bin": tone("triangle", 140, 80, 0.12, 0.12); melody([[523, 1], [659, 1], [784, 2]], 0.07, 0.04); break;
+    case "flyaway": melody([[392, 1], [330, 1], [262, 1], [196, 3]], 0.11, 0.05, "triangle"); break;
+    case "round": melody([[523, 1], [0, 1], [523, 1], [659, 1], [784, 2], [659, 1], [784, 3]], 0.08); break;
+    case "perfect": melody([[784, 1], [988, 1], [1175, 1], [1568, 1], [1175, 1], [1568, 3]], 0.08); break;
+    case "reload": tone("square", 220, 220, 0.04, 0.04); break;
+    case "end": melody([[659, 2], [587, 2], [523, 2], [392, 2], [523, 4]], 0.11, 0.05, "triangle"); break;
   }
 }
 const buzz = (p) => { if (soundOn && navigator.vibrate) try { navigator.vibrate(p); } catch {} };
 function setSound(on) {
   soundOn = on;
   try { localStorage.setItem("hunt-sound", on ? "on" : "off"); } catch {}
-  for (const id of ["soundBtn", "soundBtn2"]) $(id).textContent = on ? "🔊 Sound on" : "🔇 Sound off";
+  for (const id of ["soundBtn", "soundBtn2"]) $(id).textContent = on ? "SOUND ON" : "SOUND OFF";
 }
 setSound(soundOn);
 $("soundBtn").onclick = () => setSound(!soundOn);
 $("soundBtn2").onclick = () => setSound(!soundOn);
+
+// ---- HUD ----
+const ICON_W = duckIcon("#ffffff"), ICON_R = duckIcon("#e83a3a");
+function hud(g) {
+  $("scoreV").textContent = pad(g.score);
+  $("round").textContent = `R=${g.wave}`;
+  [...$("ammo").children].forEach((el, i) => el.classList.toggle("out", i >= g.ammo));
+  $("ducks").innerHTML = Array.from({ length: 10 }, (_, i) => `<img alt="" src="${i < g.row.length && g.row[i] ? ICON_R : ICON_W}" style="opacity:${i < g.row.length ? 1 : 0.55}">`).join("");
+  const m = g.combo >= 3 ? 1 + Math.min(4, (g.combo - 1) >> 1) : 0;
+  $("combo").textContent = m > 1 ? `x${m} COMBO` : "";
+}
 
 // ---- the game ----
 let runId = null, finishing = false;
@@ -197,18 +255,7 @@ const api = {
   hit: (flight) => post("/duck-hunt/api/hit", { run: runId, flight }),
   escape: (flight) => post("/duck-hunt/api/escape", { run: runId, flight }),
 };
-let comboShown = 0;
-const hunt = startHunt($("sky"), api, {
-  onScore(g) {
-    $("scoreV").textContent = g.score.toLocaleString();
-    const m = g.combo >= 3 ? 1 + Math.min(4, (g.combo - 1) >> 1) : 0;
-    $("combo").textContent = m > 1 ? `×${m} COMBO` : "";
-    if (m !== comboShown && m > 1) { $("combo").classList.add("pop"); setTimeout(() => $("combo").classList.remove("pop"), 140); }
-    comboShown = m;
-  },
-  onEnd: () => finish(),
-  sfx, buzz,
-});
+const hunt = startHunt($("sky"), api, { onScore: hud, onEnd: () => finish(), sfx, buzz });
 window.__hunt = hunt; // for scripted test runs
 
 async function play() {
@@ -218,7 +265,7 @@ async function play() {
   try {
     const r = await post("/duck-hunt/api/start");
     runId = r.run; finishing = false;
-    show("startSheet", false); show("endSheet", false); show("menuSheet", false); show("hud");
+    show("startSheet", false); show("endSheet", false); show("menuSheet", false); show("hud"); show("menuBtn");
     hunt.start(r.seconds || 75);
   } catch (e) { alert(e.message); }
 }
@@ -233,33 +280,37 @@ async function finish() {
   finishing = true;
   hunt.stop();
   sfx("end");
-  show("hud", false);
+  show("hud", false); show("menuBtn", false); $("combo").textContent = "";
   const g = hunt.state;
   let res = null;
   try { res = await post("/duck-hunt/api/finish", { run: runId }); } catch {}
   const score = res ? res.score : g.score;
-  $("endScore").textContent = score.toLocaleString();
-  const acc = g.shots ? Math.round((100 * (res ? res.hits : g.hits)) / g.shots) : 0;
-  $("endStats").textContent = `${res ? res.hits : g.hits} agents snapshotted · ${res ? res.escapes : g.escapes} escaped · ${acc}% accuracy · best combo ×${1 + Math.min(4, ((res ? res.bestCombo : g.bestCombo) - 1) >> 1)}` +
-    ((res ? res.golden : g.golden) ? ` · ${res ? res.golden : g.golden} golden` : "");
-  $("endRank").textContent = res && res.rank ? (res.rank === 1 ? "#1 ON THE BIG SCREEN" : `#${res.rank} on the big screen`) : score ? "" : "No hits this time";
-  $("endBeat").textContent = res && res.beat ? `Beat ${res.beat.nick} by ${res.beat.by.toLocaleString()} to reach #${res.beat.rank}` : res && res.rank === 1 ? "Nobody's ahead of you. Defend it." : "";
+  $("endScore").textContent = pad(score);
+  const hits = res ? res.hits : g.hits, acc = g.shots ? Math.round((100 * hits) / g.shots) : 0;
+  const best = 1 + Math.min(4, ((res ? res.bestCombo : g.bestCombo) - 1) >> 1);
+  $("endStats").innerHTML = `${hits} AGENTS SNAPSHOTTED<br>${res ? res.escapes : g.escapes} FLEW AWAY · ${acc}% HIT RATE<br>BEST COMBO x${best}` +
+    ((res ? res.golden : g.golden) ? ` · ${res ? res.golden : g.golden} GOLDEN` : "");
+  $("endRank").textContent = res && res.rank ? (res.rank === 1 ? "#1 ON THE BIG SCREEN!" : `#${res.rank} ON THE BIG SCREEN`) : score ? "" : "NO HITS THIS TIME";
+  $("endBeat").textContent = res && res.beat ? `BEAT ${res.beat.nick.toUpperCase()} BY ${res.beat.by} TO REACH #${res.beat.rank}` : res && res.rank === 1 ? "NOBODY IS AHEAD OF YOU. DEFEND IT." : "";
   board($("endBoard"), res ? res.top : [], true);
   show("endSheet");
   runId = null;
+  loadBoard();
 }
 
 function board(el, rows, mark) {
-  if (!rows || !rows.length) { el.innerHTML = `<div class="empty">No scores yet. Be the first.</div>`; return; }
-  el.innerHTML = rows.map((r, i) => `<div class="rowb${mark && r.nick === me.nick ? " you" : ""}"><span class="r">#${i + 1}</span><span class="n">${esc(r.nick)}${mark && r.nick === me.nick ? " · you" : ""}</span><span class="s">${Number(r.score).toLocaleString()}</span></div>`).join("");
+  rows = (rows || []).slice(0, 5);
+  if (!rows.length) { el.innerHTML = `<div class="empty">NO SCORES YET.<br>BE THE FIRST.</div>`; return; }
+  el.innerHTML = rows.map((r, i) => `<div class="rowb${mark && r.nick === me.nick ? " you" : ""}"><span class="r">${i + 1}.</span><span class="n">${esc(String(r.nick).toUpperCase())}</span><span>${pad(r.score)}</span></div>`).join("");
 }
 async function loadBoard() {
   try {
     const rows = await (await fetch("/duck-hunt/api/board", { cache: "no-store" })).json();
     board($("startBoard"), rows, true);
+    $("topScore").textContent = `TOP SCORE = ${pad(rows[0] ? rows[0].score : 0)}`;
     const mine = rows.findIndex((r) => r.nick === me.nick);
-    $("you").textContent = mine >= 0 ? `You're #${mine + 1} · playing as ${me.nick}` : `Playing as ${me.nick}`;
-  } catch { $("startBoard").innerHTML = `<div class="empty">Leaderboard unavailable.</div>`; }
+    $("you").textContent = mine >= 0 ? `YOU ARE #${mine + 1} · ${String(me.nick).toUpperCase()}` : `PLAYING AS ${String(me.nick).toUpperCase()}`;
+  } catch { $("startBoard").innerHTML = `<div class="empty">LEADERBOARD UNAVAILABLE.</div>`; }
 }
 loadBoard();
 show("startSheet");
@@ -267,11 +318,9 @@ show("startSheet");
 // ---- HUD clock ----
 setInterval(() => {
   if (!runId) return;
-  const t = hunt.timeLeft(), g = hunt.state;
+  const t = hunt.timeLeft();
   $("timeV").textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-  $("timer").classList.toggle("hurry", t < 10);
-  $("barI").style.width = `${(100 * t) / 75}%`;
-  $("wave").textContent = `WAVE ${g.wave}`;
+  $("timeV").classList.toggle("hurry", t < 10);
 }, 200);
 
 // ---- live: your agents' lines, and other players' hits on the ticker ----
@@ -284,7 +333,7 @@ let seen = Date.now();
       if (e.at <= seen) continue;
       seen = Math.max(seen, e.at);
       if (e.type === "say") hunt.say(e.flight, e.text);
-      if (e.type === "hit" && e.nick !== me.nick) $("ticker").textContent = `${e.nick} snapshotted a${e.kind === "agent" ? "n" : ""} ${e.kind} agent +${e.points}${e.ms ? ` · ${e.ms} ms` : ""}`;
+      if (e.type === "hit" && e.nick !== me.nick) $("ticker").textContent = `${String(e.nick).toUpperCase()} GOT A${e.kind === "agent" ? "N" : ""} ${e.kind.toUpperCase()} +${e.points}`;
     }
   };
   es.onerror = () => { es.close(); setTimeout(stream, 2000); };
