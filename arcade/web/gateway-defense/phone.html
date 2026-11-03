@@ -3,84 +3,118 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0d1626">
+<meta name="theme-color" content="#070b1c">
 <link rel="icon" href="data:,">
 <title>Gateway Defense</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #0d1626; --panel: rgba(13, 22, 38, .92); --line: #2b4166; --fg: #e8eefb; --mute: #8fa3c7; --gold: #fde68a; --green: #5fd068; --red: #f87171;
-    --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
+  :root { --bg: #070b1c; --panel: rgba(9, 14, 36, .9); --line: #23336b; --fg: #eef2ff; --mute: #94a3c8; --gold: #fde68a; --green: #4ade80; --red: #f87171;
+    --cyan: #22d3ee; --pink: #f472b6; --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 14px/1.4 Inter, system-ui, sans-serif;
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
   button { font: inherit; color: inherit; cursor: pointer; border: 0; }
   #board { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   .hidden { display: none !important; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 
   #top { position: fixed; top: calc(8px + var(--st)); left: 8px; right: 8px; display: flex; gap: 6px; align-items: stretch; z-index: 2; }
-  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-  .chip small { font-size: 9.5px; letter-spacing: .1em; color: var(--mute); font-weight: 700; }
-  .chip b { font-size: 17px; font-weight: 800; line-height: 1.15; }
-  #lives b { color: #fda4af; } #money b { color: var(--gold); }
-  #waveChip { flex: 1; } #waveChip b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 5px 9px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
+    box-shadow: inset 0 0 12px #22d3ee14, 0 0 0 1px #000 inset; }
+  .chip small { font-size: 9px; letter-spacing: .12em; color: var(--mute); font-weight: 800; }
+  .chip b { font: 800 17px "JetBrains Mono", monospace; line-height: 1.15; }
+  #lives b { color: #fda4af; text-shadow: 0 0 10px #f43f5e88; } #money b { color: var(--gold); text-shadow: 0 0 10px #fbbf2466; }
+  #scoreV { color: #a5f3fc; text-shadow: 0 0 10px #22d3ee66; }
+  #waveChip { flex: 1; } #waveChip b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 800 13px Inter, sans-serif; }
+  #waveChip.endless { border-color: #a78bfa; } #waveChip.endless small { color: #c4b5fd; }
   #menuBtn { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; font-weight: 800; font-size: 18px; }
   #lives.hit { animation: hit .5s; }
-  @keyframes hit { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  @keyframes hit { 0%, 100% { transform: none; } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  #ticker { position: fixed; top: calc(62px + var(--st)); left: 50%; transform: translateX(-50%); z-index: 2; padding: 3px 12px; border-radius: 999px;
+    background: rgba(9, 14, 36, .82); border: 1px solid #2d3f7c; font-size: 11.5px; color: var(--mute); white-space: nowrap; pointer-events: none; transition: border-color .3s; }
+  #ticker b { color: #fff; } #ticker em { font-style: normal; color: var(--gold); font-weight: 700; }
+  #ticker.up { border-color: var(--gold); animation: tickup .8s; }
+  @keyframes tickup { 30% { transform: translateX(-50%) scale(1.12); } }
 
   #bottom { position: fixed; left: 8px; right: 8px; bottom: calc(10px + var(--sb)); display: flex; gap: 8px; z-index: 2; }
-  #next { flex: 1; padding: 13px; border-radius: 14px; background: linear-gradient(180deg, #3ddc84, #23a35a); color: #04230f; font-weight: 800; font-size: 15px; letter-spacing: .03em; box-shadow: 0 4px 18px #23a35a55; }
-  #next:disabled { background: #1c2b45; color: var(--mute); box-shadow: none; }
-  #fast { padding: 0 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-weight: 800; }
-  #fast.on { border-color: var(--gold); color: var(--gold); }
+  #next { flex: 1; padding: 13px; border-radius: 14px; background: linear-gradient(180deg, #22d3ee, #0891b2); color: #022c35; font-weight: 900; font-size: 15px; letter-spacing: .04em;
+    box-shadow: 0 0 22px #22d3ee66, inset 0 1px 0 #ffffff66; }
+  #next:disabled { background: #111a3d; color: var(--mute); box-shadow: none; }
+  #next.boss:not(:disabled) { background: linear-gradient(180deg, #f87171, #b91c1c); color: #fff; box-shadow: 0 0 24px #ef444488; }
+  #fast { padding: 0 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-weight: 900; }
+  #fast.on { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 14px #fbbf2455; }
 
-  .sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + var(--sb)); width: min(460px, calc(100% - 16px)); z-index: 5;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 14px; box-shadow: 0 10px 40px #000a; backdrop-filter: blur(6px); }
-  .sheet h2 { margin: 0 0 4px; font-size: 17px; }
+  .sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + var(--sb)); width: min(460px, calc(100% - 16px)); z-index: 5; max-height: calc(100% - 90px); overflow: auto;
+    background: linear-gradient(180deg, rgba(14, 22, 54, .96), rgba(8, 12, 32, .96)); border: 1px solid #2d3f7c; border-radius: 18px; padding: 14px;
+    box-shadow: 0 0 0 1px #000, 0 10px 40px #000c, 0 0 30px #22d3ee22; backdrop-filter: blur(6px); }
+  .sheet h2 { margin: 0 0 4px; font-size: 17px; letter-spacing: .02em; }
   .sheet p { margin: 0 0 10px; color: var(--mute); font-size: 13px; }
   .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .card { text-align: left; padding: 10px; border-radius: 14px; background: #13223a; border: 1.5px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+  .card { text-align: left; padding: 10px; border-radius: 14px; background: #0d1638; border: 1.5px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
   .card .t { font-weight: 800; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
   .card .t span { font-size: 20px; }
-  .card .c { color: var(--gold); font-weight: 800; font-size: 13px; }
+  .card .c { color: var(--gold); font: 800 13px "JetBrains Mono", monospace; }
   .card .d { color: var(--mute); font-size: 11.5px; line-height: 1.3; }
   .card .w { font-size: 11px; font-weight: 700; }
-  .card:disabled { opacity: .45; }
+  .card:disabled { opacity: .4; }
   .row { display: flex; gap: 8px; margin-top: 10px; }
-  .big { flex: 1; padding: 13px; border-radius: 14px; background: linear-gradient(180deg, #3ddc84, #23a35a); color: #04230f; font-weight: 800; font-size: 15px; }
-  .big.gold { background: linear-gradient(180deg, #fde68a, #f59e0b); color: #3a2300; }
-  .big.ghost { background: #13223a; color: var(--fg); border: 1px solid var(--line); }
+  .big { flex: 1; padding: 13px; border-radius: 14px; background: linear-gradient(180deg, #22d3ee, #0891b2); color: #022c35; font-weight: 900; font-size: 15px; letter-spacing: .03em;
+    box-shadow: 0 0 18px #22d3ee55; }
+  .big.gold { background: linear-gradient(180deg, #fde68a, #f59e0b); color: #3a2300; box-shadow: 0 0 18px #f59e0b55; }
+  .big.ghost { background: #0d1638; color: var(--fg); border: 1px solid var(--line); box-shadow: none; }
   .big:disabled { opacity: .45; }
   #start { top: 50%; bottom: auto; transform: translate(-50%, -50%); text-align: center; padding: 20px 16px; }
-  #start h1 { margin: 2px 0 6px; font-size: 26px; letter-spacing: -.01em; }
-  #start .tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .12em; color: #9fc4ff; }
-  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0 14px; text-align: left; }
-  .legend div { background: #13223a; border-radius: 12px; padding: 7px 9px; font-size: 11.5px; color: var(--mute); }
+  #start h1 { margin: 2px 0 6px; font-size: 30px; font-weight: 900; letter-spacing: -.01em;
+    background: linear-gradient(90deg, #f472b6, #a78bfa, #22d3ee); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 12px #a78bfa66); }
+  #start .tag { display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .14em; color: #7dd3fc; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0 8px; text-align: left; }
+  .legend div { background: #0d1638; border-radius: 12px; padding: 7px 9px; font-size: 11.5px; color: var(--mute); border-left: 3px solid; }
   .legend b { color: var(--fg); display: block; font-size: 12.5px; }
-  #end .score { font-size: 40px; font-weight: 800; text-align: center; margin: 4px 0; }
+  .warn { font-size: 11.5px; color: #c4b5fd; margin: 0 0 12px; }
+  #endTitle { text-align: center; font-weight: 900; letter-spacing: .04em; }
+  #end .score { font: 800 44px "JetBrains Mono", monospace; text-align: center; margin: 2px 0; color: #a5f3fc; text-shadow: 0 0 18px #22d3ee88; }
   #end .meta { text-align: center; color: var(--mute); font-size: 13px; }
-  #end .beat { text-align: center; margin-top: 8px; color: var(--gold); font-weight: 700; font-size: 13.5px; min-height: 1.4em; }
-  #toast { position: fixed; left: 50%; top: calc(66px + var(--st)); transform: translateX(-50%); z-index: 6; width: min(440px, calc(100% - 24px));
-    background: #2a0f16f2; border: 1px solid #f87171; color: #ffe1e4; border-radius: 14px; padding: 9px 12px; font-size: 13px; text-align: center; transition: opacity .3s; }
-  #toast.good { background: #0f2a18f2; border-color: var(--green); color: #d9ffe0; }
+  #end .rank { text-align: center; margin: 10px 0 2px; font-weight: 900; font-size: 22px; }
+  #end .beat { text-align: center; color: var(--gold); font-weight: 700; font-size: 13.5px; min-height: 1.4em; }
+  .lb { margin-top: 10px; }
+  .lb div { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 10px; font-size: 14px; }
+  .lb div:nth-child(odd) { background: #0b1332; }
+  .lb .r { font: 800 13px "JetBrains Mono", monospace; color: var(--mute); }
+  .lb div:nth-child(1) .r { color: var(--gold); } .lb div:nth-child(2) .r { color: #e2e8f0; } .lb div:nth-child(3) .r { color: #fdba74; }
+  .lb .s { font: 800 15px "JetBrains Mono", monospace; text-align: right; }
+  .lb .s small { display: block; font: 600 10.5px Inter, sans-serif; color: var(--mute); }
+  .lb .you { background: linear-gradient(90deg, #164e63, #0b1332) !important; box-shadow: inset 0 0 0 1.5px var(--cyan); }
+  .lb .gap { text-align: center; color: var(--mute); display: block; padding: 2px; background: none !important; }
+  .lb .none { display: block; color: var(--mute); text-align: center; padding: 14px; background: none !important; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+  #toast { position: fixed; left: 50%; top: calc(92px + var(--st)); transform: translateX(-50%); z-index: 6; width: min(440px, calc(100% - 24px));
+    background: #2a0a16f2; border: 1px solid #f87171; color: #ffe1e4; border-radius: 14px; padding: 9px 12px; font-size: 13px; text-align: center; box-shadow: 0 0 20px #f8717144; }
+  #toast.good { background: #062a1af2; border-color: var(--green); color: #d9ffe0; box-shadow: 0 0 20px #4ade8044; }
   #toast b { display: block; font-size: 12px; letter-spacing: .08em; }
-  #banner { position: fixed; left: 0; right: 0; top: 40%; text-align: center; z-index: 4; pointer-events: none; }
-  #banner div { display: inline-block; padding: 10px 22px; border-radius: 16px; background: #0b1424e6; border: 1px solid #9fc4ff; font-weight: 800; font-size: 20px; animation: pop 2.2s forwards; }
-  #banner small { display: block; font-size: 12px; color: var(--mute); font-weight: 600; }
-  @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 12% { transform: scale(1.06); opacity: 1; } 20% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
-  #nojs { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  #banner { position: fixed; left: 0; right: 0; top: 38%; text-align: center; z-index: 4; pointer-events: none; }
+  #banner div { display: inline-block; padding: 12px 26px; border-radius: 16px; background: #070b1ce8; border: 1px solid var(--cyan); font-weight: 900; font-size: 22px; letter-spacing: .06em;
+    animation: pop 2.2s forwards; box-shadow: 0 0 30px #22d3ee55; text-shadow: 0 0 12px #22d3ee99; }
+  #banner small { display: block; font-size: 12.5px; color: var(--mute); font-weight: 700; letter-spacing: .02em; text-shadow: none; }
+  #banner .boss { border-color: #ef4444; color: #fecaca; box-shadow: 0 0 40px #ef444488; text-shadow: 0 0 14px #ef4444;
+    background: repeating-linear-gradient(-45deg, #1a0508ee 0 14px, #2a0a10ee 14px 28px); animation: pop 3.2s forwards, alarm .35s 6 alternate; }
+  #banner .clear { border-color: var(--green); box-shadow: 0 0 30px #4ade8055; text-shadow: 0 0 12px #4ade8099; }
+  #banner .win { border-color: var(--gold); color: #fef3c7; box-shadow: 0 0 40px #fbbf2488; text-shadow: 0 0 14px #fbbf24; }
+  @keyframes pop { 0% { transform: scale(.5); opacity: 0; } 10% { transform: scale(1.08); opacity: 1; } 18% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes alarm { to { border-color: #fde68a; } }
 </style>
 </head>
 <body>
 <canvas id="board"></canvas>
 
 <div id="top" class="hidden">
-  <div class="chip" id="lives"><small>LIVES</small><b id="livesV">20</b></div>
+  <div class="chip" id="lives"><small>LIVES</small><b id="livesV">15</b></div>
   <div class="chip" id="money"><small>MONEY</small><b id="moneyV">$0</b></div>
-  <div class="chip" id="waveChip"><small id="waveK">WAVE 0/10</small><b id="waveV">Build your defenses</b></div>
+  <div class="chip" id="waveChip"><small id="waveK">WAVE 0/15</small><b id="waveV">Build your defenses</b></div>
   <div class="chip"><small>SCORE</small><b id="scoreV">0</b></div>
   <button id="menuBtn" aria-label="Menu">☰</button>
 </div>
+<div id="ticker" class="hidden"></div>
 <div id="bottom" class="hidden">
   <button id="next">▶ SEND WAVE 1</button>
   <button id="fast" aria-label="Fast forward">2×</button>
@@ -91,12 +125,14 @@
   <h1>Gateway Defense</h1>
   <p>Rogue agent traffic is heading for your cluster. Build the platform's <b style="color:#fff">real</b> controls to stop it: every block you see is a real call.</p>
   <div class="legend" id="legend"></div>
+  <p class="warn">🔒 Obfuscated jailbreaks need a level-2 Prompt Guard. 💥 Burst burners split. 👑 Wave 15 is the boss, then it's endless.</p>
   <button class="big" id="play">PLAY</button>
+  <div class="row"><button class="big ghost" id="startBoard">🏆 LEADERBOARD</button></div>
 </div>
 
 <div id="build" class="sheet hidden">
   <h2>Build a control</h2>
-  <p>Each one triples its damage on the traffic it was made for.</p>
+  <p>Each one does ×<span id="weakX"></span> damage to the traffic it was made for.</p>
   <div class="cards" id="cards"></div>
   <div class="row"><button class="big ghost" id="buildClose">Cancel</button></div>
 </div>
@@ -110,17 +146,26 @@
 
 <div id="menu" class="sheet hidden">
   <h2>Menu</h2>
+  <div class="row"><button class="big ghost" id="menuBoard">🏆 Leaderboard</button></div>
   <div class="row"><button class="big ghost" id="soundBtn">Sound: on</button></div>
-  <div class="row"><button class="big ghost" id="restartBtn">Restart run</button></div>
+  <div class="row"><button class="big ghost" id="quitBtn">End this run</button><button class="big ghost" id="restartBtn">Restart</button></div>
   <div class="row"><button class="big ghost" id="screenBtn">Big screen ↗</button><button class="big ghost" id="arcadeBtn">Arcade</button></div>
   <div class="row"><button class="big" id="menuClose">Back to the game</button></div>
 </div>
 
+<div id="boardSheet" class="sheet hidden">
+  <h2>🏆 Top defenders today</h2>
+  <div class="lb" id="boardRows"></div>
+  <div class="row"><button class="big" id="boardClose">Close</button></div>
+</div>
+
 <div id="end" class="sheet hidden">
-  <h2 id="endTitle" style="text-align:center"></h2>
+  <h2 id="endTitle"></h2>
   <div class="score" id="endScore"></div>
   <div class="meta" id="endMeta"></div>
+  <div class="rank" id="endRank"></div>
   <div class="beat" id="endBeat"></div>
+  <div class="lb" id="endTop"></div>
   <div class="row"><button class="big" id="again">PLAY AGAIN</button></div>
 </div>
 
@@ -129,19 +174,21 @@
 
 <script type="module">
 import { startGame } from "/gateway-defense/static/td.js";
+import { createSim } from "/gateway-defense/static/sim.js";
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" };
 
 // Join the arcade first (the cookie names the player).
 const meR = await fetch("/api/me").catch(() => null);
 if (meR && meR.status === 401) { location.replace("/?next=/gateway-defense"); await new Promise(() => {}); }
 const rules = await (await fetch("/gateway-defense/api/rules")).json();
 const towerById = Object.fromEntries(rules.towers.map((t) => [t.id, t]));
-const creepById = Object.fromEntries([...rules.creeps, rules.boss].map((c) => [c.id, c]));
 const ICON = { guard: "🛡️", limit: "⏱️", egress: "🧱", suspend: "❄️" };
 const weakFor = (tid) => rules.creeps.filter((c) => c.weak === tid).map((c) => c.name).join(", ");
+$("weakX").textContent = rules.weakMult;
 
 // ---- sound: a tiny WebAudio synth, no files; vibration on Android ----
 let soundOn = true, actx = null, lastShot = 0;
@@ -152,7 +199,9 @@ const TONES = { // [wave, from Hz, to Hz, seconds, volume]
   "shot-egress": ["square", 220, 140, 0.06, 0.02], "shot-suspend": ["sawtooth", 1200, 300, 0.12, 0.02],
   kill: ["triangle", 520, 1040, 0.09, 0.06], boss: ["sawtooth", 200, 900, 0.6, 0.09], leak: ["sawtooth", 180, 60, 0.3, 0.09],
   build: ["square", 330, 660, 0.1, 0.05], upgrade: ["triangle", 440, 1320, 0.2, 0.06], sell: ["sine", 600, 300, 0.12, 0.05],
-  wave: ["triangle", 392, 784, 0.25, 0.06], clear: ["sine", 660, 990, 0.3, 0.07], real: ["sine", 1320, 1760, 0.07, 0.04],
+  wave: ["triangle", 392, 784, 0.25, 0.06], bossWave: ["sawtooth", 110, 55, 0.9, 0.1], clear: ["sine", 660, 990, 0.3, 0.07],
+  victory: ["triangle", 523, 1568, 0.8, 0.09], summon: ["sawtooth", 300, 120, 0.4, 0.07], real: ["sine", 1320, 1760, 0.07, 0.04],
+  combo: ["triangle", 880, 1760, 0.12, 0.05], rankup: ["sine", 784, 1568, 0.3, 0.07],
 };
 function sfx(kind) {
   if (!soundOn || !actx) return;
@@ -175,7 +224,49 @@ soundLabel();
 $("soundBtn").onclick = () => { soundOn = !soundOn; soundLabel(); try { localStorage.setItem("gatedef-sound", soundOn ? "on" : "off"); } catch {} };
 
 // ---- the start sheet ----
-$("legend").innerHTML = rules.towers.map((t) => `<div><b>${ICON[t.id]} ${esc(t.name)}</b>${esc(t.control)} · stops ${esc(weakFor(t.id))}</div>`).join("");
+$("legend").innerHTML = rules.towers.map((t) => `<div style="border-color:${t.color}"><b>${ICON[t.id]} ${esc(t.name)}</b>${esc(t.control)} · stops ${esc(weakFor(t.id))}</div>`).join("");
+
+// ---- the leaderboard (today's, kept by the server) ----
+let board = { rows: [] };
+async function loadBoard() {
+  try { const r = await fetch("/gateway-defense/api/board"); if (r.ok) board = await r.json(); } catch {}
+  return board;
+}
+function boardHtml(rows, me, n = 10) {
+  if (!rows.length) return `<div class="none">No finished runs yet. Be the first on the big screen.</div>`;
+  let html = rows.slice(0, n).map((r) => `<div class="${r.you ? "you" : ""}"><span class="r">#${r.rank}</span>
+    <span><span class="dot" style="background:${COLORS[r.color] || "#94a3b8"}"></span>${esc(r.nick)}${r.won ? " 🏆" : ""}${r.you ? " · you" : ""}</span>
+    <span class="s">${r.score.toLocaleString()}<small>${r.won ? (r.wave > rules.waves.length ? "endless " + (r.wave - rules.waves.length) : "boss beaten") : "wave " + r.wave}</small></span></div>`).join("");
+  if (me && me.rank > n) html += `<div class="gap">⋯</div><div class="you"><span class="r">#${me.rank}</span><span>${esc(me.nick)} · you</span><span class="s">${me.score.toLocaleString()}<small>wave ${me.wave}</small></span></div>`;
+  return html;
+}
+async function openBoard() {
+  closeSheets();
+  if (game.phase() !== "over" && !$("top").classList.contains("hidden")) game.setPaused(true);
+  $("boardRows").innerHTML = `<div class="none">Loading…</div>`;
+  show("boardSheet");
+  const b = await loadBoard();
+  $("boardRows").innerHTML = boardHtml(b.rows, b.me);
+}
+$("startBoard").onclick = openBoard;
+$("menuBoard").onclick = () => { show("menu", false); openBoard(); };
+$("boardClose").onclick = () => { show("boardSheet", false); if (!$("start").classList.contains("hidden") || !$("end").classList.contains("hidden")) return; game.setPaused(false); };
+
+// The live rank ticker: where your current score would sit on today's board.
+let tickRank = 0;
+function ticker(score) {
+  const others = board.rows.filter((r) => !r.you);
+  const above = others.filter((r) => r.score >= score);
+  const rank = above.length + 1;
+  const next = above[above.length - 1];
+  if (!run) { show("ticker", false); return; }
+  $("ticker").innerHTML = rank === 1 ? `<b>#1</b> live · top of the board` + (others[0] ? ` · <em>+${(score - others[0].score).toLocaleString()}</em> ahead` : "")
+    : `<b>#${rank}</b> live · <em>${(next.score - score + 1).toLocaleString()}</em> to pass ${esc(next.nick)}`;
+  show("ticker");
+  if (tickRank && rank < tickRank) { $("ticker").classList.remove("up"); void $("ticker").offsetWidth; $("ticker").classList.add("up"); sfx("rankup"); }
+  tickRank = rank;
+}
+setInterval(() => { if (run && game.phase() !== "over") loadBoard().then(() => ticker(game.score())); }, 15000);
 
 // ---- the game ----
 let run = null, ended = false, hudState = {};
@@ -185,21 +276,28 @@ const game = startGame($("board"), rules, {
   onLeak(c, lost) {
     $("lives").classList.remove("hit"); void $("lives").offsetWidth; $("lives").classList.add("hit");
     toast(`<b>${esc(c.name.toUpperCase())} GOT THROUGH · −${lost} ${lost > 1 ? "LIVES" : "LIFE"}</b>${esc(c.leak)}`);
-    buzz(60);
+    buzz(lost > 1 ? [60, 40, 60] : 60);
   },
-  onWave(n, cleared) {
-    const w = rules.waves[n - 1];
-    if (!cleared) banner(`WAVE ${n}${w.boss ? " · BOSS" : ""}`, w.name);
-    else if (n < rules.waves.length) banner(`WAVE ${n} CLEARED`, `+${rules.clearBonus * n} score · +$${20 + 5 * n}`);
+  onWave(n, cleared, w) {
+    if (!cleared) {
+      if (w.boss) return; // the boss's own entrance banner comes when it appears
+      banner(n > rules.waves.length ? `ENDLESS ${n - rules.waves.length}` : `WAVE ${n}`, w.name + ` · ${w.count} incoming`);
+    } else if (n === rules.waves.length) {
+      banner("🏆 CLUSTER SAVED", `Boss down · +${rules.lifeBonus} per life · endless waves next`, "win");
+      buzz([80, 40, 80, 40, 160]);
+    } else banner(n > rules.waves.length ? `ENDLESS ${n - rules.waves.length} CLEARED` : `WAVE ${n} CLEARED`,
+      `+${rules.clearBonus * n} score · +$${rules.clearMoney + rules.clearStep * n}`, "clear");
   },
+  onBoss() { banner(`⚠ ${rules.boss.name.toUpperCase()} ⚠`, "Armoured. Summons obfuscated jailbreaks. Bring Suspend Beams.", "boss"); buzz([120, 60, 120]); },
+  onCombo(n) { if (n % 3 === 0) sfx("combo"); },
   onEnd: finish,
   onPad(i) { closeSheets(); if (i >= 0 && game.phase() !== "over") openBuild(i); },
   onTower(i) { closeSheets(); openTower(i); },
   sfx,
-});
+}, createSim);
 function layout() {
   const top = $("top").getBoundingClientRect().bottom || 60, bottom = innerHeight - ($("bottom").getBoundingClientRect().top || innerHeight - 70);
-  game.layout(top + 4, bottom + 6);
+  game.layout(top + 22, bottom + 6);
 }
 addEventListener("resize", layout);
 
@@ -208,24 +306,28 @@ function hud(h) {
   $("livesV").textContent = h.lives;
   $("moneyV").textContent = "$" + h.money;
   $("scoreV").textContent = h.score.toLocaleString();
-  $("waveK").textContent = `WAVE ${h.wave}/${h.waves}`;
-  $("waveV").textContent = h.phase === "wave" ? h.waveName : h.wave ? "Build, then send the next wave" : "Tap a + to build";
-  const nb = $("next");
+  const shown = h.phase === "build" ? h.wave + 1 : Math.max(1, h.wave), endless = shown > h.waves;
+  $("waveK").textContent = endless ? `ENDLESS ${shown - h.waves}` : `WAVE ${Math.min(shown, h.waves)}/${h.waves}`;
+  $("waveChip").classList.toggle("endless", endless);
+  $("waveV").textContent = h.phase === "over" ? "Run over" : h.phase === "wave" ? h.waveName : h.wave ? `Next: ${h.waveName}` : "Tap a ⬡ to build";
+  const nb = $("next"), nextBoss = h.phase === "build" && (h.wave + 1 === h.waves || (endless && (shown - h.waves) % rules.endless.bossEvery === 0));
   nb.disabled = h.phase !== "build";
-  nb.textContent = h.phase === "wave" ? "Wave in progress…" : h.phase === "over" ? "Run over" : h.wave
-    ? `▶ SEND WAVE ${h.wave + 1}${h.auto > 0 ? ` (${h.auto})` : ""}` : "▶ SEND WAVE 1";
+  nb.classList.toggle("boss", nextBoss);
+  nb.textContent = h.phase === "wave" ? "Wave in progress…" : h.phase === "over" ? "Run over"
+    : `▶ SEND ${nextBoss ? "THE BOSS" : endless ? "ENDLESS " + (shown - h.waves) : "WAVE " + shown}${h.auto > 0 ? ` (${h.auto})` : ""}`;
   $("fast").classList.toggle("on", h.fast);
   if (!$("build").classList.contains("hidden")) refreshCards();
+  if (run) ticker(h.score);
 }
 $("next").onclick = () => game.startWave();
 $("fast").onclick = () => game.setFast(!hudState.fast);
 
 // ---- building ----
 let buildPad = -1, towerIdx = -1;
-function closeSheets() { for (const id of ["build", "towerSheet", "menu"]) show(id, false); }
+function closeSheets() { for (const id of ["build", "towerSheet", "menu", "boardSheet"]) show(id, false); }
 function openBuild(pad) {
   buildPad = pad;
-  $("cards").innerHTML = rules.towers.map((t) => `<button class="card" data-t="${t.id}" style="border-color:${t.color}66">
+  $("cards").innerHTML = rules.towers.map((t) => `<button class="card" data-t="${t.id}" style="border-color:${t.color}77">
     <span class="t">${esc(t.name)}<span>${ICON[t.id]}</span></span><span class="c">$${t.cost}</span>
     <span class="d">${esc(t.blurb)}</span><span class="w" style="color:${t.color}">×${rules.weakMult} vs ${esc(weakFor(t.id))}</span></button>`).join("");
   for (const b of $("cards").querySelectorAll(".card")) b.onclick = () => { if (game.build(buildPad, b.dataset.t)) { show("build", false); game.deselect(); } };
@@ -241,7 +343,8 @@ function openTower(i) {
   const t = game.tower(i);
   if (!t) return;
   $("tName").textContent = `${ICON[t.id]} ${t.name} · level ${t.level}`;
-  $("tInfo").textContent = `${t.control}. ${t.blurb}`;
+  const note = t.id === "guard" && t.level < rules.shieldLevel ? ` Level ${rules.shieldLevel} breaks obfuscated jailbreaks' shields.` : "";
+  $("tInfo").textContent = `${t.control}. ${t.blurb}${note}`;
   $("upBtn").textContent = t.upCost ? `UPGRADE $${t.upCost}` : "MAX LEVEL";
   $("upBtn").disabled = !t.upCost || game.money() < t.upCost;
   $("sellBtn").textContent = `SELL +$${t.sell}`;
@@ -255,6 +358,7 @@ $("towerClose").onclick = () => { show("towerSheet", false); game.deselect(); };
 $("menuBtn").onclick = () => { closeSheets(); game.setPaused(true); show("menu"); };
 $("menuClose").onclick = () => { show("menu", false); game.setPaused(false); };
 $("restartBtn").onclick = () => { show("menu", false); game.setPaused(false); begin(); };
+$("quitBtn").onclick = () => { show("menu", false); game.setPaused(false); game.quit(); };
 $("screenBtn").onclick = () => window.open("/gateway-defense/screen", "_blank");
 $("arcadeBtn").onclick = () => { location.href = "/"; };
 
@@ -288,7 +392,7 @@ setInterval(async () => {
 }, 500);
 
 // ---- runs ----
-function banner(title, sub) { $("banner").innerHTML = `<div>${esc(title)}<small>${esc(sub || "")}</small></div>`; }
+function banner(title, sub, cls = "") { $("banner").innerHTML = `<div class="${cls}">${esc(title)}<small>${esc(sub || "")}</small></div>`; }
 let toastT = 0;
 function toast(html, good) {
   $("toast").innerHTML = html;
@@ -300,24 +404,30 @@ function toast(html, good) {
 async function begin() {
   closeSheets(); show("end", false); show("start", false);
   show("top"); show("bottom");
-  ended = false;
+  ended = false; tickRank = 0;
   pending.length = 0;
   game.reset();
   layout();
   run = null;
+  loadBoard();
   const r = await fetch("/gateway-defense/api/start", { method: "POST" }).catch(() => null);
-  if (r && r.ok) run = (await r.json()).run;
+  if (r && r.ok) { run = (await r.json()).run; ticker(0); }
   else toast("<b>THE ARCADE IS BUSY</b>Your run still plays; it just won't make real calls or reach the leaderboard.");
 }
 async function finish(res) {
   if (ended) return;
   ended = true;
-  $("endTitle").textContent = res.won ? "🏆 CLUSTER SAVED" : `CLUSTER DOWN ON WAVE ${res.wave}`;
+  show("ticker", false);
+  const beyond = res.wave - rules.waves.length;
+  $("endTitle").textContent = res.won ? (beyond > 0 ? `🏆 BOSS BEATEN · ${res.quit ? "STOPPED" : "FELL"} IN ENDLESS ${beyond}` : "🏆 CLUSTER SAVED")
+    : res.quit ? `RUN ENDED ON WAVE ${res.wave}` : `CLUSTER DOWN ON WAVE ${res.wave}`;
   $("endScore").textContent = res.score.toLocaleString();
-  $("endMeta").textContent = `${res.kills} blocked · ${res.leaks} got through${res.won ? ` · ${res.lives} lives left` : ""}`;
+  $("endMeta").textContent = `${res.kills} blocked · ${res.leaks} got through · best combo ×${res.bestCombo || 1}`;
+  $("endRank").textContent = "";
   $("endBeat").textContent = "";
+  $("endTop").innerHTML = "";
   show("end");
-  sfx(res.won ? "clear" : "leak");
+  sfx(res.won ? "victory" : "leak");
   if (!run) return;
   const r = await fetch("/gateway-defense/api/finish", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ run, wave: res.wave, score: res.score, lives: res.lives, won: res.won }) }).catch(() => null);
@@ -325,14 +435,18 @@ async function finish(res) {
   if (!r || !r.ok) return;
   const f = await r.json();
   if (!f.accepted) { $("endBeat").textContent = "That score didn't add up, so it isn't on the board."; return; }
-  $("endBeat").textContent = f.rank === 1 ? `#1 on the big screen · best ${f.best.toLocaleString()}`
-    : `#${f.rank} · best ${f.best.toLocaleString()}` + (f.beat ? ` · beat ${f.beat.nick} (${f.beat.score.toLocaleString()}) for #${f.rank - 1}` : "");
+  $("endRank").innerHTML = f.rank === 1 ? `<span style="color:var(--gold)">#1 ON THE BIG SCREEN</span>` : `#${f.rank} today`;
+  const best = f.best > res.score ? ` · your best ${f.best.toLocaleString()}` : "";
+  $("endBeat").textContent = f.beat ? `Beat ${f.beat.nick} by ${(f.beat.score - f.best + 1).toLocaleString()} to reach #${f.rank - 1}${best}` : f.rank === 1 ? "Nobody's ahead of you. Defend it." + best : best;
+  const b = await loadBoard();
+  $("endTop").innerHTML = boardHtml(b.rows, b.me, 5);
+  if (f.rank === 1) buzz([60, 40, 60, 40, 200]);
 }
 $("play").onclick = begin;
 $("again").onclick = begin;
 layout();
 // For the headless screenshot script.
-window.gatedef = { game, rules, begin };
+window.gatedef = { game, rules, begin, loadBoard };
 </script>
 </body>
 </html>

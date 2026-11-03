@@ -337,15 +337,16 @@ func (g *Game) Sink(kind string) {
 
 // State is the big screen's view.
 type State struct {
-	Board   []Score                         `json:"board"`
-	Feed    []FeedItem                      `json:"feed"`
-	Totals  map[string]int                  `json:"totals"`
-	Misses  map[string]int                  `json:"misses"`
-	Timings map[string]platform.Percentiles `json:"timings"`
-	Playing int                             `json:"playing"`
-	Runs    int                             `json:"runs"`
-	Towers  []Tower                         `json:"towers"`
-	Now     int64                           `json:"now"`
+	Board    []Score                         `json:"board"`
+	Feed     []FeedItem                      `json:"feed"`
+	Totals   map[string]int                  `json:"totals"`
+	Misses   map[string]int                  `json:"misses"`
+	Timings  map[string]platform.Percentiles `json:"timings"`
+	Playing  int                             `json:"playing"`
+	Runs     int                             `json:"runs"`
+	Towers   []Tower                         `json:"towers"`
+	BossWave int                             `json:"bossWave"`
+	Now      int64                           `json:"now"`
 }
 
 // Snapshot is the big screen's state.
@@ -363,7 +364,7 @@ func (g *Game) Snapshot() State {
 		}
 	}
 	return State{Board: rows, Feed: slices.Clone(g.feed), Totals: clone(g.totals), Misses: clone(g.misses),
-		Timings: g.timings.Snapshot(nil), Playing: playing, Runs: g.runsDone, Towers: g.rules.Towers, Now: g.now().UnixMilli()}
+		Timings: g.timings.Snapshot(nil), Playing: playing, Runs: g.runsDone, Towers: g.rules.Towers, BossWave: len(g.rules.Waves), Now: g.now().UnixMilli()}
 }
 
 // Stats is the game's line in /api/stats.

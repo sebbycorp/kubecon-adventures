@@ -6,62 +6,83 @@
 <link rel="icon" href="data:,">
 <title>Gateway Defense · big screen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #0d1626; --panel: #121f35; --line: #24385a; --fg: #e8eefb; --mute: #8fa3c7; --gold: #fde68a; --green: #5fd068; }
+  :root { --bg: #050813; --panel: #0a1130; --line: #22336e; --fg: #eef2ff; --mute: #94a3c8; --gold: #fde68a; --cyan: #22d3ee; --pink: #f472b6; --violet: #a78bfa; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: radial-gradient(1200px 700px at 50% -10%, #1c3358, var(--bg)); color: var(--fg); font: 16px/1.4 Inter, system-ui, sans-serif; overflow: hidden; }
-  main { display: grid; grid-template-columns: 420px 1fr 420px; gap: 24px; height: 100vh; padding: 28px; }
-  .panel { background: #121f35d9; border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px; }
-  h1 { margin: 0; font-size: 40px; letter-spacing: -.02em; line-height: 1.05; }
-  .tag { font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #9fc4ff; }
-  .lead { color: var(--mute); margin: 10px 0 18px; font-size: 15px; }
-  h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .14em; color: var(--mute); font-weight: 800; display: flex; justify-content: space-between; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 16px/1.4 Inter, system-ui, sans-serif; overflow: hidden; }
+  #bg { position: fixed; inset: 0; z-index: -1; }
+  main { display: grid; grid-template-columns: 400px 1fr 560px; gap: 24px; height: 100vh; padding: 26px; }
+  .panel { background: linear-gradient(180deg, #0c1438e6, #070c26e6); border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px;
+    box-shadow: 0 0 0 1px #000, 0 0 40px #22d3ee14, inset 0 1px 0 #ffffff0d; }
+  h1 { margin: 4px 0 0; font-size: 46px; font-weight: 900; letter-spacing: -.02em; line-height: 1;
+    background: linear-gradient(90deg, var(--pink), var(--violet), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 18px #a78bfa66); }
+  .tag { font-size: 12px; font-weight: 800; letter-spacing: .16em; color: #7dd3fc; }
+  .lead { color: var(--mute); margin: 12px 0 16px; font-size: 15px; }
+  h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .16em; color: var(--mute); font-weight: 800; display: flex; justify-content: space-between; align-items: center; }
   h2 b { color: var(--fg); letter-spacing: 0; }
   #left { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
-  .tw { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #1b2c48; }
+  .tw { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #16224f; }
   .tw:first-of-type { border-top: 0; }
-  .tw .i { font-size: 28px; text-align: center; }
+  .tw .i { font-size: 28px; text-align: center; filter: drop-shadow(0 0 8px currentColor); }
   .tw b { display: block; font-size: 15px; }
   .tw small { color: var(--mute); font-size: 12px; }
-  .tw .n { text-align: right; font: 700 20px "JetBrains Mono", monospace; }
+  .tw .n { text-align: right; font: 800 22px "JetBrains Mono", monospace; }
   .tw .n small { display: block; font: 600 11px Inter, sans-serif; color: var(--mute); }
+  .tw .n.bump { animation: bump .5s; }
+  @keyframes bump { 40% { transform: scale(1.25); color: #fff; } }
   #qr { display: flex; gap: 16px; align-items: center; margin-top: auto; }
-  #qr .code { background: #fff; padding: 10px; border-radius: 14px; width: 150px; height: 150px; flex: none; }
+  #qr .code { background: #fff; padding: 10px; border-radius: 14px; width: 150px; height: 150px; flex: none; box-shadow: 0 0 30px #22d3ee55; }
   #qr .code svg { width: 100%; height: 100%; display: block; }
-  #qr b { font-size: 20px; display: block; }
+  #qr b { font-size: 22px; display: block; }
   #qr span { color: var(--mute); font-size: 14px; }
   #center { display: flex; flex-direction: column; min-height: 0; }
+  #stats { display: flex; gap: 10px; margin-bottom: 16px; }
+  #stats div { flex: 1; text-align: center; background: #0a1336; border: 1px solid #1a2a5e; border-radius: 14px; padding: 10px; }
+  #stats b { display: block; font: 800 30px "JetBrains Mono", monospace; color: #a5f3fc; text-shadow: 0 0 14px #22d3ee88; }
+  #stats small { color: var(--mute); font-size: 11.5px; font-weight: 800; letter-spacing: .1em; }
   #feed { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
-  .ev { display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; padding: 12px 16px; border-radius: 16px; background: #13223a; border-left: 5px solid; animation: in .5s ease-out; }
+  .ev { display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; padding: 12px 16px; border-radius: 16px; background: #0b1438; border-left: 5px solid; animation: in .5s ease-out;
+    box-shadow: inset 0 0 30px #00000055; }
   .ev .i { font-size: 30px; text-align: center; }
   .ev .w { font-size: 15px; } .ev .w b { font-size: 17px; }
-  .ev .w small { display: block; color: var(--mute); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 640px; }
-  .ev .r { text-align: right; font: 700 22px "JetBrains Mono", monospace; white-space: nowrap; }
+  .ev .w small { display: block; color: var(--mute); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px; }
+  .ev .r { text-align: right; font: 800 22px "JetBrains Mono", monospace; white-space: nowrap; }
   .ev .r small { display: block; font: 600 12px Inter, sans-serif; color: var(--mute); }
-  .ev.miss { background: #2a1219; }
+  .ev.miss { background: #2a0b16; }
   @keyframes in { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
   #empty { color: var(--mute); text-align: center; margin-top: 30%; font-size: 18px; }
-  .lb { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid #1b2c48; font-size: 17px; }
-  .lb:first-of-type { border-top: 0; }
-  .lb .r { font-weight: 800; color: var(--mute); }
-  .lb:nth-of-type(1) .r { color: var(--gold); }
-  .lb .s { font: 700 19px "JetBrains Mono", monospace; text-align: right; }
-  .lb .s small { display: block; font: 600 11px Inter, sans-serif; color: var(--mute); }
-  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
-  #stats { display: flex; gap: 10px; margin-bottom: 14px; }
-  #stats div { flex: 1; text-align: center; background: #13223a; border-radius: 14px; padding: 10px; }
-  #stats b { display: block; font: 700 26px "JetBrains Mono", monospace; }
-  #stats small { color: var(--mute); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+
+  #right { display: flex; flex-direction: column; min-height: 0; }
+  #right h2 { font-size: 15px; }
+  #right h2 span { font-size: 22px; color: var(--gold); letter-spacing: .08em; text-shadow: 0 0 16px #fbbf2488; }
+  #board { position: relative; flex: 1; }
+  .lb { position: absolute; left: 0; right: 0; height: 74px; display: grid; grid-template-columns: 62px 1fr auto; gap: 14px; align-items: center; padding: 0 18px;
+    border-radius: 16px; background: #0b1438; border: 1px solid #1a2a5e; transition: transform .8s cubic-bezier(.2, .9, .25, 1.15), background .6s, border-color .6s; }
+  .lb .r { font: 900 30px "JetBrains Mono", monospace; color: var(--mute); text-align: center; }
+  .lb .n { font-size: 24px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb .n small { display: block; font-size: 13px; font-weight: 600; color: var(--mute); }
+  .lb .s { font: 800 30px "JetBrains Mono", monospace; text-align: right; }
+  .lb .badge { font: 900 12px Inter, sans-serif; letter-spacing: .1em; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+  .lb.p1 { background: linear-gradient(90deg, #3d2d05, #0b1438 70%); border-color: #fbbf24; box-shadow: 0 0 30px #fbbf2433; }
+  .lb.p1 .r { color: var(--gold); text-shadow: 0 0 14px #fbbf24; }
+  .lb.p2 .r { color: #e2e8f0; } .lb.p3 .r { color: #fdba74; }
+  .lb.fresh { animation: fresh 2.4s; }
+  .lb.up { animation: up 2s; }
+  @keyframes fresh { 0% { opacity: 0; transform: var(--to) scale(.85); } 12% { opacity: 1; } 15%, 60% { box-shadow: 0 0 40px #22d3ee; border-color: var(--cyan); } }
+  @keyframes up { 10%, 60% { box-shadow: 0 0 40px #4ade80; border-color: #4ade80; } }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; vertical-align: middle; }
+  #noBoard { color: var(--mute); font-size: 18px; text-align: center; margin-top: 40%; }
 </style>
 </head>
 <body>
+<canvas id="bg"></canvas>
 <main>
   <section id="left">
     <div class="panel">
       <span class="tag">KAGENT · AGENTGATEWAY · SUBSTRATE</span>
       <h1>Gateway Defense</h1>
-      <p class="lead">Rogue agent traffic marches on the cluster. The towers are the platform's real controls, and every block below is a real call, with its real timing.</p>
+      <p class="lead">Rogue agent traffic marches on the cluster. The towers are the platform's real controls: every block below is a real call, with its real timing.</p>
       <h2>THE CONTROLS<b id="totalReal"></b></h2>
       <div id="towers"></div>
     </div>
@@ -72,9 +93,9 @@
     <h2>LIVE · REAL BLOCKS</h2>
     <div id="feed"><div id="empty">Waiting for the first tower to fire…</div></div>
   </section>
-  <section class="panel">
-    <h2>TOP DEFENDERS</h2>
-    <div id="board"></div>
+  <section id="right" class="panel">
+    <h2><span>🏆 TOP DEFENDERS</span><b>today</b></h2>
+    <div id="board"><div id="noBoard">No finished runs yet. Scan the code and take #1.</div></div>
   </section>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -83,9 +104,11 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const ICON = { guard: "🛡️", limit: "⏱️", egress: "🧱", suspend: "❄️" };
-const CREEP = { jailbreak: "a jailbreaker", burner: "a token-burner", escaper: "an escaper", runaway: "a runaway", boss: "the Rogue Orchestrator" };
+const CREEP = { jailbreak: "a jailbreaker", burner: "a token-burner", escaper: "an escaper", runaway: "a runaway", obfus: "an obfuscated jailbreak",
+  burst: "a burst burner", boss: "the Rogue Orchestrator" };
 const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" };
 const ms = (v) => (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms");
+let BOSS_WAVE = 15; // from the server's state
 
 // The QR code points phones at /gateway-defense; a screen on localhost points at the public domain.
 const params = new URLSearchParams(location.search);
@@ -95,24 +118,85 @@ $("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
 try { const qr = qrcode(0, "M"); qr.addData(joinUrl); qr.make(); $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); }
 catch { $("qrcode").style.display = "none"; }
 
-let seen = 0;
+// A slow neon backdrop: a drifting grid and data packets flowing along a winding lane.
+(function backdrop() {
+  const c = $("bg"), x = c.getContext("2d");
+  let w = 0, h = 0;
+  const resize = () => { w = c.width = innerWidth; h = c.height = innerHeight; };
+  resize(); addEventListener("resize", resize);
+  const lane = (t) => [w * (0.1 + 0.8 * t), h * (0.5 + 0.3 * Math.sin(t * 9))];
+  function frame(now) {
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#0a0f24"); g.addColorStop(1, "#04060f");
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    const sp = 64, off = (now / 60) % sp;
+    x.strokeStyle = "rgba(80,120,255,0.07)"; x.lineWidth = 1; x.beginPath();
+    for (let i = -sp + off; i < w; i += sp) { x.moveTo(i, 0); x.lineTo(i, h); }
+    for (let i = -sp + off * 0.6; i < h; i += sp) { x.moveTo(0, i); x.lineTo(w, i); }
+    x.stroke();
+    x.strokeStyle = "rgba(34,211,238,0.10)"; x.lineWidth = 40; x.lineCap = "round"; x.beginPath();
+    for (let t = 0; t <= 1.001; t += 0.01) { const [a, b] = lane(t); t ? x.lineTo(a, b) : x.moveTo(a, b); }
+    x.stroke();
+    for (let i = 0; i < 24; i++) {
+      const t = ((now / 9000) + i / 24) % 1, [a, b] = lane(t);
+      x.fillStyle = i % 3 ? "rgba(103,232,249,0.6)" : "rgba(244,114,182,0.6)";
+      x.beginPath(); x.arc(a, b, 3, 0, Math.PI * 2); x.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+// The leaderboard: one absolutely placed row per player, moved with a transform so rank
+// changes slide; a new row flashes cyan, a row that climbed flashes green.
+const rows = new Map(); // nick key -> {el, rank, score}
+const ROW = 84;
+function drawBoard(list) {
+  const board = $("board");
+  if (list.length) $("noBoard")?.remove();
+  const keep = new Set();
+  list.forEach((r, i) => {
+    const key = r.nick + "|" + r.color, rank = i + 1;
+    keep.add(key);
+    let row = rows.get(key);
+    const fresh = !row;
+    if (fresh) {
+      row = { el: document.createElement("div"), rank: 99, score: -1 };
+      board.appendChild(row.el);
+      rows.set(key, row);
+    }
+    const climbed = !fresh && rank < row.rank, improved = !fresh && r.score > row.score;
+    const sub = r.won ? (r.wave > BOSS_WAVE ? `boss beaten · endless ${r.wave - BOSS_WAVE}` : "boss beaten 🏆") : `fell on wave ${r.wave}`;
+    const badge = fresh && rows.size > 1 ? `<span class="badge" style="background:#22d3ee;color:#022c35">NEW</span>`
+      : climbed ? `<span class="badge" style="background:#4ade80;color:#052e16">▲ ${row.rank - rank}</span>` : "";
+    row.el.className = `lb p${rank}` + (fresh ? " fresh" : climbed || improved ? " up" : "");
+    row.el.style.setProperty("--to", `translateY(${i * ROW}px)`);
+    row.el.style.transform = `translateY(${i * ROW}px)`;
+    row.el.innerHTML = `<span class="r">${rank}</span><span class="n"><span class="dot" style="background:${COLORS[r.color] || "#94a3b8"};box-shadow:0 0 10px ${COLORS[r.color] || "#94a3b8"}"></span>${esc(r.nick)}${badge}<small>${sub}</small></span>
+      <span class="s">${r.score.toLocaleString()}</span>`;
+    if (fresh || climbed || improved) setTimeout(() => row.el.classList.remove("fresh", "up"), 2600);
+    row.rank = rank; row.score = r.score;
+  });
+  for (const [key, row] of rows) if (!keep.has(key)) { row.el.remove(); rows.delete(key); }
+}
+
+let seen = 0, lastTotals = {};
 function apply(s) {
+  BOSS_WAVE = s.bossWave || BOSS_WAVE;
   const totals = s.totals || {}, misses = s.misses || {}, t = s.timings || {};
   let all = 0;
   $("towers").innerHTML = (s.towers || []).map((tw) => {
     const n = totals[tw.id] || 0, p = t[tw.id];
     all += n;
-    return `<div class="tw"><div class="i">${ICON[tw.id]}</div><div><b style="color:${tw.color}">${esc(tw.name)}</b><small>${esc(tw.control)}</small></div>
-      <div class="n">${n.toLocaleString()}<small>${p && p.count ? "p50 " + ms(p.p50) : "real calls"}${misses[tw.id] ? ` · ${misses[tw.id]} missed` : ""}</small></div></div>`;
+    const bump = n > (lastTotals[tw.id] || 0) ? " bump" : "";
+    return `<div class="tw"><div class="i" style="color:${tw.color}">${ICON[tw.id]}</div><div><b style="color:${tw.color}">${esc(tw.name)}</b><small>${esc(tw.control)}</small></div>
+      <div class="n${bump}">${n.toLocaleString()}<small>${p && p.count ? "p50 " + ms(p.p50) : "real calls"}${misses[tw.id] ? ` · ${misses[tw.id]} missed` : ""}</small></div></div>`;
   }).join("");
+  lastTotals = { ...totals };
   $("totalReal").textContent = all ? all.toLocaleString() + " real calls" : "";
   $("sPlaying").textContent = s.playing || 0;
   $("sRuns").textContent = (s.runs || 0).toLocaleString();
   $("sBlocked").textContent = all.toLocaleString();
-  const rows = s.board || [];
-  $("board").innerHTML = rows.length ? rows.map((r, i) => `<div class="lb"><span class="r">#${i + 1}</span><span><span class="dot" style="background:${COLORS[r.color] || "#8a8f94"}"></span>${esc(r.nick)}${r.won ? " 🏆" : ""}</span>
-    <span class="s">${r.score.toLocaleString()}<small>${r.won ? "cluster saved" : "wave " + r.wave}</small></span></div>`).join("")
-    : `<div style="color:var(--mute)">No finished runs yet.</div>`;
+  drawBoard(s.board || []);
   // New feed items slide in at the top; the newest 8 stay.
   const items = (s.feed || []).filter((f) => f.at > seen);
   if (items.length) $("empty")?.remove();
@@ -122,7 +206,7 @@ function apply(s) {
     const d = document.createElement("div");
     d.className = "ev" + (f.ok ? "" : " miss");
     d.style.borderColor = tw.color || "#888";
-    d.innerHTML = `<div class="i">${ICON[f.tower] || "•"}</div><div class="w"><b>${esc(f.nick)}</b>'s ${esc(tw.name || f.tower)} stopped ${esc(CREEP[f.creep] || f.creep)}
+    d.innerHTML = `<div class="i">${ICON[f.tower] || "•"}</div><div class="w"><b style="color:${COLORS[f.color] || "#fff"}">${esc(f.nick)}</b>'s ${esc(tw.name || f.tower)} stopped ${esc(CREEP[f.creep] || f.creep)}
       <small>${esc(f.detail || tw.control || "")}</small></div><div class="r" style="color:${f.ok ? tw.color : "#f87171"}">${esc(f.label)}<small>${ms(f.ms)}</small></div>`;
     $("feed").prepend(d);
   }

@@ -255,15 +255,19 @@ export function createSim(rules, hooks = {}) {
   }
 
   function end() {
+    // The wave reached: ending between waves (from the menu) counts the next one, so the
+    // last cleared wave's bonus is inside the server's MaxScore for it.
+    const reached = st.phase === "build" && st.wave > 0 ? st.wave + 1 : Math.max(1, st.wave);
     st.phase = "over";
     st.shots = [];
     call("onHud");
-    call("onEnd", { wave: st.wave, score: st.score, lives: st.lives, won: st.won, kills: st.kills, leaks: st.leaks, bestCombo: st.bestCombo });
+    call("onEnd", { wave: reached, quit: !!st.quit, score: st.score, lives: st.lives, won: st.won, kills: st.kills, leaks: st.leaks, bestCombo: st.bestCombo });
   }
 
   // quit ends the run where it is (from the menu), as if the cluster fell.
   function quit() {
     if (st.phase === "over") return;
+    st.quit = true;
     st.lives = 0;
     end();
   }

@@ -1,6 +1,6 @@
 // Tunes Gateway Defense: plays many headless runs with scripted strategies on sim.js
 // and prints when they first lose a life, where they fall, and how often they beat the
-// boss. Not served to phones.
+// boss. No page loads it.
 //   node balance.mjs <rules.json> [runs]
 // (dump rules.json with: GATEDEF_RULES_OUT=/tmp/rules.json go test -run TestDumpRules ./games/gatewaydef/)
 import { readFileSync } from "node:fs";
