@@ -73,5 +73,5 @@ echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen
 echo "Escape:     http://localhost:8090/sandbox-escape (big screen: /sandbox-escape/screen)"
 echo "Forks:      http://localhost:8090/fork-frenzy (big screen: /fork-frenzy/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
-echo "Heist:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
+echo "Siege:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
 echo "Admin:      http://localhost:8090/admin"

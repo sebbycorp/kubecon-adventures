@@ -370,7 +370,7 @@ export function startCity(canvas, opts) {
         if (t.hits > o.hits && t.state === "Working") {
           const shooter = nearestShooter(s, t);
           if (shooter) tracer([shooter.x, 0.75, shooter.y], [t.x, 0.75, t.y], 0x9fffff);
-          if (t.hits < 3) floater(`HIT ${t.hits}/3`, t.x, t.y, "#9fffff", 0.7, 2.3);
+          if (t.hits < 2) floater(`HIT ${t.hits}/2`, t.x, t.y, "#9fffff", 0.7, 2.3);
         }
         if (t.step > o.step) towerFlash = 1;
       }

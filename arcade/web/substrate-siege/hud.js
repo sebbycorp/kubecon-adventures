@@ -32,7 +32,9 @@ export function runLine(snap, me, a) {
   const near = a && snap.targets.find((t) => t.state === "Frozen" && !t.busy && Math.hypot(t.x - a.x, t.y - a.y) < 1.6);
   if (near) return `Tap <b>BOOK</b> to snapshot <b>${esc(String(near.name).toUpperCase())}</b>: +2`;
   const run = snap.missions.find((m) => m.squad === (a && a.squad) && !m.outcome);
-  const loose = snap.targets.filter((t) => t.state === "Working" && run && t.mission === run.id).length;
+  const mine = snap.targets.filter((t) => run && t.mission === run.id);
+  const loose = mine.filter((t) => t.state === "Working").length;
+  if (!loose && mine.some((t) => t.state === "Frozen")) return "Walk up to a frozen agent and tap <b>BOOK</b>: +2";
   if (!loose) return "More agents arriving…";
   return `Follow the arrow · <b>2 hits</b> freezes an agent · <b>${loose}</b> on the loose`;
 }

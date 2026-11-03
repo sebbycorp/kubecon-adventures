@@ -371,11 +371,11 @@ function hud(now) {
     const left = run.ends - worldNow;
     $("time").textContent = fmtClock(left);
     $("time").classList.toggle("hurry", left < 20);
-    $("banner").innerHTML = runLine(snap, me.id, a);
+    $("banner").innerHTML = `<span>${runLine(snap, me.id, a)}</span>`;
   } else {
     $("time").textContent = "3:00";
     $("time").classList.remove("hurry");
-    $("banner").innerHTML = "Tap <b>MENU</b> → <b>PLAY</b> to start a 3-minute run.";
+    $("banner").innerHTML = "<span>Tap <b>MENU</b>, then <b>PLAY</b>, for a 3-minute run.</span>";
   }
   // BOOK lights up next to a frozen agent.
   const near = a && snap.targets.some((t) => t.state === "Frozen" && !t.busy && Math.hypot(t.x - a.x, t.y - a.y) < 1.6);
