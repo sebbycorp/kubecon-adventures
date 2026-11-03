@@ -10,6 +10,7 @@ Working title, my call: "Grand Theft Agent". It's a parody name. The art, sprite
 |-------|----------|
 | World | **One shared city, separate missions.** Each solo player or squad starts its own mission at its own level. Its targets spawn in the shared city, where rivals can stun, spring or steal them. When the 24-step limit is full, new missions wait in a queue at Dispatch ("waiting for a free safehouse"). |
 | Booth scope | **Levels 1–3 and the big screen** must be ready for the booth: Rookie, Booking, The Crew. Levels 4–6 and cars come after. |
+| Winner | **Whoever freezes the most agents.** The leaderboard ranks players by takedowns (freezes they landed). Cash from extractions and missions only breaks ties. Squads see each member's count and a squad total. |
 | Booth date | Not set yet |
 
 ## Why
@@ -101,7 +102,7 @@ Phones show a follow-cam on your character, with a virtual joystick (left thumb)
 | Rival crew or the target's own crew revives it | `ResumeSession` | Ice shatters; **RESTORED** tag; it resumes its heist at the step it was on, and says so |
 | Interrogate an extracted target (later level) | `Fork` from its checkpoint plus one prompt | A copy appears in the interview room and answers from memory |
 
-Points (my call): extraction 300, DELETE 100, stun assist 50, mission completed in time ×2, losing your extraction to a rival revive −100.
+Takedowns decide the winner (see Decisions). Cash, which breaks ties (my call): extraction 300, DELETE 100, stun assist 50, mission completed in time ×2, losing your extraction to a rival revive −100.
 
 ## The target agent (`heister`)
 
