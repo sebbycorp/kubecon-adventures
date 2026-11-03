@@ -152,9 +152,11 @@ func (w *World) bank(a *Avatar) {
 }
 
 // huntersFire lets every hunter (a Working target that is not Busy) shoot the nearest
-// online, standing avatar within hunterRange, once per hunterCD. Target.ShotCD keeps
-// each hunter's cooldown. A shot is not an intent; it only changes health.
-func (w *World) huntersFire(dt float64) {
+// online, standing avatar or Working, idle ally within hunterRange, once per hunterCD
+// (an avatar wins a tie). Target.ShotCD keeps each hunter's cooldown. A shot on a
+// player only changes health; an ally shot to 0 health asks for its freeze.
+func (w *World) huntersFire(dt float64) []Intent {
+	var out []Intent
 	for _, id := range slices.Sorted(maps.Keys(w.Targets)) {
 		t := w.Targets[id]
 		t.ShotCD = max(0, t.ShotCD-dt)
@@ -169,12 +171,18 @@ func (w *World) huntersFire(dt float64) {
 				best, bestD = a, d
 			}
 		}
+		if al, d := w.nearestAlly(t.Pos, hunterRange); al != nil && d < bestD {
+			t.ShotCD = hunterCD
+			out = append(out, w.hitAlly(al, t)...)
+			continue
+		}
 		if best == nil {
 			continue
 		}
 		t.ShotCD = hunterCD
 		w.hit(best, t)
 	}
+	return out
 }
 
 // hit applies one hunter shot from t to a; at 0 health a goes down.

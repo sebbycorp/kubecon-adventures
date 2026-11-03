@@ -110,16 +110,19 @@ type World struct {
 	Drops   map[string]*Drop
 	Stash   map[string][]Part // banked parts per player ID
 	Rand    *rand.Rand        // loot rolls; NewWorld seeds it from the clock
+	Allies  map[string]*Ally  // deployed allies; ones still spawning are kept in pending
 
-	ctl map[string]*control
+	ctl     map[string]*control
+	pending map[string]*pendingAlly // ally spawns submitted, no result yet
+	allySeq int
 }
 
 // NewWorld is an empty world on c.
 func NewWorld(c *City) *World {
 	seed := uint64(time.Now().UnixNano())
 	return &World{
-		City: c, Avatars: map[string]*Avatar{}, Targets: map[string]*Target{}, ctl: map[string]*control{},
-		Drops: map[string]*Drop{}, Stash: map[string][]Part{}, Rand: rand.New(rand.NewPCG(seed, seed>>1|1)),
+		City: c, Avatars: map[string]*Avatar{}, Targets: map[string]*Target{}, ctl: map[string]*control{}, pending: map[string]*pendingAlly{},
+		Allies: map[string]*Ally{}, Drops: map[string]*Drop{}, Stash: map[string][]Part{}, Rand: rand.New(rand.NewPCG(seed, seed>>1|1)),
 	}
 }
 
@@ -197,7 +200,9 @@ func (w *World) Tick(dt float64) []Intent {
 			k.tap = false
 			if a.Dragging != "" {
 				w.drop(a)
-			} else if t := w.adjacentFrozen(a); t != nil {
+			} else if t, al := w.adjacentFrozen(a), w.ownFrozenAlly(a); al != nil && (t == nil || dist(a.Pos, al.Pos) < dist(a.Pos, t.Pos)) {
+				out = append(out, w.startAlly(al, "spring", a.PlayerID)) // your own ally: no cooldown
+			} else if t != nil {
 				kind := "drag"
 				if t.Squad != "" && t.Squad != a.Squad && a.SpringCD <= eps {
 					kind = "spring"
@@ -228,7 +233,8 @@ func (w *World) Tick(dt float64) []Intent {
 			}
 		}
 	}
-	w.huntersFire(dt)
+	out = append(out, w.tickAllies(dt)...)
+	out = append(out, w.huntersFire(dt)...)
 	out = append(out, w.moveTargets(dt)...)
 	return out
 }
@@ -250,23 +256,31 @@ func (w *World) moveAvatar(a *Avatar, dir Vec, dt float64) {
 	}
 }
 
-// fire auto-aims at the nearest Working, non-busy target in range. The third hit asks
-// for a freeze.
+// fire auto-aims a's shot.
 func (w *World) fire(a *Avatar) []Intent {
-	t := w.nearest(a.Pos, fireRange, func(t *Target) bool { return t.State == Working && !t.Busy })
-	if t == nil {
-		return nil
+	fired, out := w.shoot(a.Pos, a.PlayerID)
+	if fired {
+		a.FireCD = fireCD
 	}
-	a.FireCD = fireCD
+	return out
+}
+
+// shoot hits the nearest Working, non-busy target within fireRange of from, crediting
+// player by (an ally's shots are its owner's). The third hit asks for a freeze.
+func (w *World) shoot(from Vec, by string) (bool, []Intent) {
+	t := w.nearest(from, fireRange, func(t *Target) bool { return t.State == Working && !t.Busy })
+	if t == nil {
+		return false, nil
+	}
 	t.Hits++
 	if t.HitBy == nil {
 		t.HitBy = map[string]bool{}
 	}
-	t.HitBy[a.PlayerID] = true
+	t.HitBy[by] = true
 	if t.Hits >= hitsToFreeze {
-		return []Intent{w.start(t, "freeze", a.PlayerID)}
+		return true, []Intent{w.start(t, "freeze", by)}
 	}
-	return nil
+	return true, nil
 }
 
 // adjacentFrozen is the nearest idle Frozen target within ACTION range of a.
@@ -337,10 +351,14 @@ func (w *World) moveTargets(dt float64) []Intent {
 	return out
 }
 
-// Resolve applies the result of an op the Game ran for target. ms is how long it took.
+// Resolve applies the result of an op the Game ran for target, a target or an ally
+// ID. ms is how long it took.
 func (w *World) Resolve(target, kind string, ok bool, ms int64) {
 	t := w.Targets[target]
 	if t == nil {
+		if al := w.Allies[target]; al != nil {
+			w.resolveAlly(al, kind, ok, ms)
+		}
 		return
 	}
 	by := t.opBy

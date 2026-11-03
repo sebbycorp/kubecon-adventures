@@ -17,6 +17,9 @@ type Ops interface {
 	Spring(ctx context.Context, sessionID string) (node string, say string, ms int64, err error)
 	Extract(ctx context.Context, sessionID string) (ms int64, err error)
 	Delete(ctx context.Context, sessionID string) error
+	// SpawnAlly starts a player's ally session (the sidekick Agent) and returns its
+	// greeting line.
+	SpawnAlly(ctx context.Context, name string) (sessionID, node, say string, err error)
 }
 
 // StepResult is what one agent step reports.
@@ -29,7 +32,8 @@ type StepResult struct {
 }
 
 // Result is the outcome of one submitted op. Spawned holds the new session ID for
-// "spawn"; Node and Step.Say carry the node and sprung line for "spring".
+// "spawn" and "ally"; Node and Step.Say carry the node and the sprung line for "spring"
+// or the greeting for "ally".
 type Result struct {
 	Kind, Target string
 	OK           bool
@@ -56,9 +60,9 @@ type job struct {
 
 // Scheduler runs Ops asynchronously under concurrency caps so the game loop never
 // blocks. Steps and resumes (springs, and extracts when ExtractUsesResume) are capped
-// with a FIFO queue per class; freeze, delete and spawn are never capped. Each target
-// has two lanes, "step" (kind step) and "control" (spawn, freeze, spring, extract,
-// delete), and at most one op per lane per target is accepted at a time, so a freeze
+// with a FIFO queue per class; freeze, delete, spawn and ally are never capped. Each
+// target has two lanes, "step" (kind step) and "control" (spawn, ally, freeze, spring,
+// extract, delete), and at most one op per lane per target is accepted at a time, so a freeze
 // can land while a long heist step is still running.
 //
 // Every accepted op that starts running yields exactly one Result (OK=false and Err
@@ -130,7 +134,7 @@ func laneOf(kind, target string) lane { return lane{target: target, step: kind =
 // same lane, the kind is unknown, or the scheduler is closed.
 func (s *Scheduler) Submit(kind, target, sessionID string, step, steps int) bool {
 	switch kind {
-	case "spawn", "step", "freeze", "spring", "extract", "delete":
+	case "spawn", "ally", "step", "freeze", "spring", "extract", "delete":
 	default:
 		return false
 	}
@@ -188,6 +192,8 @@ func (s *Scheduler) run(ctx context.Context, j job) Result {
 	switch j.kind {
 	case "spawn":
 		r.Spawned, r.Node, err = s.ops.Spawn(ctx, j.target)
+	case "ally":
+		r.Spawned, r.Node, r.Step.Say, err = s.ops.SpawnAlly(ctx, j.target)
 	case "step":
 		r.Step, err = s.ops.Step(ctx, j.sessionID, j.step, j.steps)
 		r.Node = r.Step.Node

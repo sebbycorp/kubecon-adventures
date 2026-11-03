@@ -1,8 +1,8 @@
 // This file is missions, squads and scoring. Missions spawn targets, pace their heist
 // steps, run the target's crew (revives), decide each mission's outcome, and keep the
-// takedown leaderboard. Like World it is pure logic driven by the game loop: Tick
-// submits ops to the Scheduler, and every Result comes back through OnResult (after
-// World.Resolve for control kinds).
+// takedown leaderboard, and delete the squad's allies when a mission ends. Like World
+// it is pure logic driven by the game loop: Tick submits ops to the Scheduler, and
+// every Result comes back through OnResult (after World.Resolve for control kinds).
 package heist
 
 import (
@@ -89,12 +89,13 @@ type Missions struct {
 	best     map[string]int // highest level won, by squad
 	players  map[string]*ScoreRow
 	squadTD  map[string]int
+	retire   map[string]bool // allies to delete after a mission end; true once submitted
 }
 
 // NewMissions uses rnd for step pacing and target names.
 func NewMissions(rnd *rand.Rand) *Missions {
 	return &Missions{rnd: rnd, active: map[string]*Mission{}, targets: map[string]*track{},
-		best: map[string]int{}, players: map[string]*ScoreRow{}, squadTD: map[string]int{}}
+		best: map[string]int{}, players: map[string]*ScoreRow{}, squadTD: map[string]int{}, retire: map[string]bool{}}
 }
 
 // Start begins a mission for squad. Level 1 is always open; higher levels need the
@@ -165,6 +166,7 @@ func (m *Missions) Tick(w *World, s *Scheduler) {
 			m.tickTarget(ms, id, w, s)
 		}
 	}
+	m.submitRetires(w, s)
 }
 
 func (m *Missions) tickTarget(ms *Mission, id string, w *World, s *Scheduler) {
@@ -212,6 +214,9 @@ func (m *Missions) pace(now float64) float64 { return now + stepMin + m.rnd.Floa
 // OnResult applies a scheduler Result. For control kinds the game calls World.Resolve
 // first. Takedowns are credited for any target; the rest only for mission targets.
 func (m *Missions) OnResult(r Result, w *World) {
+	if m.allyResult(r, w) {
+		return
+	}
 	t := w.Targets[r.Target]
 	if r.Kind == "freeze" && r.OK && t != nil && t.FrozenBy != "" {
 		p := m.player(t.FrozenBy, w)
@@ -352,6 +357,7 @@ func (m *Missions) check(ms *Mission, w *World) {
 // players who took part; the remainder goes to the first by player ID.
 func (m *Missions) finish(ms *Mission, outcome string, w *World) {
 	ms.Outcome = outcome
+	m.retireAllies(ms, w)
 	if m.active[ms.Squad] == ms {
 		delete(m.active, ms.Squad)
 	}
