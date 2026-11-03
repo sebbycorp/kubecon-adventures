@@ -82,6 +82,9 @@ func (g *Game) fresh() {
 	g.q = NewSquads(rand.New(rand.NewPCG(seed>>3, seed|1)))
 	s := NewScheduler(g.ops, stepSlots, resumeSlots)
 	s.ExtractUsesResume = true // checkpointing a suspended session fails; resume first
+	if m, ok := g.ops.(interface{ ExtractUsesResume() bool }); ok {
+		s.ExtractUsesResume = m.ExtractUsesResume() // HEIST_EXTRACT=direct
+	}
 	rec := map[opKey]int{}
 	s.onSubmit = func(kind, target string) { rec[opKey{kind, target}]++ } // Submit runs under g.mu
 	g.s, g.inflight = s, rec

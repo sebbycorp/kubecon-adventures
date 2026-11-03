@@ -2,6 +2,7 @@ package heist
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -191,10 +192,16 @@ func (s *Scheduler) work(j job) {
 	}
 }
 
-// run executes the op and builds its Result.
-func (s *Scheduler) run(ctx context.Context, j job) Result {
-	r := Result{Kind: j.kind, Target: j.target}
+// run executes the op and builds its Result. A panicking Ops call becomes a failed
+// Result, so its lane and slot are still freed.
+func (s *Scheduler) run(ctx context.Context, j job) (r Result) {
+	r = Result{Kind: j.kind, Target: j.target}
 	start := time.Now()
+	defer func() {
+		if p := recover(); p != nil {
+			r = Result{Kind: j.kind, Target: j.target, Ms: time.Since(start).Milliseconds(), Err: fmt.Sprintf("panic: %v", p)}
+		}
+	}()
 	var ms int64
 	var err error
 	switch j.kind {

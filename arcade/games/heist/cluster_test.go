@@ -4,6 +4,7 @@ package heist
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -94,4 +95,153 @@ func TestCheckpointSuspended(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("delete ok after %v", time.Since(start))
+}
+
+// TestKagentOpsLifecycle runs the real adapter through a target's and an ally's life:
+// Spawn, 2 Steps, Freeze, Spring, Step, Extract; SpawnAlly, Freeze, Spring, Delete.
+func TestKagentOpsLifecycle(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	url := os.Getenv("KAGENT_URL")
+	heister, err := kagent.NewKagent(url, "heist-test", "kagent", "heister")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidekick, err := kagent.NewKagent(url, "heist-test", "kagent", "sidekick")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := NewKagentOps(heister, sidekick, "resume-first")
+	var made []string
+	defer func() { // every session this test made is gone afterwards, pass or fail
+		for _, sid := range made {
+			_ = o.Delete(context.Background(), sid)
+		}
+	}()
+	op := func(name string) func() {
+		start := time.Now()
+		return func() { t.Logf("TIMING %-14s %v", name, time.Since(start).Round(time.Millisecond)) }
+	}
+	// Each op gets the game's per-op timeout.
+	opCtx := func() (context.Context, context.CancelFunc) { return context.WithTimeout(ctx, opTimeout) }
+
+	c, cc := opCtx()
+	done := op("spawn")
+	sid, node, err := o.Spawn(c, "lifecycle-test")
+	cc()
+	done()
+	if err != nil {
+		t.Fatal(err)
+	}
+	made = append(made, sid)
+	t.Logf("target %s on node %q, job %q", sid, node, jobFor(sid))
+
+	step := func(n int) {
+		c, cc := opCtx()
+		defer cc()
+		done := op(fmt.Sprintf("step %d", n))
+		r, err := o.Step(c, sid, n, 4)
+		done()
+		if err != nil {
+			t.Fatalf("step %d: %v", n, err)
+		}
+		t.Logf("step %d: %+v", n, r)
+	}
+	step(1)
+	step(2)
+
+	c, cc = opCtx()
+	done = op("freeze")
+	ms, err := o.Freeze(c, sid)
+	cc()
+	done()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("freeze reported %d ms", ms)
+
+	c, cc = opCtx()
+	done = op("spring")
+	node, say, ms, err := o.Spring(c, sid)
+	cc()
+	done()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if say == "" {
+		t.Fatal("spring: empty say")
+	}
+	t.Logf("spring: node %q, resume %d ms, say %q", node, ms, say)
+
+	step(3)
+
+	c, cc = opCtx()
+	done = op("extract")
+	ms, err = o.Extract(c, sid)
+	cc()
+	done()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("extract reported %d ms", ms)
+	ids, err := heister.ListSessionIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if id == sid {
+			t.Fatalf("session %s still listed after Extract", sid)
+		}
+	}
+
+	// The ally: sidekick greets, freezes, is sprung, and is deleted.
+	c, cc = opCtx()
+	done = op("ally")
+	aid, node, say, err := o.SpawnAlly(c, "lifecycle-ally")
+	cc()
+	done()
+	if aid != "" {
+		made = append(made, aid)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("ally %s on node %q says %q", aid, node, say)
+	if say == "" {
+		t.Fatal("ally: empty greeting")
+	}
+	c, cc = opCtx()
+	done = op("ally freeze")
+	_, err = o.Freeze(c, aid)
+	cc()
+	done()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, cc = opCtx()
+	done = op("ally spring")
+	_, say, _, err = o.Spring(c, aid)
+	cc()
+	done()
+	if err != nil || say == "" {
+		t.Fatalf("ally spring: %q %v", say, err)
+	}
+	t.Logf("ally sprung: %q", say)
+	c, cc = opCtx()
+	done = op("ally delete")
+	err = o.Delete(c, aid)
+	cc()
+	done()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err = sidekick.ListSessionIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if id == aid {
+			t.Fatalf("ally session %s still listed after Delete", aid)
+		}
+	}
 }

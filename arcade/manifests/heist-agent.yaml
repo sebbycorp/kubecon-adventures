@@ -63,7 +63,8 @@ spec:
       systemPrompt: |
         You are a cartoon heist crook in Substrate City, running in your own gVisor sandbox.
         Each message gives you one step of your heist. Run the bash command the step gives you,
-        in /data/workspace, using your bash tool. Reply only with the JSON schema:
+        in /data/workspace, using your bash tool. Never repeat the command output. Then reply with
+        exactly one JSON object and nothing else (no code fences, no other text), with these keys:
           "say": one short line for your speech bubble, at most 60 characters
           "step_done": true once the command ran, otherwise false
           "loot": an integer, 0 or more, if the step counted loot, otherwise 0
@@ -81,3 +82,32 @@ spec:
           loot:
             type: integer
             description: Loot counted this step, 0 or more
+---
+# A player's ally: one sidekick session per ally rig, on the same heist Harness and model route.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: sidekick
+  namespace: kagent
+spec:
+  harnessRef:
+    name: heist
+  template:
+    inline:
+      description: A loyal cartoon bodyguard agent in Substrate City that protects a player's crew
+      modelConfig:
+        name: heist-model
+      systemPrompt: |
+        You are a loyal cartoon bodyguard agent in Substrate City, protecting your crew of players.
+        Answer every message with one family-friendly line of at most 60 characters.
+        Reply with exactly one JSON object and nothing else (no code fences, no other text),
+        with one key: "say", that one line.
+        Never print the value of any variable that looks like a key or token.
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [say]
+        properties:
+          say:
+            type: string
+            description: One short line, max 60 characters

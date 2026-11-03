@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -350,4 +351,31 @@ func TestConcurrentSubmit(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// panicOps panics on every call.
+type panicOps struct{ fakeOps }
+
+func (panicOps) Step(ctx context.Context, id string, step, steps int) (StepResult, error) {
+	panic("kaboom")
+}
+
+func TestPanickingOpBecomesFailedResult(t *testing.T) {
+	s := NewScheduler(&panicOps{}, 1, 1)
+	defer s.Close()
+	if !s.Submit("step", "t1", "s1", 1, 4) {
+		t.Fatal("submit refused")
+	}
+	r := result(t, s)
+	if r.OK || !strings.HasPrefix(r.Err, "panic: ") || !strings.Contains(r.Err, "kaboom") {
+		t.Fatalf("got %+v", r)
+	}
+	// The lane and the only step slot are free again.
+	waitInFlight(t, s, 0, 0, 0)
+	if !s.Submit("step", "t1", "s1", 2, 4) {
+		t.Fatal("lane still busy after a panic")
+	}
+	if r := result(t, s); r.OK {
+		t.Fatalf("second panic: %+v", r)
+	}
 }

@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/escape"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/flow"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/fork"
+	"github.com/sebbycorp/kubecon-adventures/arcade/games/heist"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
 )
@@ -52,6 +54,8 @@ func main() {
 	esc := escape.New(p, agentClient("escapee"))
 	frk := fork.New(p, agentClient("forky"))
 	flw := flow.New(p, agentClient("flowbot"))
+	gta := heist.New(p, heist.NewKagentOps(agentClient("heister"), agentClient("sidekick"), envOr("HEIST_EXTRACT", "resume-first")),
+		strings.Split(envOr("HEIST_NODES", "kagent-worker,kagent-worker2"), ","))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -61,6 +65,7 @@ func main() {
 	esc.Run(ctx)
 	frk.Run(ctx)
 	flw.Run(ctx)
+	gta.Run(ctx)
 
 	web := func(dir string) fs.FS {
 		sub, err := fs.Sub(webFS, path.Join("web", dir))
@@ -74,11 +79,12 @@ func main() {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "index.html") })
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
-	arcadeAPI(mux, p, duck, esc, frk, flw)
+	arcadeAPI(mux, p, duck, esc, frk, flw, gta)
 	duck.Routes(mux, web("duck-hunt"))
 	esc.Routes(mux, web("sandbox-escape"))
 	frk.Routes(mux, web("fork-frenzy"))
 	flw.Routes(mux, web("agent-flow"))
+	gta.Routes(mux, web("grand-theft-agent"))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	go func() {
@@ -102,7 +108,7 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, esc *escape.Game, frk *fork.Game, flw *flow.Game) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, esc *escape.Game, frk *fork.Game, flw *flow.Game, gta *heist.Game) {
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -145,6 +151,9 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, es
 		}
 		for k, v := range flw.Stats() {
 			out["agentFlow_"+k] = v
+		}
+		for k, v := range gta.Stats() {
+			out["heist_"+k] = v
 		}
 		platform.WriteJSON(w, out)
 	})
