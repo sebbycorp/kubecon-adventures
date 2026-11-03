@@ -175,7 +175,7 @@ const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a7
 function feed(cls, nick, text, code, color) {
   const f = $("feed"), d = document.createElement("div");
   d.className = "ev " + cls;
-  d.innerHTML = `<div class="av" style="background:${COLORS[color] || "#8a8f94"}">${esc((nick || "?")[0].toUpperCase())}</div><b>${esc(nick)}</b><span>${esc(text)}</span><code>${esc(code || "")}</code>`;
+  d.innerHTML = `<div class="av" style="background:${COLORS[color] || (/^#[0-9a-f]{6}$/i.test(color || "") ? color : "#8a8f94")}">${esc((nick || "?")[0].toUpperCase())}</div><b>${esc(nick)}</b><span>${esc(text)}</span><code>${esc(code || "")}</code>`;
   f.appendChild(d);
   while (f.children.length > 3) f.firstChild.remove();
 }
@@ -254,12 +254,12 @@ function stationCard(key) {
 let actorFeedAt = 0;
 const flow = startFlowScreen($("scene"), {
   camera: false, // a still view of the whole map; only the things on it move
-  onActor(m, game) {
+  onActor(m, game, color) {
     if (m.kind === "new" || m.kind === "wake") heart.beat(0.5, game + " · " + (m.kind === "new" ? "new" : "woke"));
     if (Date.now() - actorFeedAt < 2500) return;
     actorFeedAt = Date.now();
-    const verb = { new: "new agent actor", wake: "woke from a snapshot", sleep: "snapshotted to storage", gone: "deleted" }[m.kind];
-    feed("", game, `${m.n > 1 ? m.n + " agents: " : ""}${verb}`, m.node || "", "");
+    const verb = { new: "new actor", wake: "woke up", sleep: "snapshotted", gone: "deleted" }[m.kind];
+    feed("", game, `${m.n > 1 ? m.n + "× " : ""}${verb}`, m.node || "", color);
   },
   onMove(m) {
     if (m.error) return;
