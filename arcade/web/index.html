@@ -67,7 +67,10 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+// ?next=/some-game sends a player back to the game that asked them to join first.
+const next = new URLSearchParams(location.search).get("next");
 function showGames(p) {
+  if (next && /^\/[\w\-\/]*$/.test(next) && !next.startsWith("//")) { location.replace(next); return; }
   $("join").classList.add("hidden");
   $("games").classList.remove("hidden");
   $("who").textContent = p.nick.toUpperCase();

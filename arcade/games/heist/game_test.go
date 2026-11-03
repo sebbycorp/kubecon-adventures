@@ -826,3 +826,40 @@ func TestTimingsRecorded(t *testing.T) {
 		t.Fatalf("freeze timing = %d", got)
 	}
 }
+
+func TestCityAPI(t *testing.T) {
+	s := newServer(t, &liveOps{})
+	resp, err := http.Get(s.srv.URL + "/grand-theft-agent/api/city")
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("GET city: %v %v", err, resp)
+	}
+	defer resp.Body.Close()
+	var c CityView
+	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+	if c.W != 48 || c.H != 32 || len(c.Tiles) != c.H || len(c.Tiles[0]) != c.W || c.Tiles[13][25] != DispatchTile {
+		t.Fatalf("city = %d x %d, %d rows", c.W, c.H, len(c.Tiles))
+	}
+	if c.Vault != (RectView{43, 25, 4, 5}) || c.Dispatch != (RectView{25, 13, 5, 5}) {
+		t.Fatalf("vault %+v dispatch %+v", c.Vault, c.Dispatch)
+	}
+	if len(c.Districts) != 2 || c.Districts["node-2"] != (RectView{24, 0, 24, 32}) {
+		t.Fatalf("districts = %+v", c.Districts)
+	}
+}
+
+func TestSnapHeadScore(t *testing.T) {
+	s := newServer(t, &liveOps{})
+	ada := s.g.p.Players.Join("Ada")
+	c := s.mustDial(t, &ada, "")
+	if sn := snap(t, c, time.Second, nil); sn.Best != 0 {
+		t.Fatalf("best = %d, want 0", sn.Best)
+	}
+	s.g.mu.Lock()
+	s.g.m.best[s.g.w.Avatars[ada.ID].Squad] = 2
+	p := s.g.m.player(ada.ID, s.g.w)
+	p.Takedowns, p.Cash = 3, 450
+	s.g.mu.Unlock()
+	snap(t, c, time.Second, func(sn Snap) bool { return sn.Best == 2 && sn.Takedowns == 3 && sn.Cash == 450 })
+}

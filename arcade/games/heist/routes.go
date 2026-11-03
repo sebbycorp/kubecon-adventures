@@ -53,6 +53,10 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	mux.HandleFunc("GET /grand-theft-agent/screen", page("screen.html"))
 	mux.Handle("GET "+staticPrefix, http.StripPrefix(staticPrefix, http.FileServerFS(web)))
 	mux.HandleFunc("GET /grand-theft-agent/ws", g.serveWS)
+	city := g.city.View()
+	mux.HandleFunc("GET /grand-theft-agent/api/city", func(w http.ResponseWriter, r *http.Request) {
+		platform.WriteJSON(w, city)
+	})
 
 	mux.HandleFunc("POST /admin/grand-theft-agent/api/reset", func(w http.ResponseWriter, r *http.Request) {
 		// A dropped admin request must not cancel the deletes half way.
@@ -94,4 +98,36 @@ func (g *Game) State() AdminState {
 		s.Stash[id] = *parts(ps)
 	}
 	return s
+}
+
+// RectView is a Rect on the wire.
+type RectView struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+}
+
+// CityView is GET /grand-theft-agent/api/city: the map the clients draw. Tiles are rows
+// of tile bytes ('.' road, '#' building, 'V' Vault, 'D' Dispatch); districts are by node.
+type CityView struct {
+	W         int                 `json:"w"`
+	H         int                 `json:"h"`
+	Tiles     []string            `json:"tiles"`
+	Districts map[string]RectView `json:"districts"`
+	Vault     RectView            `json:"vault"`
+	Dispatch  RectView            `json:"dispatch"`
+}
+
+// View is the city as clients see it. The city never changes after NewCity.
+func (c *City) View() CityView {
+	rv := func(r Rect) RectView { return RectView{r.X, r.Y, r.W, r.H} }
+	v := CityView{W: c.W, H: c.H, Districts: map[string]RectView{}, Vault: rv(c.Vault), Dispatch: rv(c.Dispatch)}
+	for y := range c.H {
+		v.Tiles = append(v.Tiles, string(c.Tiles[y*c.W:(y+1)*c.W]))
+	}
+	for n, r := range c.Districts {
+		v.Districts[n] = rv(r)
+	}
+	return v
 }

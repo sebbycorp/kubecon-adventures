@@ -42,12 +42,17 @@ const (
 var allowedOrigins = []string{"kubecon.agentpwned.ai"}
 
 // SnapHead is the per-receiver part of a snapshot. Inv and Stash are only the
-// receiving player's, and absent for screens.
+// receiving player's, and absent for screens. Best is the highest level the player's
+// squad has won (0 or absent: none), so the phone can grey out locked levels;
+// Takedowns and Cash are the player's own score, which the top-10 board may not show.
 type SnapHead struct {
-	T     string      `json:"t"`
-	Me    string      `json:"me"`
-	Inv   *[]PartView `json:"inv,omitempty"`
-	Stash *[]PartView `json:"stash,omitempty"`
+	T         string      `json:"t"`
+	Me        string      `json:"me"`
+	Inv       *[]PartView `json:"inv,omitempty"`
+	Stash     *[]PartView `json:"stash,omitempty"`
+	Best      int         `json:"best,omitempty"`
+	Takedowns int         `json:"takedowns,omitempty"`
+	Cash      int         `json:"cash,omitempty"`
 }
 
 // SnapCommon is the part every receiver gets. Events are the ones since the previous
@@ -244,6 +249,10 @@ func (g *Game) framesLocked(ev []Event) frames {
 		if !c.screen {
 			if a := g.w.Avatars[c.player]; a != nil {
 				h.Inv = parts(a.Inv)
+				h.Best = g.m.best[a.Squad]
+			}
+			if p := g.m.players[c.player]; p != nil {
+				h.Takedowns, h.Cash = p.Takedowns, p.Cash
 			}
 			h.Stash = parts(g.w.Stash[c.player])
 		}
