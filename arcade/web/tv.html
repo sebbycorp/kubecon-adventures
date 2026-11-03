@@ -164,7 +164,7 @@ const TILES = [
 function tile(g) {
   const url = g.ext ? g.path : SITE + g.path, img = g.img || g.path.slice(1);
   return `<div class="tile" style="--c:${g.color}">
-    <div class="info"><img class="shot" src="/static/shots/${img}.webp?v=4" alt="${esc(g.name)} screenshot"><h3>${esc(g.name)}</h3>
+    <div class="info"><img class="shot" src="/static/shots/${img}.webp?v=5" alt="${esc(g.name)} screenshot"><h3>${esc(g.name)}</h3>
       <div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div></div>
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;
 }
