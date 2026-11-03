@@ -1,0 +1,54 @@
+# Flappy Substrate: every swimmer's octopus is an "octo" session, its own Substrate actor
+# on the small "flappy" WorkerPool. An octopus is awake (holding a worker) only while its
+# player swims; a crash snapshots it to object storage. Runs are short and octopuses sleep
+# between them, so 6 workers serve a crowd. The pool's 10 sessions each ran one short
+# placing turn when the arcade started; the game itself makes no LLM calls.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: flappy
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: flappy
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 6
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: flappy
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: flappy
+    snapshotPolicy:
+      location: s3://ate-snapshots/flappy/
+---
+# octo uses Duck Hunt's model (duck-model, the shared /v1 route and its budget): it only
+# ever runs the one placing turn per pool session.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: octo
+  namespace: kagent
+spec:
+  harnessRef:
+    name: flappy
+  template:
+    inline:
+      description: The Agent Substrate octopus in Flappy Substrate; each session is one swimmer's agent
+      modelConfig:
+        name: duck-model
+      systemPrompt: |
+        You are a cheerful cartoon octopus, the Agent Substrate mascot, swimming in an arcade
+        game at KubeCon. Reply in at most five friendly words. Never use tools.

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flappy Substrate · big screen</title>
+<link rel="icon" href="/flappy/static/octo-128.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  /* A 1920x1080 stage scaled to the screen. */
+  :root { --foam: #e9fbff; --aqua: #5ee7ff; --green: #5fd068; --gold: #ffd23d; --mute: #9cc6d6; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #021a2a; color: var(--foam); font: 20px/1.35 Inter, system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #stage { position: absolute; width: 1920px; height: 1080px; transform-origin: 0 0; display: grid; grid-template-columns: 560px 1fr 520px; gap: 30px; padding: 40px 44px; }
+  .panel { border-radius: 24px; background: linear-gradient(180deg, #063f5ee8, #022437ee); border: 2px solid #2aa6c9; box-shadow: 0 0 0 4px #04324a99, 0 20px 60px #0008, inset 0 0 50px #5ee7ff1a; padding: 22px 24px; }
+  h1 { margin: 0; font: 700 64px/1 Fredoka, sans-serif; color: #fff; text-shadow: 0 5px 0 #0a5576; }
+  h1 span { color: var(--green); }
+  h2 { margin: 0 0 14px; font: 700 30px Fredoka, sans-serif; color: #fff; }
+  .left { display: grid; grid-template-rows: auto auto 1fr; gap: 22px; min-height: 0; }
+  .hero { display: flex; align-items: center; gap: 18px; }
+  .hero img { width: 170px; animation: bob 2.4s ease-in-out infinite; filter: drop-shadow(0 10px 20px #000a); }
+  @keyframes bob { 50% { transform: translateY(-12px) rotate(-4deg); } }
+  .tag { color: var(--mute); font-size: 21px; margin-top: 10px; }
+  #qr { display: flex; gap: 20px; align-items: center; }
+  #qrcode { width: 230px; height: 230px; background: #fff; border-radius: 18px; padding: 12px; flex: none; color: #111; font-size: 14px; word-break: break-all; }
+  #qrcode svg { width: 100%; height: 100%; display: block; }
+  #qr b { font: 700 32px Fredoka, sans-serif; color: #fff; display: block; }
+  #qr .u { color: var(--aqua); font-size: 18px; margin: 6px 0 12px; display: block; }
+  #qr .how { color: #cdeef7; font-size: 18px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: start; }
+  .st { border-radius: 16px; background: #021a2acc; border: 1px solid #1d5f7a; padding: 12px 16px; }
+  .st b { display: block; font: 700 46px/1 Fredoka, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+  .st.g b { color: var(--green); }
+  .st.a b { color: var(--aqua); }
+  .st span { color: var(--mute); font-size: 16px; }
+
+  /* Top 10 */
+  .mid { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+  #board { display: grid; gap: 10px; position: relative; align-content: start; }
+  .rw { display: grid; grid-template-columns: 64px 18px 1fr auto; gap: 16px; align-items: center; padding: 12px 20px; border-radius: 16px; background: #021a2acc; border: 1px solid #1d5f7a;
+    transition: transform .6s cubic-bezier(.2, .9, .3, 1.2); }
+  .rw.first { background: linear-gradient(90deg, #5c4a0a, #2a2206 70%); border-color: var(--gold); box-shadow: 0 0 30px #ffd23d44; }
+  .rw .n { font: 700 34px Fredoka, sans-serif; color: var(--mute); text-align: center; }
+  .rw.first .n { color: var(--gold); }
+  .rw i { width: 16px; height: 16px; border-radius: 50%; }
+  .rw .who b { display: block; font: 700 28px Fredoka, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rw .who small { color: var(--mute); font-size: 16px; }
+  .rw .sc { font: 700 40px Fredoka, sans-serif; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .rw.new { animation: glow 2.2s ease-out; }
+  .rw.up { animation: up 1.6s ease-out; }
+  @keyframes glow { 0% { box-shadow: 0 0 0 4px #5fd068, 0 0 60px #5fd068; } 100% { box-shadow: none; } }
+  @keyframes up { 0% { background: #1d6b3a; } 100% {} }
+  .empty { color: var(--mute); font-size: 24px; padding: 30px 10px; text-align: center; }
+
+  /* Feed */
+  .right { display: grid; grid-template-rows: 1fr auto; gap: 22px; min-height: 0; }
+  #feed { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .ev { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; border-radius: 14px; background: #021a2acc; border: 1px solid #1d5f7a; font-size: 18px; animation: in .5s ease-out; }
+  .ev i { width: 12px; height: 12px; border-radius: 50%; margin-top: 7px; flex: none; }
+  .ev b { color: #fff; }
+  .ev em { font-style: normal; color: var(--aqua); }
+  .ev.crash em { color: #ffb0bd; }
+  .ev.best { border-color: var(--gold); }
+  @keyframes in { from { opacity: 0; transform: translateX(20px); } }
+  #cta { justify-content: center; }
+</style>
+</head>
+<body>
+<canvas id="sea"></canvas>
+<div id="stage">
+  <section class="left">
+    <div class="panel">
+      <div class="hero"><img src="/flappy/static/octo-256.png" alt="The Agent Substrate octopus"><div><h1>Flappy<br><span>Substrate</span></h1></div></div>
+      <div class="tag">You are the agent. Tap to swim. PLAY wakes your own real agent on Agent Substrate; a crash snapshots it.</div>
+    </div>
+    <div class="panel" id="qr"><div id="qrcode"></div><div><b>SCAN TO SWIM</b><span class="u" id="joinUrl"></span><span class="how">Tap to swim up. Dodge the coral, the OOM walls and the 429 gates. Bubbles are worth 5.</span></div></div>
+    <div class="stats">
+      <div class="st g"><b id="sAwake">–</b><span>octopuses awake</span></div>
+      <div class="st"><b id="sRuns">–</b><span>swimming now</span></div>
+      <div class="st a"><b id="sSnap">–</b><span>snapshot p50</span></div>
+      <div class="st a"><b id="sWake">–</b><span>wake-up p50</span></div>
+    </div>
+  </section>
+  <section class="panel mid">
+    <h2>🏆 Deepest dives today</h2>
+    <div id="board"></div>
+  </section>
+  <section class="right">
+    <div class="panel" style="display:grid;grid-template-rows:auto 1fr;min-height:0"><h2>Live from the deep</h2><div id="feed"></div></div>
+    <div class="panel"><div id="cta"></div></div>
+  </section>
+</div>
+
+<script src="/static/qrcode-1.4.4.min.js"></script>
+<script src="/static/arcade.js?v=2"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const dot = (c) => ({ green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" })[c] || "#8a8f94";
+const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
+
+function fit() {
+  const k = Math.min(innerWidth / 1920, innerHeight / 1080), st = $("stage");
+  st.style.transform = `scale(${k})`;
+  st.style.left = (innerWidth - 1920 * k) / 2 + "px";
+  st.style.top = (innerHeight - 1080 * k) / 2 + "px";
+}
+addEventListener("resize", fit);
+fit();
+
+// The QR code points phones at /flappy; a screen opened on localhost points at the public site.
+const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+const joinUrl = new URLSearchParams(location.search).get("join") || (local ? "https://kubecon.agentpwned.ai/flappy" : location.origin + "/flappy");
+$("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
+try { const qr = qrcode(0, "M"); qr.addData(joinUrl); qr.make(); $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); }
+catch { $("qrcode").textContent = joinUrl; }
+Arcade.ctas($("cta"), "lg");
+
+// ---- the top 10, with new entries and climbs animated ----
+let prev = new Map(); // nick -> rank
+function board(rows) {
+  if (!rows || !rows.length) { $("board").innerHTML = `<div class="empty">No dives yet. Scan the code and be the first!</div>`; prev = new Map(); return; }
+  const before = new Map([...$("board").querySelectorAll(".rw")].map((el) => [el.dataset.nick, el.getBoundingClientRect().top]));
+  $("board").innerHTML = rows.map((r, i) => {
+    const was = prev.get(r.nick), cls = was === undefined ? "new" : was > i + 1 ? "up" : "";
+    return `<div class="rw ${i === 0 ? "first" : ""} ${prev.size ? cls : ""}" data-nick="${esc(r.nick)}"><span class="n">${i + 1}</span><i style="background:${dot(r.color)}"></i><span class="who"><b>${esc(r.nick)}</b><small>${esc(r.detail || "")}</small></span><span class="sc">${r.score}</span></div>`;
+  }).join("");
+  // Slide rows from where they were (FLIP).
+  for (const el of $("board").querySelectorAll(".rw")) {
+    const t = before.get(el.dataset.nick);
+    if (t === undefined) continue;
+    const dy = t - el.getBoundingClientRect().top;
+    if (Math.abs(dy) > 2) { el.style.transition = "none"; el.style.transform = `translateY(${dy}px)`; requestAnimationFrame(() => { el.style.transition = ""; el.style.transform = ""; }); }
+  }
+  prev = new Map(rows.map((r, i) => [r.nick, i + 1]));
+}
+
+// ---- the live feed ----
+let seenAt = 0;
+function feed(events) {
+  for (const e of events || []) {
+    if (e.at <= seenAt) continue;
+    seenAt = e.at;
+    const who = `<i style="background:${dot(e.color)}"></i>`;
+    let html = "";
+    if (e.type === "woke") html = `${who}<span><b>${esc(e.nick)}</b>'s octopus woke on a sandbox <em>in ${ms(e.ms)}</em></span>`;
+    else if (e.type === "crash") html = `${who}<span><b>${esc(e.nick)}</b> crashed at ${e.score}${e.ms ? ` · <em>snapshotted in ${ms(e.ms)}</em>` : ""}</span>`;
+    else if (e.type === "best") html = `🏆<span><b>${esc(e.nick)}</b> takes #1 with <em>${e.score}</em>!</span>`;
+    else if (e.type === "nowake") html = `${who}<span><b>${esc(e.nick)}</b> swims without an agent · <em>${esc(e.text || "")}</em></span>`;
+    if (!html) continue;
+    const d = document.createElement("div");
+    d.className = "ev " + e.type;
+    d.innerHTML = html;
+    $("feed").prepend(d);
+    while ($("feed").children.length > 9) $("feed").lastChild.remove();
+  }
+}
+
+function apply(s) {
+  $("sAwake").textContent = `${s.awake}/${s.workers}`;
+  $("sRuns").textContent = s.runs;
+  $("sSnap").textContent = ms(s.timings?.suspend?.p50);
+  $("sWake").textContent = ms(s.timings?.resume?.p50);
+  board(s.board);
+  feed(s.events);
+}
+(function connect() {
+  const es = new EventSource("/flappy/api/events");
+  es.onmessage = (m) => apply(JSON.parse(m.data));
+  es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+})();
+
+// ---- an underwater backdrop: light rays, rising bubbles, swaying kelp ----
+const cv = $("sea"), cx = cv.getContext("2d");
+const bubbles = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), r: 2 + Math.random() * 6, v: 0.02 + Math.random() * 0.05 }));
+function sea(now) {
+  const t = now / 1000, w = innerWidth, h = innerHeight;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const g = cx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "#0b6d93"); g.addColorStop(0.5, "#064b6d"); g.addColorStop(1, "#021d30");
+  cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+  cx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 7; i++) {
+    const x = ((i * w) / 6 + t * 12) % (w + 300) - 150, a = 0.04 + 0.03 * Math.sin(t * 0.6 + i);
+    const lg = cx.createLinearGradient(0, 0, 0, h);
+    lg.addColorStop(0, `rgba(180,240,255,${a})`); lg.addColorStop(1, "rgba(180,240,255,0)");
+    cx.fillStyle = lg;
+    cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x + 90, 0); cx.lineTo(x + 260, h); cx.lineTo(x + 60, h); cx.fill();
+  }
+  cx.globalCompositeOperation = "source-over";
+  cx.strokeStyle = "rgba(30,140,90,.5)"; cx.lineWidth = 10; cx.lineCap = "round";
+  for (let i = 0; i < 18; i++) {
+    const x = (i + 0.5) * (w / 18);
+    cx.beginPath(); cx.moveTo(x, h);
+    for (let s = 1; s <= 6; s++) cx.lineTo(x + Math.sin(t * 1.2 + i + s * 0.7) * s * 3, h - s * (40 + (i % 4) * 14));
+    cx.stroke();
+  }
+  cx.strokeStyle = "rgba(220,250,255,.5)"; cx.lineWidth = 1.5;
+  for (const b of bubbles) {
+    b.y -= b.v / 60;
+    if (b.y < -0.05) { b.y = 1.05; b.x = Math.random(); }
+    cx.beginPath(); cx.arc(b.x * w + Math.sin(t + b.r) * 8, b.y * h, b.r, 0, Math.PI * 2); cx.stroke();
+  }
+  requestAnimationFrame(sea);
+}
+requestAnimationFrame(sea);
+</script>
+</body>
+</html>

@@ -22,11 +22,11 @@ func (f fakeTop) Top(n int) []platform.BoardRow {
 func TestArcadeBoards(t *testing.T) {
 	var asks []int
 	top := func(nick string) topper { return fakeTop{nick, &asks} }
-	b := arcadeBoards(5, top("duck"), top("flow"), top("siege"), top("defense"), top("gateway"), top("missions"))
+	b := arcadeBoards(5, top("duck"), top("flow"), top("siege"), top("defense"), top("gateway"), top("flappy"), top("missions"))
 	want := []struct{ game, path, nick string }{
 		{"Substrate Siege", "/substrate-siege", "siege"}, {"Cluster Defense", "/cluster-defense", "defense"},
 		{"Gateway Defense", "/gateway-defense", "gateway"}, {"Agent Flow", "/agent-flow", "flow"}, {"Duck Hunt", "/duck-hunt", "duck"},
-		{"AI agentgateway missions", missionsURL, "missions"},
+		{"Flappy Substrate", "/flappy", "flappy"}, {"AI agentgateway missions", missionsURL, "missions"},
 	}
 	if len(b) != len(want) {
 		t.Fatalf("boards = %+v", b)

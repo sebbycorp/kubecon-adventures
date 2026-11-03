@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#04324a">
+<title>Flappy Substrate</title>
+<link rel="icon" href="/flappy/static/octo-128.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --sea: #04324a; --deep: #021a2a; --foam: #e9fbff; --aqua: #5ee7ff; --green: #5fd068; --gold: #ffd23d; --coral: #ff7a8a; --mute: #9cc6d6; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--deep); color: var(--foam); font: 15px/1.4 Inter, system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .ui { position: fixed; z-index: 2; }
+  .hidden { display: none !important; }
+  .fred { font-family: Fredoka, Inter, sans-serif; }
+
+  /* HUD */
+  #score { left: 0; right: 0; top: calc(env(safe-area-inset-top) + 62px); text-align: center; font: 700 64px/1 Fredoka, sans-serif; color: #fff;
+    text-shadow: 0 4px 0 #0a5576, 0 0 24px #5ee7ff88; pointer-events: none; }
+  #agent { left: 12px; top: calc(env(safe-area-inset-top) + 12px); display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px;
+    background: #021a2acc; border: 1px solid #1d5f7a; font-size: 12.5px; color: var(--mute); max-width: 62vw; pointer-events: none; }
+  #agent i { width: 9px; height: 9px; border-radius: 50%; background: #5a6b73; flex: none; }
+  #agent.on i { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  #agent.on b { color: #c8ffd0; }
+  #agent b { color: var(--foam); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #menuBtn { right: 12px; top: calc(env(safe-area-inset-top) + 10px); border: 1px solid #1d5f7a; background: #021a2acc; color: var(--foam); font: 700 13px Fredoka, sans-serif;
+    letter-spacing: .08em; border-radius: 999px; padding: 8px 14px; }
+  #toast { left: 50%; top: 58%; transform: translateX(-50%); text-align: center; font: 700 22px/1.25 Fredoka, sans-serif; color: #fff; text-shadow: 0 3px 0 #0a5576, 0 0 18px #000a;
+    pointer-events: none; white-space: nowrap; transition: opacity .3s; }
+  #toast small { display: block; font: 600 14px Inter, sans-serif; color: var(--aqua); text-shadow: 0 1px 4px #000; margin-top: 6px; }
+
+  /* Cards (title, end, menu) */
+  .card { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(380px, calc(100vw - 28px)); max-height: calc(100vh - 40px); overflow: auto; border-radius: 22px;
+    background: linear-gradient(180deg, #063f5ef2, #022437f5); border: 2px solid #2aa6c9; box-shadow: 0 0 0 4px #04324a, 0 20px 60px #000a, inset 0 0 40px #5ee7ff22;
+    padding: 20px 18px 18px; text-align: center; touch-action: pan-y; }
+  .card h1 { margin: 2px 0 0; font: 700 36px/1 Fredoka, sans-serif; color: #fff; text-shadow: 0 4px 0 #0a5576; letter-spacing: .01em; }
+  .card h1 span { color: var(--green); }
+  .card .tag { color: var(--mute); margin: 8px 0 12px; font-size: 14px; }
+  .card img.hero { width: 150px; height: 150px; object-fit: contain; animation: bob 2.2s ease-in-out infinite; filter: drop-shadow(0 8px 18px #000a); }
+  @keyframes bob { 50% { transform: translateY(-8px) rotate(-3deg); } }
+  .how { display: grid; gap: 6px; text-align: left; margin: 6px 0 14px; font-size: 13.5px; color: #cdeef7; }
+  .how div { display: flex; gap: 10px; align-items: flex-start; }
+  .how b { color: #fff; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 15px; font: 700 20px Fredoka, sans-serif; letter-spacing: .04em; color: #06210d;
+    background: linear-gradient(180deg, #7ef08a, #4cc95a); box-shadow: 0 5px 0 #2a8a36, 0 0 24px #5fd06855; margin-top: 6px; cursor: pointer; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #2a8a36; }
+  .btn.ghost { background: none; color: var(--foam); border: 1px solid #2aa6c9; box-shadow: none; font-size: 15px; padding: 11px; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row .btn { margin: 0; }
+  .big { font: 700 64px/1 Fredoka, sans-serif; color: #fff; text-shadow: 0 4px 0 #0a5576; margin: 4px 0; }
+  .sub { color: var(--mute); font-size: 14px; }
+  .snap { display: inline-flex; gap: 8px; align-items: center; margin: 10px 0 2px; padding: 6px 12px; border-radius: 999px; background: #021a2a; border: 1px solid #1d5f7a; font-size: 13px; }
+  .snap b { color: var(--aqua); }
+  .rank { margin: 12px 0 4px; font: 700 20px Fredoka, sans-serif; color: var(--gold); }
+  .beat { color: #fff; font-size: 14px; margin-bottom: 8px; }
+  .board { text-align: left; margin: 8px 0 4px; --ab-accent: var(--gold); font-size: 14px; }
+  .lbl { text-align: left; font-size: 11px; letter-spacing: .14em; color: var(--mute); margin: 12px 0 6px; }
+  .ctas { justify-content: center; margin-top: 12px; }
+  .sound { margin-top: 10px; }
+
+  /* Rotate hint is not needed: it plays either way; landscape just sees more sea. */
+</style>
+</head>
+<body>
+<canvas id="sea"></canvas>
+
+<div id="score" class="ui hidden">0</div>
+<div id="agent" class="ui hidden"><i></i><b id="agentTxt">waking…</b></div>
+<button id="menuBtn" class="ui hidden">MENU</button>
+<div id="toast" class="ui hidden"></div>
+
+<div id="title" class="ui card">
+  <img class="hero" src="/flappy/static/octo-256.png" alt="The Agent Substrate octopus">
+  <h1>Flappy <span>Substrate</span></h1>
+  <div class="tag">You are the agent. Keep swimming to stay alive.</div>
+  <div class="how">
+    <div>🐙 <span><b>Tap</b> to swim up. Slip through the coral, the OOM walls and the 429 gates.</span></div>
+    <div>⚡ <span>PLAY wakes <b>your own real agent</b> on Agent Substrate (a real resume).</span></div>
+    <div>📦 <span>Crash and it's <b>snapshotted</b> into Snapshot Storage (a real suspend).</span></div>
+    <div>🫧 <span>Bubbles are worth <b>5</b>. Gaps are worth 1.</span></div>
+  </div>
+  <button class="btn" id="play">PLAY</button>
+  <div class="row"><button class="btn ghost" id="boardBtn">LEADERBOARD</button><button class="btn ghost" id="soundBtn">SOUND: ON</button></div>
+</div>
+
+<div id="end" class="ui card hidden">
+  <div class="sub" id="endWhy">You crashed</div>
+  <div class="big" id="endScore">0</div>
+  <div class="sub" id="endDetail"></div>
+  <div class="snap" id="endSnap">📦 <span>snapshotting your agent…</span></div>
+  <div class="rank" id="endRank"></div>
+  <div class="beat" id="endBeat"></div>
+  <button class="btn" id="again">PLAY AGAIN</button>
+  <div class="lbl">TOP 5</div>
+  <div class="board" id="endBoard"></div>
+  <div class="ctas" id="endCta"></div>
+</div>
+
+<div id="menu" class="ui card hidden">
+  <h1 style="font-size:28px">Menu</h1>
+  <div class="lbl">LEADERBOARD</div>
+  <div class="board" id="menuBoard"></div>
+  <button class="btn ghost sound" id="soundBtn2">SOUND: ON</button>
+  <div class="row"><button class="btn ghost" id="resume">CLOSE</button><a class="btn ghost" href="/flappy/screen" target="_blank" style="text-decoration:none">BIG SCREEN</a></div>
+  <div class="lbl">LEARN MORE</div>
+  <div class="ctas" id="menuCta"></div>
+  <div class="row"><a class="btn ghost" href="/" style="text-decoration:none">ARCADE</a></div>
+</div>
+
+<script src="/static/arcade.js?v=2"></script>
+<script src="/flappy/static/flappy.js"></script>
+</body>
+</html>

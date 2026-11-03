@@ -9,6 +9,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a 3-minute multiplayer city shooter | Playable | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
 | Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
 | Gateway Defense | The platform's controls (prompt guard, rate limit, egress, suspend) as towers, each kill a real call; solo tower defense | Playable | [below](#gateway-defense) |
+| Flappy Substrate (at `/flappy`) | Resume and suspend of your own agent: you are the Agent Substrate octopus, woken to swim and snapshotted when you crash | Playable | [below](#flappy-substrate) |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
 ## Start
@@ -27,6 +28,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Substrate Siege phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/substrate-siege, http://localhost:8090/substrate-siege/screen |
 | Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
 | Gateway Defense phone / big screen | http://localhost:8090/gateway-defense, http://localhost:8090/gateway-defense/screen |
+| Flappy Substrate phone / big screen | http://localhost:8090/flappy, http://localhost:8090/flappy/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -172,3 +174,14 @@ What is real:
 
 Scores are the server's, so the leaderboard needs no plausibility check: a hit counts only on the run's own target, at least 250 ms after it woke, 110 ms after the previous hit, and before the run ends. The board keeps each player's best run (in memory, like the other games). The big screen shows a QR code, the animated top 10, a live feed of hits with their real suspend times and lines, and the pool's awake and asleep counts with the snapshot and wake-up p50. Admin: `/admin/duck-hunt` (reset the board).
 
+## Flappy Substrate
+
+A one-tap underwater swim at `/flappy` where the player is the agent: the Agent Substrate octopus. Tap to swim up through gaps between coral and kelp pillars, "OOM" walls and "429" gates; the course speeds up, the gaps narrow, and touching a pillar, the surface or the sea floor ends the run. A gap is worth 1, a bubble 5.
+
+What is real:
+
+- **Your agent.** The game keeps a pool of 10 `octo` sessions (agent `octo`, harness and WorkerPool `flappy`, 6 workers) asleep as Substrate snapshots. PLAY (and PLAY AGAIN) is a real `Resume` of one of them, preferring the octopus you swam last, and the phone shows "woke in N ms" before the countdown. A crash is a real `Suspend`: the octopus sinks into the Snapshot Storage chest and the phone shows "snapshotted in N ms".
+- **Never blocking.** At most 6 octopuses are awake at once (one per worker). Over that, or if a wake takes longer than 8 s or fails, the run starts anyway and the phone says the player swims without an agent; the score still counts. A run nobody reports a crash for is put back to sleep after 10 minutes.
+- **No LLM in play.** Each pool session ran one short placing turn when the arcade started (it puts the actor on a worker); the game makes no other LLM calls. The pool is rebuilt at every start (leftover `octo` sessions are deleted) and deleted on shutdown.
+
+The swim runs on the phone on a fixed 120 Hz step, with the course the server serves (`/flappy/api/rules`, from `games/flappy/rules.go`). The server checks every reported score against those rules before it reaches the board: the gaps must be reachable in the run's time at the course's speed, and there is at most one bubble per gap. The big screen shows a QR code, the animated top 10, a live feed (wakes, crashes with their snapshot times, new #1s), and the awake octopuses with the snapshot and wake-up p50. Admin: `POST /admin/flappy/api/reset` clears the board.

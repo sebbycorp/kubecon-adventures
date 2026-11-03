@@ -42,7 +42,7 @@ const DONE = new Set(["reply", "snapshot", "asleep", "error"]);
 const GAMES = {
   duck: ["Duck Hunt", "#facc15"], "duck-direct": ["Duck Hunt test", "#a3893a"], "duck-noschema": ["Duck Hunt test", "#a3893a"],
   "hello-duck": ["kagent demo", "#9ca3af"], flowbot: ["Agent Flow", "#5fd068"], heister: ["Substrate Siege", "#38bdf8"],
-  sidekick: ["Substrate Siege ally", "#7dd3fc"], siegeplayer: ["Substrate Siege player", "#93c5fd"], subagent: ["Cluster Defense", "#fb923c"], rogue: ["Gateway Defense", "#22d3ee"], loadbot: ["load test", "#6b7280"],
+  sidekick: ["Substrate Siege ally", "#7dd3fc"], siegeplayer: ["Substrate Siege player", "#93c5fd"], subagent: ["Cluster Defense", "#fb923c"], octo: ["Flappy Substrate", "#34d399"], rogue: ["Gateway Defense", "#22d3ee"], loadbot: ["load test", "#6b7280"],
 };
 const gameOf = (agent) => GAMES[agent] || [agent, "#9ca3af"];
 
