@@ -1,0 +1,16 @@
+[Unit]
+Description=KubeCon lab: kind cluster, arcade games, tunnel, Vault and Homepage up after boot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@UP@
+TimeoutStartSec=45min
+# A slow first boot (images, Substrate workers) can miss a deadline: try again.
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=default.target

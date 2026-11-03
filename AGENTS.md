@@ -13,6 +13,7 @@ A collection of KubeCon demo/lab builds. Each top-level folder is a self-contain
 | `arcade/` | Agent arcade (Duck Hunt, Agent Flow, Substrate Siege, Cluster Defense, Gateway Defense): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
 | `tunnel/` | Cloudflare Tunnel: public `https://kubecon.agentpwned.ai` to the arcade, cloudflared in the kind cluster, `/admin` blocked | `cd tunnel && ./setup.sh` |
 | `homepage/` | Homepage dashboard for the host, cluster, and containers (port 3000) | `cd homepage && ./start.sh` |
+| `boot/` | Brings the cluster, every game, the tunnel, Vault and Homepage back after a reboot (systemd user unit) | `cd boot && ./install.sh` |
 
 Add a row here when you add a new component.
 
