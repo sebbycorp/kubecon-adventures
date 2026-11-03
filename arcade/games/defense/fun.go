@@ -28,6 +28,18 @@ var kinds = map[string]Kind{
 	"boss":         {24, 0.35, 5.5, 15},
 }
 
+// need is the hits an agent of kind needs now: later waves and bigger crowds bring
+// armour (+1 every 3 waves, +1 per 5 pilots past the first), and a boss scales with
+// the crowd, so a full booth still meets a cluster it can lose.
+func (w *World) need(kind string) int {
+	k := kindOf(kind)
+	n := w.online()
+	if kind == "boss" {
+		return int(math.Round(float64(k.Hits) * (1 + 0.25*float64(max(n, 1)-1))))
+	}
+	return k.Hits + (max(w.Round.Wave, 1)-1)/3 + (max(n, 1)-1)/5
+}
+
 func kindOf(k string) Kind {
 	if v, ok := kinds[k]; ok {
 		return v

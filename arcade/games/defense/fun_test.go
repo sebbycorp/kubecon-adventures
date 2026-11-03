@@ -298,3 +298,18 @@ func TestRunawayFlees(t *testing.T) {
 		t.Fatalf("runaway closed in: %v -> %v", before, dist(a.Pos, s.Pos))
 	}
 }
+
+func TestArmourScales(t *testing.T) {
+	w, _ := live(t)
+	w.Round.Wave = 1
+	if w.need("worker") != 2 || w.need("scout") != 1 || w.need("boss") != 24 {
+		t.Fatalf("wave 1 solo: worker %d scout %d boss %d", w.need("worker"), w.need("scout"), w.need("boss"))
+	}
+	w.Round.Wave = 7
+	for i := range 10 {
+		w.Join(string(rune('A'+i)), "x", "red")
+	}
+	if w.need("worker") != 2+2+2 || w.need("boss") != 24*(1+0.25*10) {
+		t.Fatalf("wave 7, 11 pilots: worker %d boss %d", w.need("worker"), w.need("boss"))
+	}
+}

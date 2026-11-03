@@ -711,7 +711,7 @@ func (w *World) Resolve(r Result) {
 			return
 		}
 		k := kindOf(p.kind)
-		a := &Agent{ID: r.ID, Session: r.Session, Role: p.role, Kind: p.kind, Need: k.Hits, Name: fmt.Sprintf("%s-%s", p.role, r.ID[1:]),
+		a := &Agent{ID: r.ID, Session: r.Session, Role: p.role, Kind: p.kind, Need: w.need(p.kind), Name: fmt.Sprintf("%s-%s", p.role, r.ID[1:]),
 			Pos: p.pos, State: Running, Born: w.Now, NextKids: w.Now + bossKidsEvery,
 			orbitR: orbitMin + w.rnd.Float64()*(orbitMax-orbitMin) + k.Radius - 2.2, orbitA: w.rnd.Float64() * 2 * math.Pi, orbitW: 1}
 		if w.rnd.IntN(2) == 0 {
