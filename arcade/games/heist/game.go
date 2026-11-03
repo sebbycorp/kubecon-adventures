@@ -25,7 +25,8 @@ const (
 	cleanupDelay  = 10.0  // seconds after a mission ends before its targets are deleted
 	offlineAllies = 60.0  // seconds an owner may be offline before their allies are deleted
 	evictAfter    = 300.0 // seconds offline before an avatar leaves the city
-	maxScreens    = 8     // concurrent ?screen=1 spectators
+	maxScreens    = 8     // concurrent public ?screen=1 spectators (LAN screens are exempt)
+	idleAfter     = 600.0 // seconds without input before a connected player counts as offline
 	zapTries      = 3     // attempts at a cleanup delete
 )
 
@@ -57,8 +58,10 @@ type Game struct {
 	ended      map[*Mission]float64
 	cleaned    map[*Mission]bool
 	offline    map[string]float64 // world time each player went offline
+	lastIn     map[string]float64 // world time of each connected player's last frame
+	idle       map[string]bool    // connected players taken offline for idling
 	conns      map[string]int     // open connections per player
-	screens    int                // open spectator connections
+	seq        uint64             // connections attached so far
 	clients    map[*client]bool
 	pendIn     map[*client]Input // coalesced input frames waiting for a rate-limit token
 	booked     map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
@@ -106,6 +109,7 @@ func (g *Game) fresh() {
 	g.s, g.inflight = s, rec
 	g.zaps, g.zapping, g.allyMs = map[string]zap{}, map[string]zap{}, map[string]*Mission{}
 	g.ended, g.cleaned, g.offline = map[*Mission]float64{}, map[*Mission]bool{}, map[string]float64{}
+	g.lastIn, g.idle = map[string]float64{}, map[string]bool{}
 }
 
 // Run starts the tick loop and the startup sweep of orphaned sessions (sweep.go). It
@@ -261,8 +265,9 @@ func (g *Game) retire(allyID string) {
 }
 
 // housekeep submits cleanup deletes, clears out missions ended cleanupDelay ago (and
-// forgets them missionShow later), retires the allies of owners offline for
-// offlineAllies, and evicts avatars offline for evictAfter. g.mu is held.
+// forgets them missionShow later), takes connected players who sent nothing for
+// idleAfter offline, retires the allies of owners offline for offlineAllies, and evicts
+// avatars offline for evictAfter. g.mu is held.
 func (g *Game) housekeep() {
 	keep := g.m.missions[:0]
 	for _, ms := range g.m.missions {
@@ -301,6 +306,12 @@ func (g *Game) housekeep() {
 	}
 	clear(g.m.missions[len(keep):])
 	g.m.missions = keep
+	for pid, n := range g.conns {
+		if a := g.w.Avatars[pid]; n > 0 && a != nil && a.Online && g.w.Now-g.lastIn[pid] >= idleAfter-eps {
+			a.Online, g.offline[pid], g.idle[pid] = false, g.w.Now, true // idle: their slot frees
+			g.w.Input(pid, Input{})
+		}
+	}
 	for pid, at := range g.offline {
 		if g.w.Now-at < offlineAllies-eps {
 			continue
@@ -367,6 +378,16 @@ func (g *Game) join(pl platform.Player) bool {
 }
 
 func (g *Game) joinLocked(pl platform.Player) bool {
+	if !g.online(pl) {
+		return false
+	}
+	g.conns[pl.ID]++
+	return true
+}
+
+// online brings pl's avatar online (creating it if needed), unless the city already has
+// maxPlayers online. g.mu is held.
+func (g *Game) online(pl platform.Player) bool {
 	if a := g.w.Avatars[pl.ID]; a == nil || !a.Online {
 		online := 0
 		for _, o := range g.w.Avatars {
@@ -379,9 +400,24 @@ func (g *Game) joinLocked(pl platform.Player) bool {
 		}
 	}
 	g.ensureAvatar(pl).Online = true
-	g.conns[pl.ID]++
 	delete(g.offline, pl.ID)
+	delete(g.idle, pl.ID)
+	g.lastIn[pl.ID] = g.w.Now
 	return true
+}
+
+// wake notes a frame from c's player. A player taken offline for idling comes back
+// online, as on a reconnect; it is false (and they stay offline) when the city is full.
+// g.mu is held.
+func (g *Game) wake(c *client) bool {
+	if c.screen {
+		return true
+	}
+	if !g.idle[c.player] {
+		g.lastIn[c.player] = g.w.Now
+		return true
+	}
+	return g.online(c.pl)
 }
 
 // leave closes one of a player's connections; with none left the avatar goes offline.
@@ -392,9 +428,13 @@ func (g *Game) leave(playerID string) {
 		return
 	}
 	delete(g.conns, playerID)
+	delete(g.lastIn, playerID)
+	delete(g.idle, playerID)
 	if a := g.w.Avatars[playerID]; a != nil {
+		if _, ok := g.offline[playerID]; !ok || a.Online { // an idle player's clock keeps running
+			g.offline[playerID] = g.w.Now
+		}
 		a.Online = false
-		g.offline[playerID] = g.w.Now
 	}
 	g.w.Input(playerID, Input{})
 }

@@ -9,11 +9,15 @@
 //
 // Server to client: {"t":"snap",...} at 15 Hz (see Snap), {"t":"squad","code"},
 // {"t":"pong","id"} (the answer to a ping), {"t":"err","msg"}, and {"t":"full"} before
-// closing when 48 players are online in the city (or 8 screens are watching). start,
+// closing when 48 players are online in the city, or to the oldest public screen when a
+// ninth public one connects (screens without cf-connecting-ip, on the booth's LAN, are
+// exempt). A player who sends nothing for 10 minutes counts as offline; their next
+// frame brings them back, or gets {"t":"full"} if the city filled up meanwhile. start,
 // build, squad and ping frames share a limit of 5/s.
 package heist
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"maps"
@@ -343,6 +347,9 @@ type client struct {
 	snaps  chan []byte // the newest snapshots; a stale one is dropped for a fresh one
 	ctrl   chan []byte // replies; a client that lets these back up is closed
 	cancel context.CancelFunc
+	kick   chan struct{} // tells writeLoop to send {"t":"full"} and close
+	public bool          // a screen reached through the tunnel (has cf-connecting-ip)
+	seq    uint64        // attach order, for evicting the oldest public screen
 
 	in  bucket // input rate limiter (g.mu)
 	cmd bucket // command rate limiter (reader goroutine only)
@@ -402,11 +409,26 @@ func (c *client) allowInput(now time.Time) bool { return c.in.allow(now, inputRa
 // allowCmd limits start, build and squad frames to cmdRate a second (burst cmdBurst).
 func (c *client) allowCmd(now time.Time) bool { return c.cmd.allow(now, cmdRate, cmdBurst) }
 
+// kickFull asks writeLoop to send {"t":"full"} and close the connection.
+func (c *client) kickFull() {
+	select {
+	case c.kick <- struct{}{}:
+	default:
+	}
+}
+
 func (c *client) writeLoop(ctx context.Context, conn *websocket.Conn) {
 	for {
 		var b []byte
 		select {
 		case <-ctx.Done():
+			return
+		case <-c.kick:
+			wctx, cancel := context.WithTimeout(ctx, time.Second)
+			_ = conn.Write(wctx, websocket.MessageText, []byte(`{"t":"full"}`))
+			cancel()
+			conn.Close(websocket.StatusTryAgainLater, "city full")
+			c.cancel()
 			return
 		case b = <-c.ctrl:
 		case b = <-c.snaps:
@@ -440,7 +462,8 @@ func (g *Game) serveWS(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(maxFrame)
 	ctx, cancel := context.WithCancel(context.Background()) // r.Context() is unreliable once hijacked
 	defer cancel()
-	c := &client{pl: pl, player: pl.ID, screen: screen, snaps: make(chan []byte, 2), ctrl: make(chan []byte, 16), cancel: cancel}
+	c := &client{pl: pl, player: pl.ID, screen: screen, public: r.Header.Get("cf-connecting-ip") != "",
+		snaps: make(chan []byte, 2), ctrl: make(chan []byte, 16), kick: make(chan struct{}, 1), cancel: cancel}
 	if !g.attach(c) {
 		wctx, wc := context.WithTimeout(ctx, time.Second)
 		_ = conn.Write(wctx, websocket.MessageText, []byte(`{"t":"full"}`))
@@ -465,7 +488,8 @@ func (g *Game) serveWS(w http.ResponseWriter, r *http.Request) {
 }
 
 // attach registers c, bringing its player online. False when the city is full or the
-// game has stopped.
+// game has stopped. A public screen beyond maxScreens evicts the oldest public screen
+// (squatters can't lock the booth out); LAN screens are not counted.
 func (g *Game) attach(c *client) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -475,13 +499,24 @@ func (g *Game) attach(c *client) bool {
 	default:
 	}
 	switch {
-	case c.screen && g.screens >= maxScreens:
-		return false
+	case c.screen && c.public:
+		var public []*client
+		for o := range g.clients {
+			if o.screen && o.public {
+				public = append(public, o)
+			}
+		}
+		if len(public) >= maxScreens {
+			old := slices.MinFunc(public, func(a, b *client) int { return cmp.Compare(a.seq, b.seq) })
+			delete(g.clients, old)
+			old.kickFull()
+		}
 	case c.screen:
-		g.screens++
 	case !g.joinLocked(c.pl):
 		return false
 	}
+	g.seq++
+	c.seq = g.seq
 	g.clients[c] = true
 	return true
 }
@@ -490,9 +525,6 @@ func (g *Game) detach(c *client) {
 	g.mu.Lock()
 	delete(g.pendIn, c)
 	delete(g.clients, c)
-	if c.screen {
-		g.screens--
-	}
 	g.mu.Unlock()
 	if !c.screen {
 		g.leave(c.player)
@@ -554,6 +586,11 @@ func (g *Game) handle(c *client, b []byte) {
 	clamp := func(f float64) float64 { return max(-1, min(1, f)) }
 	var err error
 	g.mu.Lock()
+	if !g.wake(c) {
+		g.mu.Unlock()
+		c.kickFull()
+		return
+	}
 	switch m.T {
 	case "in":
 		g.input(c, Input{Move: Vec{clamp(m.MX), clamp(m.MY)}, Fire: m.Fire, Action: m.Act}, time.Now())

@@ -390,14 +390,130 @@ func TestOfflineAvatarEvicted(t *testing.T) {
 	}
 }
 
+// publicScreen dials a big screen as the tunnel delivers it (with cf-connecting-ip).
+func (s *server) publicScreen(t *testing.T) *websocket.Conn {
+	t.Helper()
+	c, _, err := s.dial(t, nil, "?screen=1", http.Header{"Cf-Connecting-Ip": {"203.0.113.7"}})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return c
+}
+
+// TestScreenCap: a public screen beyond maxScreens evicts the oldest public screen, which
+// is told {"t":"full"} and closed; the others keep watching. Players are not affected.
 func TestScreenCap(t *testing.T) {
 	s := newServer(t, &liveOps{})
+	var cs []*websocket.Conn
 	for range maxScreens {
+		c := s.publicScreen(t)
+		snap(t, c, time.Second, nil)
+		cs = append(cs, c)
+	}
+	late := s.publicScreen(t)
+	snap(t, late, time.Second, nil)
+	frame(t, cs[0], "full", time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		if _, _, err := cs[0].Read(ctx); err != nil {
+			if ctx.Err() != nil {
+				t.Fatal("evicted screen not closed")
+			}
+			break
+		}
+	}
+	for _, c := range cs[1:] {
+		snap(t, c, time.Second, nil)
+	}
+	pl := s.g.p.Players.Join("Ada")
+	snap(t, s.mustDial(t, &pl, ""), time.Second, nil)
+}
+
+// TestLANScreensExempt: screens without cf-connecting-ip (the booth's own, on the LAN)
+// don't count toward the public cap and are never evicted.
+func TestLANScreensExempt(t *testing.T) {
+	s := newServer(t, &liveOps{})
+	var lan []*websocket.Conn
+	for range 3 {
+		c := s.mustDial(t, nil, "?screen=1")
+		snap(t, c, time.Second, nil)
+		lan = append(lan, c)
+	}
+	for range maxScreens + 2 { // public screens churn among themselves
+		snap(t, s.publicScreen(t), time.Second, nil)
+	}
+	for range 3 { // more LAN screens are still welcome
 		snap(t, s.mustDial(t, nil, "?screen=1"), time.Second, nil)
 	}
-	frame(t, s.mustDial(t, nil, "?screen=1"), "full", time.Second)
-	pl := s.g.p.Players.Join("Ada") // players are not affected
-	snap(t, s.mustDial(t, &pl, ""), time.Second, nil)
+	for _, c := range lan {
+		sn := snap(t, c, time.Second, nil)
+		_ = sn
+	}
+}
+
+// advance runs manual ticks until world time reaches at.
+func advance(g *Game, at float64) {
+	for {
+		g.mu.Lock()
+		now := g.w.Now
+		g.mu.Unlock()
+		if now >= at {
+			return
+		}
+		g.tick()
+	}
+}
+
+// TestIdlePlayerGoesOffline: a connected player who sends nothing for idleAfter counts
+// as offline: their slot frees and the offline clock starts (allies at 60 s, eviction at
+// 300 s). Their next frame brings them back if there is room; if not, they are told the
+// city is full and closed, and reconnect like anyone else.
+func TestIdlePlayerGoesOffline(t *testing.T) {
+	g, _ := newManual(t) // a joins at 0
+	cl := testClient("a")
+	advance(g, 300)
+	for i := range maxPlayers - 1 { // the rest join at 300 and stay active enough
+		g.join(platform.Player{ID: fmt.Sprintf("p%02d", i)})
+	}
+	late := platform.Player{ID: "late"}
+	if g.join(late) {
+		t.Fatal("city not full")
+	}
+	advance(g, idleAfter-1)
+	g.mu.Lock()
+	if !g.w.Avatars["a"].Online {
+		t.Fatal("a offline before idleAfter")
+	}
+	g.mu.Unlock()
+	advance(g, idleAfter+1)
+	g.mu.Lock()
+	_, off := g.offline["a"]
+	if g.w.Avatars["a"].Online || !off || !g.w.Avatars["p00"].Online {
+		t.Fatalf("after %v s idle: a online=%v offline-clock=%v", idleAfter, g.w.Avatars["a"].Online, off)
+	}
+	g.mu.Unlock()
+	if !g.join(late) {
+		t.Fatal("idle player's slot not freed")
+	}
+	g.handle(cl, []byte(`{"t":"in","mx":1}`)) // the city is full again
+	select {
+	case <-cl.kick:
+	default:
+		t.Fatal("idle player in a full city not told full")
+	}
+	g.mu.Lock()
+	if g.w.Avatars["a"].Online {
+		t.Fatal("idle player came back past the cap")
+	}
+	g.mu.Unlock()
+	g.leave("late")
+	g.handle(cl, []byte(`{"t":"in","mx":1}`)) // room again: back online
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, off := g.offline["a"]; !g.w.Avatars["a"].Online || off {
+		t.Fatalf("a online=%v offline-clock=%v after input with room", g.w.Avatars["a"].Online, off)
+	}
 }
 
 func TestCommandRateLimit(t *testing.T) {
@@ -618,7 +734,7 @@ func TestInputRateLimit(t *testing.T) {
 // testClient is a connection for driving g.handle directly.
 func testClient(player string) *client {
 	return &client{pl: platform.Player{ID: player}, player: player, snaps: make(chan []byte, 2),
-		ctrl: make(chan []byte, 16), cancel: func() {}}
+		ctrl: make(chan []byte, 16), kick: make(chan struct{}, 1), cancel: func() {}}
 }
 
 // TestReleaseFrameNeverDropped: a burst of ACTION-down frames over the input limit ends

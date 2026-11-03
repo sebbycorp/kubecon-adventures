@@ -65,7 +65,8 @@ Also known from Duck Hunt: Substrate snapshots an idle actor about 1 s after eac
 **Capacity decisions (my call, from these numbers):**
 - One worker pool `heist` with **40 workers**. At most **24 targets doing a task step at the same moment** (a server-side semaphore), which keeps steps around 10 s or less.
 - The city can hold **any number of suspended targets**; they cost only snapshot storage.
-- **Up to 48 players** in one city. Players are browser connections, not agents, so this cap is about screen readability and fairness, not the cluster.
+- **Up to 48 players** in one city. Players are browser connections, not agents, so this cap is about screen readability and fairness, not the cluster. A connected player who sends no input for 10 minutes counts as offline (their slot frees, and the usual offline rules apply: allies deleted after 60 s, avatar evicted after 5 minutes); their next touch brings them back if there is room.
+- **Big screens:** up to 8 public spectators (through the tunnel). A ninth evicts the oldest public one, so squatters can't lock the booth out; screens on the booth's LAN (no `cf-connecting-ip`) are not counted.
 - Never resume more than **8 targets at the same moment** (queue the rest), because a mass resume takes all 8 CPUs.
 
 ## Booth load, measured (2026-11-02)
