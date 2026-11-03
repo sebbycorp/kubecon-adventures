@@ -64,19 +64,20 @@ type Game struct {
 	seq        uint64             // connections attached so far
 	clients    map[*client]bool
 	pendIn     map[*client]Input // coalesced input frames waiting for a rate-limit token
-	booked     map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
+	booked     map[string]string // checkpoint IDs of bookings no longer in the world, by session; Reset deletes them
 	paused     bool
 	listing    bool             // the startup sweep is still listing sessions; no spawns yet
 	timings    map[string]int64 // p50 ms, refreshed once a second
 	podHourUSD float64          // POD_HOUR_USD, for the big screen's cost estimate
 	ticks      int
 	done       chan struct{} // closed when Run stops
+	stopped    chan struct{} // closed once shutdown has deleted the booked checkpoints
 }
 
 // New builds the game on a city with a district per node. Run starts it.
 func New(p *platform.Platform, ops Ops, nodes []string) *Game {
 	g := &Game{p: p, ops: ops, city: NewCity(nodes), every: time.Second / tickHz,
-		conns: map[string]int{}, booked: map[string]bool{}, clients: map[*client]bool{}, pendIn: map[*client]Input{}, timings: map[string]int64{}, done: make(chan struct{}),
+		conns: map[string]int{}, booked: map[string]string{}, clients: map[*client]bool{}, pendIn: map[*client]Input{}, timings: map[string]int64{}, done: make(chan struct{}), stopped: make(chan struct{}),
 		podHourUSD: podHourFromEnv()}
 	g.fresh()
 	return g
@@ -134,16 +135,45 @@ func (g *Game) Run(ctx context.Context) {
 	}()
 }
 
+// shutdownCleanup bounds shutdown's checkpoint deletes (the pod's grace period is 30 s).
+const shutdownCleanup = 15 * time.Second
+
+// shutdown closes every client and the scheduler, then deletes the booked targets'
+// checkpoints: their sessions are gone, so the next process's startup sweep can't find
+// them (kagent lists checkpoints only per session).
 func (g *Game) shutdown() {
+	defer close(g.stopped)
 	g.mu.Lock()
 	s := g.s
 	for c := range g.clients {
 		c.cancel()
 	}
 	close(g.done)
+	var cps []string
+	for _, t := range g.w.Targets {
+		if t.Checkpoint != "" {
+			cps = append(cps, t.Checkpoint)
+		}
+	}
+	for _, cp := range g.booked {
+		if cp != "" {
+			cps = append(cps, cp)
+		}
+	}
+	g.booked = map[string]string{}
 	g.mu.Unlock()
 	s.Close()
+	if len(cps) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownCleanup)
+	defer cancel()
+	n := g.deleteCheckpoints(ctx, cps)
+	slog.Info("grand theft agent: shutdown deleted booked checkpoints", "deleted", n, "booked", len(cps))
 }
+
+// Stopped is closed once the game has shut down (Run's ctx ended) and cleaned up.
+func (g *Game) Stopped() <-chan struct{} { return g.stopped }
 
 // tick advances everything by one interval and broadcasts a snapshot. It never waits
 // on an op: results are drained without blocking and Submit only queues.
@@ -213,6 +243,14 @@ func (g *Game) route(r Result) {
 			}
 			g.zap(r.Spawned) // the mission is over (or pruned): nobody will play this one
 			return
+		}
+	}
+	if r.Kind == "extract" && r.OK {
+		// The session is gone; its checkpoint stays until Reset deletes it.
+		if t := g.w.Targets[r.Target]; t != nil {
+			t.Checkpoint = r.Checkpoint
+		} else {
+			g.booked["extract-"+r.Target] = r.Checkpoint // landed after cleanup
 		}
 	}
 	switch r.Kind {
@@ -293,10 +331,10 @@ func (g *Game) housekeep() {
 			if t == nil {
 				continue
 			}
-			switch t.State {
-			case Booked:
-				g.booked[t.SessionID] = true
-			case Deleted:
+			switch {
+			case t.State == Booked || t.Checkpoint != "": // Extract deleted the session
+				g.booked[t.SessionID] = t.Checkpoint
+			case t.State == Deleted:
 			default:
 				g.zap(t.SessionID)
 			}

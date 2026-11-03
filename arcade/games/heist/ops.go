@@ -17,9 +17,13 @@ type Ops interface {
 	Freeze(ctx context.Context, sessionID string) (ms int64, err error)
 	Spring(ctx context.Context, sessionID string) (node string, say string, ms int64, err error)
 	// Extract books the session into the vault (checkpoint, then delete) and returns
-	// its booked line ("" if it has none).
-	Extract(ctx context.Context, sessionID string) (say string, ms int64, err error)
+	// its booked line ("" if it has none) and the checkpoint's ID.
+	Extract(ctx context.Context, sessionID string) (say, checkpointID string, ms int64, err error)
 	Delete(ctx context.Context, sessionID string) error
+	// DeleteCheckpoint deletes a booked target's checkpoint (the admin reset).
+	DeleteCheckpoint(ctx context.Context, checkpointID string) error
+	// ListCheckpoints lists a session's checkpoints, for the startup sweep.
+	ListCheckpoints(ctx context.Context, sessionID string) ([]string, error)
 	// SpawnAlly starts a player's ally session (the sidekick Agent) and returns its
 	// greeting line.
 	SpawnAlly(ctx context.Context, name string) (sessionID, node, say string, err error)
@@ -39,7 +43,8 @@ type StepResult struct {
 
 // Result is the outcome of one submitted op. Spawned holds the new session ID for
 // "spawn" and "ally"; Node and Step.Say carry the node and the sprung line for "spring"
-// or the greeting for "ally"; Step.Say is the booked line for "extract".
+// or the greeting for "ally"; Step.Say is the booked line and Checkpoint the
+// checkpoint's ID for "extract".
 type Result struct {
 	Kind, Target string
 	OK           bool
@@ -47,6 +52,7 @@ type Result struct {
 	Step         StepResult
 	Spawned      string
 	Node         string
+	Checkpoint   string
 	Err          string
 }
 
@@ -222,7 +228,7 @@ func (s *Scheduler) run(ctx context.Context, j job) (r Result) {
 	case "spring":
 		r.Node, r.Step.Say, ms, err = s.ops.Spring(ctx, j.sessionID)
 	case "extract":
-		r.Step.Say, ms, err = s.ops.Extract(ctx, j.sessionID)
+		r.Step.Say, r.Checkpoint, ms, err = s.ops.Extract(ctx, j.sessionID)
 	case "delete":
 		err = s.ops.Delete(ctx, j.sessionID)
 	}

@@ -27,8 +27,13 @@ type liveOps struct {
 	mu       sync.Mutex
 	calls    []string
 	block    map[string]bool
-	sessions []string // what ListSessions returns (the startup sweep's orphans)
-	listErr  error
+	sessions    []string            // what ListSessions returns (the startup sweep's orphans)
+	checkpoints map[string][]string // what ListCheckpoints returns, by session
+	listErr     error
+	gone        map[string]bool // sessions Extract deleted
+	cpDelay     time.Duration   // each DeleteCheckpoint takes this long
+	cpNow       int             // DeleteCheckpoint calls in flight
+	cpPeak      int
 }
 
 func (o *liveOps) ListSessions(ctx context.Context) ([]string, error) {
@@ -77,10 +82,52 @@ func (o *liveOps) Freeze(ctx context.Context, id string) (int64, error) {
 func (o *liveOps) Spring(ctx context.Context, id string) (string, string, int64, error) {
 	return "node-1", "back", 9, o.do(ctx, "spring", id)
 }
-func (o *liveOps) Extract(ctx context.Context, id string) (string, int64, error) {
-	return "booked", 11, o.do(ctx, "extract", id)
+// Extract, like the real adapter, checkpoints the session, deletes it and returns the
+// checkpoint's ID ("cp-<session>").
+func (o *liveOps) Extract(ctx context.Context, id string) (string, string, int64, error) {
+	if err := o.do(ctx, "extract", id); err != nil {
+		return "", "", 0, err
+	}
+	o.mu.Lock()
+	if o.gone == nil {
+		o.gone = map[string]bool{}
+	}
+	o.gone[id] = true
+	o.mu.Unlock()
+	return "booked", "cp-" + id, 11, nil
 }
-func (o *liveOps) Delete(ctx context.Context, id string) error { return o.do(ctx, "delete", id) }
+
+// Delete fails for a session that is already gone, as kagent does.
+func (o *liveOps) Delete(ctx context.Context, id string) error {
+	if err := o.do(ctx, "delete", id); err != nil {
+		return err
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.gone[id] {
+		return errors.New("not found: session " + id)
+	}
+	return nil
+}
+
+func (o *liveOps) DeleteCheckpoint(ctx context.Context, id string) error {
+	o.mu.Lock()
+	o.cpNow++
+	o.cpPeak = max(o.cpPeak, o.cpNow)
+	o.mu.Unlock()
+	defer func() { o.mu.Lock(); o.cpNow--; o.mu.Unlock() }()
+	if o.cpDelay > 0 {
+		time.Sleep(o.cpDelay)
+	}
+	return o.do(ctx, "delete-checkpoint", id)
+}
+
+func (o *liveOps) ListCheckpoints(ctx context.Context, sid string) ([]string, error) {
+	if err := o.do(ctx, "list-checkpoints", sid); err != nil {
+		return nil, err
+	}
+	return o.checkpoints[sid], nil
+}
 
 var testWeb = fstest.MapFS{
 	"phone.html":  {Data: []byte(`<script src="/grand-theft-agent/static/app.js"></script>`)},
@@ -578,7 +625,7 @@ func TestResetCleansUp(t *testing.T) {
 	send(t, c, map[string]any{"t": "start", "level": 3})
 	eventually(t, s.g, "three targets", func() bool { return len(s.g.w.Targets) == 3 })
 
-	n, err := s.g.Reset(context.Background())
+	n, _, err := s.g.Reset(context.Background())
 	if err != nil || n != 3 {
 		t.Fatalf("Reset = %d, %v; want 3", n, err)
 	}
@@ -946,26 +993,116 @@ func TestMissionEndCleanup(t *testing.T) {
 	}
 }
 
-func TestResetDeletesBookedSessions(t *testing.T) {
+// bookTarget freezes the mission's target m1-1 and books it through the scheduler, as a
+// drag into the Vault does.
+func bookTarget(t *testing.T, g *Game) {
+	t.Helper()
+	pumpUntil(t, g, "target", func() bool { return g.w.Targets["m1-1"] != nil })
+	g.mu.Lock()
+	tg := g.w.Targets["m1-1"]
+	tg.State = Frozen
+	g.w.start(tg, "extract", "a")
+	if !g.s.Submit("extract", tg.ID, tg.SessionID, 0, 0) {
+		t.Fatal("extract refused")
+	}
+	g.mu.Unlock()
+	pumpUntil(t, g, "booked", func() bool { return tg.State == Booked })
+}
+
+// TestResetDeletesBookedCheckpoints: a booking keeps its checkpoint (the session itself
+// is already deleted by Extract). Mission cleanup leaves both alone; Reset deletes the
+// checkpoint and never re-deletes the gone session.
+func TestResetDeletesBookedCheckpoints(t *testing.T) {
 	ops := &liveOps{}
 	g := New(platform.New(nil), ops, nil)
 	t.Cleanup(func() { g.s.Close() })
 	g.join(platform.Player{ID: "a"})
 	g.mu.Lock()
-	ms, _ := g.start("a", 1)
+	g.m.best["solo-a"] = 1
+	ms, err := g.start("a", 2) // Booking: one target that must be booked
 	g.mu.Unlock()
-	pumpUntil(t, g, "target", func() bool { return g.w.Targets["m1-1"] != nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	bookTarget(t, g)
 	g.mu.Lock()
-	g.w.Targets["m1-1"].State = Booked
-	g.m.finish(ms, "won", g.w)
+	if ms.Outcome != "won" {
+		t.Fatalf("outcome %q", ms.Outcome)
+	}
 	end := g.w.Now
 	g.mu.Unlock()
 	pumpUntil(t, g, "removed", func() bool { return g.w.Now > end+cleanupDelay && g.w.Targets["m1-1"] == nil })
-	if slices.Contains(ops.called("delete"), "sess-m1-1") {
-		t.Fatal("booked session deleted at mission end")
+	g.mu.Lock()
+	if g.booked["sess-m1-1"] != "cp-sess-m1-1" {
+		t.Fatalf("booked = %v, want the checkpoint kept", g.booked)
 	}
-	if n, _ := g.Reset(context.Background()); n != 1 || !slices.Contains(ops.called("delete"), "sess-m1-1") {
-		t.Fatalf("Reset deleted %d, calls %v", n, ops.called("delete"))
+	g.mu.Unlock()
+	if slices.Contains(ops.called("delete"), "sess-m1-1") || len(ops.called("delete-checkpoint")) != 0 {
+		t.Fatalf("deleted at mission end: %v %v", ops.called("delete"), ops.called("delete-checkpoint"))
+	}
+	sessions, checkpoints, err := g.Reset(context.Background())
+	if err != nil || sessions != 0 || checkpoints != 1 {
+		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 0, 1", sessions, checkpoints, err)
+	}
+	if got := ops.called("delete-checkpoint"); !slices.Equal(got, []string{"cp-sess-m1-1"}) {
+		t.Fatalf("checkpoint deletes %v", got)
+	}
+	if slices.Contains(ops.called("delete"), "sess-m1-1") {
+		t.Fatalf("Reset deleted the already-gone session: %v", ops.called("delete"))
+	}
+}
+
+// TestResetBookedStillInWorld: a target booked moments ago (its mission not yet cleaned
+// up) is handled the same way.
+func TestResetBookedStillInWorld(t *testing.T) {
+	ops := &liveOps{}
+	g := New(platform.New(nil), ops, nil)
+	t.Cleanup(func() { g.s.Close() })
+	g.join(platform.Player{ID: "a"})
+	g.mu.Lock()
+	g.m.best["solo-a"] = 2
+	g.start("a", 3) // three targets: booking one doesn't end it
+	g.mu.Unlock()
+	bookTarget(t, g)
+	sessions, checkpoints, err := g.Reset(context.Background())
+	if err != nil || sessions != 2 || checkpoints != 1 {
+		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 2, 1", sessions, checkpoints, err)
+	}
+	if slices.Contains(ops.called("delete"), "sess-m1-1") {
+		t.Fatal("Reset deleted the booked (gone) session")
+	}
+}
+
+// TestLateExtractCheckpointKept: an extract that lands after its target was cleaned up
+// still records the checkpoint, so Reset deletes it.
+func TestLateExtractCheckpointKept(t *testing.T) {
+	ops := &liveOps{}
+	g := New(platform.New(nil), ops, nil)
+	t.Cleanup(func() { g.s.Close() })
+	g.mu.Lock()
+	g.inflight[opKey{"extract", "m9-1"}] = 1
+	g.route(Result{Kind: "extract", Target: "m9-1", OK: true, Checkpoint: "cp-late"})
+	g.mu.Unlock()
+	if _, n, _ := g.Reset(context.Background()); n != 1 || !slices.Equal(ops.called("delete-checkpoint"), []string{"cp-late"}) {
+		t.Fatalf("deleted %d checkpoints: %v", n, ops.called("delete-checkpoint"))
+	}
+}
+
+// TestResetCheckpointParallelism: Reset deletes checkpoints at most 8 at a time.
+func TestResetCheckpointParallelism(t *testing.T) {
+	ops := &liveOps{cpDelay: 20 * time.Millisecond}
+	g := New(platform.New(nil), ops, nil)
+	t.Cleanup(func() { g.s.Close() })
+	g.mu.Lock()
+	for i := range 30 {
+		g.booked[fmt.Sprintf("s%d", i)] = fmt.Sprintf("cp-%d", i)
+	}
+	g.mu.Unlock()
+	if _, n, err := g.Reset(context.Background()); n != 30 || err != nil {
+		t.Fatalf("deleted %d checkpoints, %v; want 30", n, err)
+	}
+	if ops.cpPeak > resetParallel || ops.cpPeak < 2 {
+		t.Fatalf("peak %d checkpoint deletes at once; want 2..%d", ops.cpPeak, resetParallel)
 	}
 }
 
@@ -1118,12 +1255,13 @@ func TestPingPong(t *testing.T) {
 }
 
 // TestStartupSweep: Run deletes every session the agents have (orphans of an earlier
-// process), off the tick loop.
+// process) and their checkpoints, off the tick loop.
 func TestStartupSweep(t *testing.T) {
-	ops := &liveOps{sessions: []string{"orphan-1", "orphan-2", "orphan-3"}}
+	ops := &liveOps{sessions: []string{"orphan-1", "orphan-2", "orphan-3"},
+		checkpoints: map[string][]string{"orphan-2": {"cp-x", "cp-y"}}}
 	s := newServer(t, ops)
 	deadline := time.Now().Add(3 * time.Second)
-	for len(ops.called("delete")) < 3 {
+	for len(ops.called("delete")) < 3 || len(ops.called("delete-checkpoint")) < 2 {
 		if time.Now().After(deadline) {
 			t.Fatalf("deleted %v, want the 3 orphans", ops.called("delete"))
 		}
@@ -1131,6 +1269,9 @@ func TestStartupSweep(t *testing.T) {
 	}
 	if got := ops.called("delete"); !slices.Equal(slices.Sorted(slices.Values(got)), []string{"orphan-1", "orphan-2", "orphan-3"}) {
 		t.Fatalf("deleted %v", got)
+	}
+	if got := ops.called("delete-checkpoint"); !slices.Equal(slices.Sorted(slices.Values(got)), []string{"cp-x", "cp-y"}) {
+		t.Fatalf("deleted checkpoints %v", got)
 	}
 	// The game ticks on and plays as usual.
 	pl := s.g.p.Players.Join("Ada")
@@ -1272,5 +1413,25 @@ func TestLiveTargetCap(t *testing.T) {
 	defer g.mu.Unlock()
 	if !ms[14].Queued || len(ops.called("spawn")) != 42 {
 		t.Fatalf("mission 14 queued=%v, %d spawns; want queued and 42", ms[14].Queued, len(ops.called("spawn")))
+	}
+}
+
+// TestShutdownDeletesBookedCheckpoints: a booked target's session is gone, so no later
+// startup sweep can find its checkpoint; shutdown deletes it.
+func TestShutdownDeletesBookedCheckpoints(t *testing.T) {
+	ops := &liveOps{}
+	s := newServer(t, ops)
+	s.g.mu.Lock()
+	s.g.booked["s-old"] = "cp-old"
+	addTarget(s.g.w, "t1", "", Booked, Vec{}).Checkpoint = "cp-new"
+	s.g.mu.Unlock()
+	s.cancel()
+	select {
+	case <-s.g.Stopped():
+	case <-time.After(3 * time.Second):
+		t.Fatal("not stopped")
+	}
+	if got := slices.Sorted(slices.Values(ops.called("delete-checkpoint"))); !slices.Equal(got, []string{"cp-new", "cp-old"}) {
+		t.Fatalf("checkpoint deletes %v", got)
 	}
 }

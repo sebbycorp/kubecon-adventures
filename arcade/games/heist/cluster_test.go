@@ -196,13 +196,14 @@ func TestKagentOpsLifecycle(t *testing.T) {
 	c, cc = opCtx()
 	done = op("extract")
 	var bookedSay string
-	bookedSay, ms, err = o.Extract(c, sid)
+	var cp string
+	bookedSay, cp, ms, err = o.Extract(c, sid)
 	cc()
 	done()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("extract reported %d ms, say %q", ms, bookedSay)
+	t.Logf("extract reported %d ms, say %q, checkpoint %s", ms, bookedSay, cp)
 	ids, err := heister.ListSessionIDs(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -291,6 +292,20 @@ func clusterOps(t *testing.T) (*agentOps, *kagent.Kagent, func(string)) {
 		defer cancel()
 		for _, sid := range made {
 			_ = o.Delete(ctx, sid) // already gone after a good Extract: NotFound is fine
+			// A booking's checkpoint outlives its session; delete it and check it went.
+			cps, err := o.ListCheckpoints(ctx, sid)
+			if err != nil {
+				t.Errorf("cleanup list checkpoints of %s: %v", sid, err)
+			}
+			for _, cp := range cps {
+				if err := o.DeleteCheckpoint(ctx, cp); err != nil {
+					t.Errorf("cleanup delete checkpoint %s: %v", cp, err)
+				}
+				t.Logf("cleanup deleted checkpoint %s of %s", cp, sid)
+			}
+			if left, err := o.ListCheckpoints(ctx, sid); err != nil || len(left) != 0 {
+				t.Errorf("checkpoints of %s left behind: %v %v", sid, left, err)
+			}
 		}
 		ids, err := heister.ListSessionIDs(ctx)
 		if err != nil {
@@ -354,11 +369,18 @@ func TestExtractFrozenTarget(t *testing.T) {
 	t.Logf("TIMING freeze   %v (reported %d ms), state %s", time.Since(start).Round(time.Millisecond), ms, sessionState(t, heister, sid))
 	c, cc = opCtx()
 	start = time.Now()
-	say, ms, err := o.Extract(c, sid)
+	say, cp, ms, err := o.Extract(c, sid)
 	cc()
 	if err != nil {
 		t.Fatalf("extract of a frozen target: %v", err)
 	}
+	if cp == "" {
+		t.Error("extract returned no checkpoint ID")
+	}
+	if cps, err := o.ListCheckpoints(ctx, sid); err != nil || !slices.Contains(cps, cp) {
+		t.Errorf("checkpoint %s not listed for the deleted session: %v %v", cp, cps, err)
+	}
+	t.Logf("CHECKPOINT %s (deleted by the test cleanup)", cp)
 	t.Logf("TIMING extract  %v (reported %d ms without the LLM turn), say %q", time.Since(start).Round(time.Millisecond), ms, say)
 	if say == "" {
 		t.Errorf("empty booked line")

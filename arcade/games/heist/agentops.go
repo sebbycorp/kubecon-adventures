@@ -27,6 +27,8 @@ type agentAPI interface {
 	Delete(ctx context.Context, sessionID string) error
 	ActorStates(ctx context.Context) (map[string]kagent.Actor, error)
 	ListSessionIDs(ctx context.Context) ([]string, error)
+	DeleteCheckpoint(ctx context.Context, checkpointID string) error
+	ListCheckpointIDs(ctx context.Context, sessionID string) ([]string, error)
 }
 
 // heistJob is one fixed heist: four bash steps, all under /data/workspace.
@@ -460,14 +462,16 @@ func (o *agentOps) Spring(ctx context.Context, sid string) (string, string, int6
 }
 
 // Extract checkpoints the session's last turn, then deletes it, and returns the
-// session's booked line ("" when there is none). kagent can't checkpoint a SUSPENDED
+// session's booked line ("" when there is none) and the checkpoint's ID ("" when the
+// session never had a turn to checkpoint). The checkpoint outlives the session: the game
+// keeps its ID and deletes it at the admin reset. kagent can't checkpoint a SUSPENDED
 // session, and once a session has been suspended the pre-freeze head can't be tagged
 // either ("SnapshotTagFailed: snapshot changed", for good). So in resume-first mode a
 // suspended session is resumed and prompted once (bookedLine); that turn is the fresh
 // head that is checkpointed. If that prompt fails the session stays awake and in the
 // game, and its head stays stale, so the next Extract prompts again. ms is the Substrate work (resume, checkpoint, delete),
 // without the LLM turn.
-func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, error) {
+func (o *agentOps) Extract(ctx context.Context, sid string) (string, string, int64, error) {
 	k := o.client(sid)
 	o.mu.Lock()
 	s := o.sessLocked(sid)
@@ -483,10 +487,10 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 	}
 	if suspended {
 		if !o.resumeFirst {
-			return "", 0, errors.New("direct extract of a suspended session: kagent can't checkpoint it")
+			return "", "", 0, errors.New("direct extract of a suspended session: kagent can't checkpoint it")
 		}
 		if err := timed(func() error { return k.Resume(ctx, sid) }); err != nil {
-			return "", 0, err
+			return "", "", 0, err
 		}
 		o.mu.Lock()
 		s.suspended = false
@@ -494,11 +498,11 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 	}
 	// fail returns err; when this Extract resumed the session, it is frozen again first,
 	// so Substrate matches the game, which puts the target back to Frozen.
-	fail := func(err error) (string, int64, error) {
+	fail := func(err error) (string, string, int64, error) {
 		if suspended {
 			o.refreeze(ctx, sid)
 		}
-		return "", 0, err
+		return "", "", 0, err
 	}
 	// Also when awake: a session resumed earlier whose post-resume prompt failed (a
 	// spring's line, or a failed booked line) still has the stale pre-freeze head.
@@ -520,9 +524,10 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 		}
 		head = string(r.Task.ID)
 	}
+	var cp string
 	if head != "" {
 		if err := timed(func() error {
-			return settle(ctx, func() error { _, err := k.Checkpoint(ctx, sid, head); return err })
+			return settle(ctx, func() (err error) { cp, err = k.Checkpoint(ctx, sid, head); return err })
 		}); err != nil {
 			return fail(fmt.Errorf("checkpoint: %w", err))
 		}
@@ -530,7 +535,19 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 	if err := timed(func() error { return o.Delete(ctx, sid) }); err != nil {
 		return fail(err)
 	}
-	return say, max(ms, 1), nil
+	return say, cp, max(ms, 1), nil
+}
+
+// DeleteCheckpoint deletes a booked target's checkpoint. Checkpoints belong to the
+// arcade's user, not to an agent, so the heister client serves them all.
+func (o *agentOps) DeleteCheckpoint(ctx context.Context, id string) error {
+	return o.heister.DeleteCheckpoint(ctx, id)
+}
+
+// ListCheckpoints lists a session's checkpoints (kagent lists them only per session; a
+// deleted session's checkpoints are still listed).
+func (o *agentOps) ListCheckpoints(ctx context.Context, sid string) ([]string, error) {
+	return o.heister.ListCheckpointIDs(ctx, sid)
 }
 
 // refreeze suspends a session an Extract resumed but could not book (its ctx may be the
@@ -544,7 +561,6 @@ func (o *agentOps) refreeze(ctx context.Context, sid string) {
 	}
 }
 
-// Delete removes the session and forgets it.
 // ListSessions lists the sessions of both agents (heister, then sidekick). If one list
 // fails, the other's sessions still come back, with the error.
 func (o *agentOps) ListSessions(ctx context.Context) ([]string, error) {
@@ -558,6 +574,7 @@ func (o *agentOps) ListSessions(ctx context.Context) ([]string, error) {
 	return ids, errors.Join(errs...)
 }
 
+// Delete removes the session and forgets it.
 func (o *agentOps) Delete(ctx context.Context, sid string) error {
 	k := o.client(sid)
 	if err := settle(ctx, func() error { return k.Delete(ctx, sid) }); err != nil {

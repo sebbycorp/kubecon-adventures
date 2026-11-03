@@ -113,8 +113,8 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 		// A dropped admin request must not cancel the deletes half way.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), resetTimeout)
 		defer cancel()
-		n, err := g.Reset(ctx)
-		platform.Result(w, map[string]int{"deletedSessions": n}, err)
+		n, cps, err := g.Reset(ctx)
+		platform.Result(w, map[string]int{"deletedSessions": n, "deletedCheckpoints": cps}, err)
 	})
 	mux.HandleFunc("GET /admin/grand-theft-agent/api/state", func(w http.ResponseWriter, r *http.Request) {
 		platform.WriteJSON(w, g.State())

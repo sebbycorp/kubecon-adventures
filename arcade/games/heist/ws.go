@@ -77,9 +77,10 @@ type SnapCommon struct {
 	Substrate SubstrateView    `json:"substrate"`
 	Cap       CapView          `json:"cap"`
 	Timings   map[string]int64 `json:"timings"` // p50 ms of freeze, spring, extract
-	// Vault is how many targets were booked: checkpoints kept in Snapshot Storage until
-	// the next reset. PodHourUSD is the assumed price of one always-on agent pod
-	// (POD_HOUR_USD, as on Agent Flow), for the big screen's cost estimate.
+	// Vault is how many targets were booked: their sessions are deleted, and their
+	// checkpoints stay in Snapshot Storage until the admin reset deletes them.
+	// PodHourUSD is the assumed price of one always-on agent pod (POD_HOUR_USD, as on
+	// Agent Flow), for the big screen's cost estimate.
 	Vault      int     `json:"vault"`
 	PodHourUSD float64 `json:"podHourUsd"`
 	// Squads is takedowns per shared squad (by code); solo players are left out.

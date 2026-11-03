@@ -72,6 +72,7 @@ type Target struct {
 	Busy                                      bool // an op is in flight; no further intents
 	New, Restored                             bool
 	ShotCD                                    float64 // hunter fire cooldown, seconds until it may shoot again
+	Checkpoint                                string  // its booking's checkpoint ID (the session itself is gone)
 
 	opBy   string // player whose intent is in flight
 	opKind string // that intent's kind ("freeze", ...)

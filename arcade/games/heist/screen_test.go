@@ -25,7 +25,7 @@ func TestSnapVaultCountsBookedTargets(t *testing.T) {
 	g.mu.Lock()
 	addTarget(g.w, "t1", "", Booked, Vec{})
 	addTarget(g.w, "t2", "", Frozen, Vec{})
-	g.booked["sess-old"] = true // booked earlier; its mission was cleaned up
+	g.booked["sess-old"] = "cp-old" // booked earlier; its mission was cleaned up
 	c := g.commonLocked(nil)
 	g.mu.Unlock()
 	if c.Vault != 2 {

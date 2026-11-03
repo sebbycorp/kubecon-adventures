@@ -34,6 +34,7 @@ type fakeAgent struct {
 	tasks       int
 	nextSession int
 	listed      []string // what ListSessionIDs returns
+	checkpoints map[string][]string // what ListCheckpointIDs returns, by session
 	listErr     error
 }
 
@@ -153,6 +154,16 @@ func (f *fakeAgent) ActorStates(ctx context.Context) (map[string]kagent.Actor, e
 		out[id] = kagent.Actor{Name: "session-" + id, State: "RUNNING", Node: "kagent-worker2"}
 	}
 	return out, nil
+}
+
+func (f *fakeAgent) DeleteCheckpoint(ctx context.Context, id string) error {
+	f.note("delete-checkpoint " + id)
+	return nil
+}
+
+func (f *fakeAgent) ListCheckpointIDs(ctx context.Context, sid string) ([]string, error) {
+	f.note("list-checkpoints " + sid)
+	return f.checkpoints[sid], nil
 }
 
 func (f *fakeAgent) ListSessionIDs(ctx context.Context) ([]string, error) {
@@ -326,9 +337,12 @@ func TestExtractResumeFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.reply = `{"say":"Locked up, but I'll be back for the loot!","step_done":true,"loot":0}`
-	say, ms, err := o.Extract(ctx, sid)
+	say, cp, ms, err := o.Extract(ctx, sid)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cp != "cp-1" {
+		t.Fatalf("checkpoint %q, want cp-1 (the booking is kept so Reset can delete it)", cp)
 	}
 	// A suspend changes the snapshot, so the pre-freeze head (task-1) can't be tagged:
 	// the booked line's turn (task-2) is the fresh head that is checkpointed.
@@ -354,7 +368,7 @@ func TestExtractDirect(t *testing.T) {
 	ctx := context.Background()
 	sid, _, _ := o.Spawn(ctx, "m1-1")
 	_, _ = o.Step(ctx, sid, 1, 4)
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(h.calls()[2:], "|"); got != "checkpoint "+sid+" task-1|delete "+sid {
@@ -368,7 +382,7 @@ func TestExtractDirect(t *testing.T) {
 	_, _ = o.Step(ctx, sid, 1, 4)
 	_, _ = o.Freeze(ctx, sid)
 	n := len(h.calls())
-	if _, _, err := o.Extract(ctx, sid); err == nil {
+	if _, _, _, err := o.Extract(ctx, sid); err == nil {
 		t.Fatal("direct extract of a suspended session: want error")
 	}
 	if extra := h.calls()[n:]; len(extra) != 0 {
@@ -383,7 +397,7 @@ func TestExtractRunningSessionSkipsResume(t *testing.T) {
 	sid, _, _ := o.Spawn(ctx, "m1-1")
 	_, _ = o.Step(ctx, sid, 1, 4)
 	_, _ = o.Step(ctx, sid, 2, 4)
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	got := strings.Join(h.calls()[3:], "|")
@@ -528,7 +542,7 @@ func TestStepValidationFailureFallsBack(t *testing.T) {
 	if ss.lastTask != "task-1" || ss.staleHead || ss.lastStep != 1 {
 		t.Fatalf("session after a fallback step: %+v", ss)
 	}
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(h.calls()[2:], "|"); got != "checkpoint "+sid+" task-1|delete "+sid {
@@ -654,7 +668,7 @@ func TestBookedLineValidationFallsBack(t *testing.T) {
 	_, _ = o.Freeze(ctx, sid)
 	h.invalid = 1
 	n := len(h.calls())
-	say, _, err := o.Extract(ctx, sid)
+	say, _, _, err := o.Extract(ctx, sid)
 	if err != nil || say != bookedFallback {
 		t.Fatalf("booked with a failed line: %q %v", say, err)
 	}
@@ -724,7 +738,7 @@ func TestFailedPromptIsNotCheckpointHead(t *testing.T) {
 		t.Fatal("want step error")
 	}
 	h.promptErr = nil
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(strings.Join(h.calls(), "|"), "checkpoint "+sid+" task-1|") {
@@ -756,7 +770,7 @@ func TestExtractFrozenClipsAndFallsBack(t *testing.T) {
 	_, _ = o.Step(ctx, sid, 1, 4)
 	_, _ = o.Freeze(ctx, sid)
 	h.reply = `{"say":"` + strings.Repeat("é", 80) + `"}`
-	say, _, err := o.Extract(ctx, sid)
+	say, _, _, err := o.Extract(ctx, sid)
 	if err != nil || utf8.RuneCountInString(say) != maxSay {
 		t.Fatalf("say %q (%d runes), %v", say, utf8.RuneCountInString(say), err)
 	}
@@ -765,7 +779,7 @@ func TestExtractFrozenClipsAndFallsBack(t *testing.T) {
 	_, _ = o.Step(ctx, sid, 1, 4)
 	_, _ = o.Freeze(ctx, sid)
 	h.reply = `not json`
-	say, _, err = o.Extract(ctx, sid)
+	say, _, _, err = o.Extract(ctx, sid)
 	if err != nil || say != bookedFallback {
 		t.Fatalf("fallback: say %q, %v", say, err)
 	}
@@ -783,7 +797,7 @@ func TestExtractFrozenLineFailsNoCheckpoint(t *testing.T) {
 	_, _ = o.Freeze(ctx, sid)
 	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
 	n := len(h.calls())
-	if _, _, err := o.Extract(ctx, sid); err == nil || !strings.Contains(err.Error(), "booked line") {
+	if _, _, _, err := o.Extract(ctx, sid); err == nil || !strings.Contains(err.Error(), "booked line") {
 		t.Fatalf("want booked line error, got %v", err)
 	}
 	// The stale head is never checkpointed (it would fail "snapshot changed") and the
@@ -794,7 +808,7 @@ func TestExtractFrozenLineFailsNoCheckpoint(t *testing.T) {
 		}
 	}
 	h.promptErr = nil
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(h.calls()[len(h.calls())-3:], "|"); got != "prompt "+sid+"|checkpoint "+sid+" task-3|delete "+sid {
@@ -885,7 +899,7 @@ func TestExtractAfterFailedSpringLinePromptsFresh(t *testing.T) {
 	}
 	h.promptErr = nil
 	n := len(h.calls())
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	// Awake, but its head is still the pre-freeze turn: no resume, a fresh line, then
@@ -904,7 +918,7 @@ func TestFailedBookedLineRefreezes(t *testing.T) {
 	_, _ = o.Freeze(ctx, sid)
 	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
 	n := len(h.calls())
-	if _, _, err := o.Extract(ctx, sid); err == nil {
+	if _, _, _, err := o.Extract(ctx, sid); err == nil {
 		t.Fatal("want booked line error")
 	}
 	// Resumed, the line failed, and the session is suspended again: World puts the
@@ -939,7 +953,7 @@ func TestSpringOfAwakeSessionSkipsResume(t *testing.T) {
 	// The booked line fails and so does the re-suspend: the session is left awake.
 	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
 	h.suspendErr = status.Error(codes.Internal, "suspend broke")
-	if _, _, err := o.Extract(ctx, sid); err == nil {
+	if _, _, _, err := o.Extract(ctx, sid); err == nil {
 		t.Fatal("want booked line error")
 	}
 	h.promptErr, h.suspendErr = nil, nil
@@ -971,7 +985,7 @@ func TestTurnEndingUnderFreezeStaysStale(t *testing.T) {
 		t.Fatal("a turn recorded while suspended cleared staleHead")
 	}
 	n := len(h.calls())
-	if _, _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(h.calls()[n:], "|"); got != "resume "+sid+"|prompt "+sid+"|checkpoint "+sid+" task-3|delete "+sid {
@@ -982,5 +996,24 @@ func TestTurnEndingUnderFreezeStaysStale(t *testing.T) {
 func TestBookedLineAsksForJSON(t *testing.T) {
 	if !strings.HasSuffix(bookedLine, replyJSON) {
 		t.Fatalf("bookedLine %q lacks replyJSON", bookedLine)
+	}
+}
+
+// TestCheckpointCalls: DeleteCheckpoint and ListCheckpoints go to kagent's checkpoint
+// service (checkpoints belong to the arcade user, so the heister client serves both).
+func TestCheckpointCalls(t *testing.T) {
+	h, s := newFakes()
+	h.checkpoints = map[string][]string{"s1": {"cp-a", "cp-b"}}
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	ids, err := o.ListCheckpoints(ctx, "s1")
+	if err != nil || !slices.Equal(ids, []string{"cp-a", "cp-b"}) {
+		t.Fatalf("ListCheckpoints = %v, %v", ids, err)
+	}
+	if err := o.DeleteCheckpoint(ctx, "cp-a"); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.calls(), "|"); got != "list-checkpoints s1|delete-checkpoint cp-a" {
+		t.Fatalf("calls %s", got)
 	}
 }

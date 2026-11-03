@@ -66,10 +66,18 @@ func (f *fakeOps) Spring(ctx context.Context, id string) (string, string, int64,
 	return "node-2", "sprung!", f.ms, err
 }
 
-func (f *fakeOps) Extract(ctx context.Context, id string) (string, int64, error) {
+// Extract, like the real adapter, checkpoints then deletes the session, and returns the
+// checkpoint's ID.
+func (f *fakeOps) Extract(ctx context.Context, id string) (string, string, int64, error) {
 	err := f.block(ctx, "extract", id)
-	return "booked!", f.ms, err
+	return "booked!", "cp-" + id, f.ms, err
 }
+
+func (f *fakeOps) DeleteCheckpoint(ctx context.Context, id string) error {
+	return f.block(ctx, "delete-checkpoint", id)
+}
+
+func (f *fakeOps) ListCheckpoints(ctx context.Context, sid string) ([]string, error) { return nil, nil }
 
 func (f *fakeOps) Delete(ctx context.Context, id string) error {
 	return f.block(ctx, "delete", id)

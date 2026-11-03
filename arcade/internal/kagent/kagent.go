@@ -345,6 +345,38 @@ func (k *Kagent) Checkpoint(ctx context.Context, sessionID, headTaskID string) (
 	}
 }
 
+// DeleteCheckpoint removes a checkpoint (its snapshot copy in Snapshot Storage). A
+// checkpoint that is already gone counts as deleted.
+func (k *Kagent) DeleteCheckpoint(ctx context.Context, checkpointID string) error {
+	_, err := apiv1.NewCheckpointServiceClient(k.conn).DeleteCheckpoint(k.ctx(ctx), &apiv1.DeleteCheckpointRequest{CheckpointId: checkpointID})
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	return err
+}
+
+// ListCheckpointIDs returns the IDs of a session's checkpoints. kagent lists checkpoints
+// only per session (an empty session ID is refused).
+func (k *Kagent) ListCheckpointIDs(ctx context.Context, sessionID string) ([]string, error) {
+	cps := apiv1.NewCheckpointServiceClient(k.conn)
+	var ids []string
+	page := &apiv1.PageRequest{}
+	for {
+		r, err := cps.ListCheckpoints(k.ctx(ctx), &apiv1.ListCheckpointsRequest{SessionId: sessionID, Page: page})
+		if err != nil {
+			return ids, err
+		}
+		for _, cp := range r.GetCheckpoints() {
+			ids = append(ids, cp.GetId())
+		}
+		next := r.GetPage().GetNextPageToken()
+		if next == "" {
+			return ids, nil
+		}
+		page = &apiv1.PageRequest{PageToken: next}
+	}
+}
+
 // Fork starts a new session (and Substrate actor) from a checkpoint. The fork shares the
 // conversation up to the checkpoint, then diverges.
 func (k *Kagent) Fork(ctx context.Context, checkpointID, requestID string) (string, error) {
