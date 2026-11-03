@@ -86,6 +86,25 @@
   .caret::after { content: "▍"; color: var(--green); animation: beat 1s steps(2) infinite; }
   #feed { gap: 6px; }
 
+  /* Every agent on Substrate, from every game and harness: a row per kagent Agent with a
+     dot per actor (bright = awake on a worker, dim = asleep in Snapshot Storage). */
+  #fleet { left: 32px; top: 236px; width: 384px; max-height: calc(100vh - 236px - 190px); overflow: hidden; border: 1px solid #1f2326; border-radius: 12px; background: #0b0d0cd9; padding: 10px 12px 8px; }
+  #fleet h2 { margin: 0 0 6px; font: 600 10.5px Inter, sans-serif; letter-spacing: .12em; color: #6f7479; display: flex; justify-content: space-between; }
+  #fleet h2 b { color: var(--fg); letter-spacing: 0; }
+  .fa { padding: 6px 0; border-top: 1px solid #1a1d1f; }
+  .fa:first-of-type { border-top: 0; }
+  .fa .hd { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; }
+  .fa .hd b { color: var(--fg); font-weight: 600; }
+  .fa .hd small { color: var(--mute); font-size: 11px; }
+  .fa .hd span { color: var(--mute); font-size: 11px; white-space: nowrap; }
+  .fa .hd span em { font-style: normal; color: var(--green); }
+  .dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 5px; }
+  .dots i { width: 6px; height: 6px; border-radius: 1.5px; background: #1e4a2c; }
+  .dots i.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dots i.mid { background: #e0b84a; }
+  .dots em { font-style: normal; font-size: 10px; color: var(--mute); margin-left: 4px; line-height: 6px; }
+  #fleet .pools { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1f2326; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--mute); }
+  #fleet .pools b { color: var(--fg); font-weight: 600; }
   #density { margin-top: 12px; font-size: 15px; color: var(--fg); }
   #hint { margin-top: 6px; max-width: 470px; font-size: 12.5px; line-height: 1.45; color: var(--mute); min-height: 2.9em; transition: opacity .6s; }
   #hint b { color: #cfe9d2; font-weight: 600; }
@@ -121,6 +140,7 @@
   <div id="live"><i></i><b>LIVE</b><span id="since">waiting for the first request</span></div>
   <div id="density"></div><div id="hint"></div></div>
 <div id="stats" class="ui"></div>
+<div id="fleet" class="ui" aria-label="Every agent on Agent Substrate"></div>
 <div id="toasts" class="ui" aria-live="polite"></div>
 <div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
 <div id="story" class="ui off" aria-live="polite"></div>
@@ -267,12 +287,36 @@ const flow = startFlowScreen($("scene"), {
     const workers = (sub.pools || []).reduce((n, p) => n + (p.workers || 0), 0);
     $("density").innerHTML = `<b>${(sub.actors ?? 0).toLocaleString()}</b> agents on <b>${workers}</b> sandboxes <span>·</span> <b>${(sub.suspended ?? 0).toLocaleString()}</b> asleep using <b>0 CPU</b>`;
     stat("restore", ms(t.restore), "restore p50"); stat("snapshot", ms(t.snapshot), "snapshot p50");
+    fleet(sub);
     lastState = s;
     heart.set(sub.running ?? 0, (sub.pools || []).reduce((n, p) => n + (p.workers || 0), 0));
     if (flow?.picked()) stationCard(flow.picked());
     else story((s.runs || []).find((r) => r.id === flow?.focus()));
   },
 });
+
+// fleet draws every agent on Substrate, whatever game or harness runs it: one row per
+// kagent Agent (largest first), a dot per actor, then the worker pools.
+const HARNESS = { duck: "Duck Hunt", "hello-duck": "kagent demo", "duck-direct": "Duck Hunt test", "duck-noschema": "Duck Hunt test",
+  escapee: "Sandbox Escape", "escape-probe": "Sandbox Escape test", forky: "Fork Frenzy", flowbot: "Agent Flow",
+  heister: "Substrate Siege", sidekick: "Substrate Siege ally", loadbot: "load test" };
+const MAXDOTS = 160;
+function fleet(sub) {
+  const agents = sub.agents || [], pools = sub.pools || [];
+  if (!agents.length && !pools.length) { $("fleet").innerHTML = ""; return; }
+  const rows = agents.map((a) => {
+    const other = Math.max(0, a.actors - a.awake - a.suspended), shown = Math.min(a.actors, MAXDOTS);
+    let dots = "";
+    for (let i = 0; i < shown; i++) dots += i < a.awake ? '<i class="on"></i>' : i < a.awake + other ? '<i class="mid"></i>' : "<i></i>";
+    if (a.actors > shown) dots += `<em>+${(a.actors - shown).toLocaleString()}</em>`;
+    const game = HARNESS[a.name] || "";
+    return `<div class="fa"><div class="hd"><div><b>${esc(a.name)}</b>${game ? ` <small>${esc(game)}</small>` : ""}</div>` +
+      `<span><em>${a.awake}</em> awake · ${a.suspended.toLocaleString()} asleep${other ? ` · ${other} waking` : ""}</span></div><div class="dots">${dots}</div></div>`;
+  }).join("");
+  const pl = pools.map((p) => `<span>${esc(p.name)} <b>${p.workers}</b>${p.replicas && p.replicas !== p.workers ? `/${p.replicas}` : ""}</span>`).join("");
+  $("fleet").innerHTML = `<h2><span>EVERY AGENT ON SUBSTRATE</span><b>${(sub.actors ?? 0).toLocaleString()} actors · ${agents.length} agents</b></h2>${rows}` +
+    `<div class="pools"><span>WORKER POOLS</span>${pl}</div>`;
+}
 
 // The compute heartbeat: a scrolling trace whose baseline is the share of sandboxes busy
 // with an awake agent, with an ECG-style spike each time an agent is created or woken up
