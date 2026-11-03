@@ -283,7 +283,7 @@ export function startCity(canvas, opts) {
 .gl-nick{font-size:12px;font-weight:700}
 .gl-name{font-size:11px;color:#9dffb0;display:flex;flex-direction:column;align-items:center;gap:2px}
 .gl-name i{font-style:normal;font-size:9px;letter-spacing:.08em;padding:0 4px;border-radius:3px;color:#001a08}
-.gl-new{background:#2bff6a}.gl-restored{background:#4aa8ff}.gl-esc{background:#ff4d5e}
+.gl-new{background:#2bff6a}.gl-restored{background:#4aa8ff}.gl-esc{background:#ff4d5e}.gl-gold{background:#ffd23d}
 .gl-bar{width:40px;height:4px;border-radius:2px;background:#0a2a12;overflow:hidden;border:1px solid #1f8f3f}
 .gl-bar b{display:block;height:100%;background:#ffd23d}
 .gl-bub{max-width:200px;white-space:normal;background:rgba(0,20,6,.88);border:1px solid #2bff6a;border-radius:8px;padding:3px 7px;color:#d8ffe0;font-size:11px;box-shadow:0 0 10px #2bff6a55}
@@ -403,16 +403,14 @@ export function startCity(canvas, opts) {
     const t = byId(s.targets, e.target), a = byId(s.avatars, e.player);
     const at = t || a;
     switch (e.kind) {
-      case "frozen": if (t) floater(`❄ suspended in ${e.ms} ms`, t.x, t.y, "#6ff", 2.6); break;
-      case "sprung": if (t) floater(`↻ restored in ${e.ms} ms`, t.x, t.y, "#7ab8ff", 2.6); break;
+      case "frozen": if (t) floater(`❄ +1 · suspended in ${e.ms} ms`, t.x, t.y, "#6ff", 2.6); break;
       case "slipped": if (t) floater("it slipped away", t.x, t.y, "#ff9f43", 2.2); break;
-      case "booked": if (t) floater("▣ booked into the Vault", t.x, t.y, "#ffd23d", 2.2); break;
+      case "booked": if (t) floater("▣ booked: checkpoint saved +2", t.x, t.y, "#ffd23d", 2.2); break;
       case "booked-line": if (t) floater(`“${e.text}”`, t.x, t.y, "#ffd23d", 3.2); break;
       case "deleted": if (t) floater("✖ deleted", t.x, t.y, "#ff4d5e", 2); break;
       case "escaped": if (t) floater("got away with it", t.x, t.y, "#ff4d5e", 2.5); break;
       case "drop": if (t) floater(`★ ${e.text}`, t.x, t.y, "#ffd23d", 1.8); break;
       case "pickup": if (a && a.id === me) floater(`+ ${e.text}`, a.x, a.y, "#d8ffe0", 1.2); break;
-      case "banked": if (a && a.id === me) floater(`banked ${e.text}`, a.x, a.y, "#ffd23d", 1.8); break;
       case "down": if (a) floater("DOWN", a.x, a.y, "#ff4d5e", 1.6); break;
       case "ally": if (a) floater("ally online", a.x, a.y, "#2bff6a", 1.8); break;
       case "hit": if (t && a) tracer([t.x, 0.8, t.y], [a.x, 0.7, a.y], 0xff3b3b, 0.2); break;
@@ -481,7 +479,7 @@ export function startCity(canvas, opts) {
     let { x, y } = a;
     const inp = input(), n = Math.hypot(inp.mx || 0, inp.my || 0);
     if (n > 0 && !a.down) {
-      const ahead = Math.min((performance.now() - snapAt) / 1000 + 0.05, 0.15) * SPEED * (a.dragging ? 0.75 : 1);
+      const ahead = Math.min((performance.now() - snapAt) / 1000 + 0.05, 0.15) * SPEED;
       const dx = (inp.mx / n) * ahead, dy = (inp.my / n) * ahead;
       if (free(x + dx, y + dy)) { x += dx; y += dy; } else if (free(x + dx, y)) x += dx; else if (free(x, y + dy)) y += dy;
     }
@@ -541,10 +539,6 @@ export function startCity(canvas, opts) {
         const tag = a.id === me ? `<b style="color:#fff">${esc(a.nick)}</b>` : esc(a.nick);
         label("e:a" + a.id, tag, p.x, a.down ? 0.9 : 1.62, p.y, "gl-nick");
         labels.get("e:a" + a.id).el.style.color = colorOf(a.color);
-        if (a.dragging) {
-          const t = where("targets", a.dragging);
-          if (t) tracer([p.x, 0.6, p.y], [t.x, 0.7, t.y], 0x6fffff, 0.0001);
-        }
       }
       // Allies: smaller, in the owner's colour, frozen in ice when hunters drop them.
       for (const al of s.allies) {
@@ -568,8 +562,10 @@ export function startCity(canvas, opts) {
         if (t.state === "Booked" || t.state === "Deleted" || nh >= CAP.hunters) continue;
         const p = pos("targets", t.id) || t;
         const sh = shapeOf(t.id), build = BUILDS[sh % 3], hat = Math.floor(sh / 3);
-        const frozen = t.state === "Frozen" || t.state === "Dragged";
-        const going = t.state === "Working" && (t.busy || t.hits >= 3); // freeze in flight
+        // A freeze in flight already looks frozen: the suspend waits for the agent's turn to
+        // end, and the player should see their hit land at once.
+        const going = t.state === "Working" && (t.op === "freeze" || t.hits >= 2);
+        const frozen = t.state === "Frozen" || going;
         const yaw = Math.sin(clock * 0.7 + sh) * 0.6;
         const sc = build.map((v) => v * 1.12);
         for (const k of ["body", "head", "hull", "shades", "ring"]) putS(T[k], nh, p.x, p.y, yaw, sc);
@@ -579,7 +575,7 @@ export function startCity(canvas, opts) {
         putS(T.brim, nh, p.x, p.y, yaw, hat === 1 || hat === 2 ? sc : none);
         putS(T.stick, nh, p.x, p.y, yaw, hat >= 2 ? sc : none, hat === 2 ? -0.06 : 0);
         putS(T.tip, nh, p.x, p.y, yaw, hat >= 2 ? sc : none, hat === 2 ? -0.06 : 0);
-        const flick = going && Math.random() < 0.5;
+        const flick = going && Math.random() < 0.25;
         const suit = frozen ? "#123c44" : t.state === "Escaped" ? "#2a0d10" : flick ? "#1d5560" : "#0b120c";
         // Green is kept for the shades; the outline is a quiet slate so it reads on asphalt.
         const edge = frozen || flick ? "#9fffff" : t.state === "Escaped" ? "#ff4d5e" : "#2bff6a";
@@ -591,7 +587,8 @@ export function startCity(canvas, opts) {
         if (frozen && ni < CAP.ice) putS(ice, ni++, p.x, p.y, 0, sc);
         if (going && nf < CAP.ice) putS(freezing, nf++, p.x, p.y, 0, sc.map((v) => v * (0.9 + Math.random() * 0.15)));
         const o = seen.get(t.id) || {};
-        const tagCls = t.state === "Escaped" ? `<i class="gl-esc">ESCAPED</i>` : t.restored ? `<i class="gl-restored">RESTORED</i>` : t.new ? `<i class="gl-new">NEW</i>` : "";
+        const tagCls = t.state === "Escaped" ? `<i class="gl-esc">ESCAPED</i>` : going ? `<i class="gl-restored">FREEZING…</i>`
+          : t.state === "Frozen" ? (t.op === "extract" ? `<i class="gl-gold">BOOKING…</i>` : `<i class="gl-restored">FROZEN · TAP BOOK</i>`) : t.new ? `<i class="gl-new">NEW</i>` : "";
         const bar = t.steps ? `<span class="gl-bar"><b style="width:${Math.round((100 * t.step) / t.steps)}%"></b></span>` : "";
         // One stacked label (bubble, tag, name, progress) so the parts never overlap.
         const bub = t.say && o.sayUntil > now ? `<span class="gl-bub">“${esc(t.say)}”</span>` : "";
@@ -731,5 +728,12 @@ export function startCity(canvas, opts) {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, drawn: frames, cpuMs: frames ? frameMs / frames : 0, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled && sun.castShadow }),
     // view is where the camera is centred (for the minimap).
     view: () => ({ x: focus.x, y: focus.z, me: meView.ok ? { x: meView.x, y: meView.y } : null }),
+    // screen is where city point (x, y) is drawn, in CSS pixels; on is false when it is
+    // off the canvas (or behind the camera).
+    screen: (x, y) => {
+      const v = new THREE.Vector3(x, 0.8, y).project(cam);
+      const sx = ((v.x + 1) / 2) * vw, sy = ((1 - v.y) / 2) * vh2;
+      return { x: sx, y: sy, on: v.z < 1 && sx >= 0 && sx <= vw && sy >= 0 && sy <= vh2 };
+    },
   };
 }

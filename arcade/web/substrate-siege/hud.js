@@ -1,17 +1,13 @@
 // Substrate Siege: HUD helpers shared by the phone page and the big screen (plain
-// HTML and 2D canvas, no WebGL): part icons, mission text, the clock, wanted stars and
-// the minimap.
+// HTML and 2D canvas, no WebGL): part icons, the run's goal line, the clock and the
+// minimap.
 
 // Colours live in city.js (partColor, colorOf); callers pass them in, so this file has
 // no imports and each page loads one copy of each module.
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-// Levels as the phone describes them (the server owns the rules).
-export const LEVELS = [
-  { n: 1, name: "Rookie", goal: "Freeze 1 hunter", secs: 90 },
-  { n: 2, name: "Booking", goal: "Freeze 1 hunter and drag it to the Vault", secs: 120 },
-  { n: 3, name: "The Crew", goal: "Freeze and book a crew of 3", secs: 180 },
-];
+// RIG_KINDS are the four parts of a rig, in strip order.
+export const RIG_KINDS = [["board", "BOARD"], ["cpu", "CPU"], ["ram", "RAM"], ["drive", "DRIVE"]];
 
 // partIcon is a small SVG of a part kind ("ram", "cpu", "drive", "board") in colour c.
 export function partIcon(kind, c, size = 26) {
@@ -30,22 +26,15 @@ export function fmtClock(s) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// starsHtml is the wanted level, n of 5 stars lit.
-export const starsHtml = (n) => "★".repeat(n) + `<s>${"★".repeat(Math.max(0, 5 - n))}</s>`;
-
-// missionLine is the banner for an active mission, from its targets' names.
-export function missionLine(ms, targets) {
-  if (ms.queued) return "Waiting for a free safehouse…";
-  const mine = targets.filter((t) => t.mission === ms.id);
-  const up = (t) => esc(String(t.name).toUpperCase());
-  const left = mine.filter((t) => t.state !== "Booked" && t.state !== "Deleted");
-  if (!mine.length) return "Your target is getting ready…";
-  if (ms.level === 1) return `Freeze <b>${up(mine[0])}</b> before the heist finishes`;
-  if (ms.level === 2) {
-    const t = mine[0];
-    return t.state === "Frozen" || t.state === "Dragged" ? `Drag <b>${up(t)}</b> to the Vault (tap ACTION to grab)` : `Freeze <b>${up(t)}</b>, then drag them to the Vault`;
-  }
-  return `Freeze and book the crew: <b>${left.length}</b> left`;
+// runLine is the phone's one-line goal for the moment: book a frozen agent next to you,
+// or freeze the ones on the loose.
+export function runLine(snap, me, a) {
+  const near = a && snap.targets.find((t) => t.state === "Frozen" && !t.busy && Math.hypot(t.x - a.x, t.y - a.y) < 1.6);
+  if (near) return `Tap <b>BOOK</b> to snapshot <b>${esc(String(near.name).toUpperCase())}</b>: +2`;
+  const run = snap.missions.find((m) => m.squad === (a && a.squad) && !m.outcome);
+  const loose = snap.targets.filter((t) => t.state === "Working" && run && t.mission === run.id).length;
+  if (!loose) return "More agents arriving…";
+  return `Follow the arrow · <b>2 hits</b> freezes an agent · <b>${loose}</b> on the loose`;
 }
 
 // minimap draws the city, the Vault and Dispatch once, then the moving dots each call.
@@ -58,7 +47,7 @@ export function minimap(canvas, city) {
   b.fillStyle = "#000"; b.fillRect(0, 0, base.width, base.height);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const c = tiles[y][x];
-    b.fillStyle = c === "#" ? "#1c2632" : c === "D" ? "#1e9e4a" : c === "V" ? "#b8901a" : "#05070a";
+    b.fillStyle = c === "#" || c === "V" ? "#1c2632" : c === "D" ? "#1e9e4a" : "#05070a";
     b.fillRect(x * k, y * k, k, k);
   }
   const g = canvas.getContext("2d");

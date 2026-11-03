@@ -108,7 +108,7 @@
 </head>
 <body class="idle">
 <div id="head">
-  <div><h1>Substrate Siege<small>Every hunter is a real kagent agent on Agent Substrate.</small></h1>
+  <div><h1>Substrate Siege<small>Every agent is a real kagent agent on Agent Substrate.</small></h1>
     <div id="live" class="off"><i></i><b>LIVE</b><span id="since">connecting…</span></div></div>
   <div id="lines">
     <div id="line1"></div>
@@ -123,9 +123,9 @@
 <div id="pulseBox"><canvas id="pulse" aria-label="Compute heartbeat"></canvas><div id="pulseLbl">COMPUTE<b id="pulseNow"></b></div></div>
 
 <div id="side">
-  <div id="qr"><div class="code" id="qrcode"></div><div><b>Scan to join the heist</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
-  <div id="board" class="card"><h2>MOST AGENTS FROZEN <em>takedowns · cash · rig · allies</em></h2><div id="rows"></div><div id="squads" class="hidden"></div></div>
-  <div id="feedCard" class="card"><h2>MISSION FEED</h2><div id="feed" aria-live="polite"></div></div>
+  <div id="qr"><div class="code" id="qrcode"></div><div><b>Scan to join the siege</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
+  <div id="board" class="card"><h2>BEST 3-MINUTE RUN <em>points · frozen · rig · allies</em></h2><div id="rows"></div><div id="squads" class="hidden"></div></div>
+  <div id="feedCard" class="card"><h2>LIVE FEED</h2><div id="feed" aria-live="polite"></div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -150,8 +150,8 @@ try {
 } catch (e) {
   $("qrcode").style.display = "none";
 }
-const IDEAS = ["Freeze hunters with FIRE: three hits suspends a real agent.", "Drag a frozen hunter to the Vault to book its snapshot.",
-  "Loot RAM, CPU, drive and board, then build a rig: your own agent.", "Rival crew? Spring their frozen hunters back to life.",
+const IDEAS = ["3 minutes. Freeze as many agents as you can.", "Two hits with FIRE suspends a real agent: +1.",
+  "Tap BOOK next to a frozen agent to checkpoint it: +2.", "Pick up a board, CPU, RAM and a drive: an ally agent joins you.",
   "DDR5 is the rarest drop. It glows gold."];
 let ideaI = 0;
 const idea = () => {
@@ -233,44 +233,44 @@ function stats(s) {
   const sub = s.substrate || {}, t = s.timings || {};
   const hunters = s.targets.filter((x) => x.state !== "Booked" && x.state !== "Deleted").length;
   const allies = s.allies.length;
-  setHtml("line1", `<b>${n(sub.pool)}</b> workers${sep}<b>${n(hunters)}</b> hunters${sep}<b>${n(allies)}</b> allies${sep}<b>${n(sub.awake)}</b> awake`);
-  setHtml("line2", `p50 suspend <b>${fmtMs(t.freeze)}</b>${sep}resume <b>${fmtMs(t.spring)}</b>${sep}checkpoint <b>${fmtMs(t.extract)}</b>${sep}<b>${n(s.vault)}</b> snapshots in the vault`);
+  setHtml("line1", `<b>${n(sub.pool)}</b> workers${sep}<b>${n(hunters)}</b> agents${sep}<b>${n(allies)}</b> allies${sep}<b>${n(sub.awake)}</b> awake`);
+  setHtml("line2", `p50 suspend <b>${fmtMs(t.freeze)}</b>${sep}book (resume + checkpoint) <b>${fmtMs(t.extract)}</b>${sep}<b>${n(s.vault)}</b> snapshots in storage`);
   // What the same agents would cost as always-on pods (one pod each, all day), at the
   // stated POD_HOUR_USD price, as Agent Flow estimates it.
   const agents = sub.agents || 0, price = s.podHourUsd || 0.02;
   setHtml("line3", agents
     ? `As always-on pods: <b>${agents}</b> pods ≈ <b>$${(agents * 24 * price).toFixed(2)}/day</b>${sep}here <b>${n(sub.asleep)}</b> sleep in snapshots for free <span style="color:#6f7479">(est. $${price}/pod-hour)</span>`
-    : `As always-on pods, every hunter and ally would be a pod all day <span style="color:#6f7479">(est. $${price}/pod-hour)</span>`);
+    : `As always-on pods, every agent and ally would be a pod all day <span style="color:#6f7479">(est. $${price}/pod-hour)</span>`);
 }
 function setHtml(id, html) { const el = $(id); if (el._h !== html) { el._h = html; el.innerHTML = html; } }
 
-// ---- leaderboard: top 8 players by takedowns (cash breaks ties), from state ----
+// ---- leaderboard: top 8 players by best run (total freezes break ties), from state ----
 const RAM = ["#6f7479", "#c8d6cc", "#2bff6a", "#4aa8ff", "#c77dff", "#ffd23d"];
 const squadTag = (sq) => (!sq || sq.startsWith("solo-") ? "" : sq);
 const prevTd = new Map();
 function board(s) {
-  const rows = [...(s.board || [])].sort((a, b) => b.takedowns - a.takedowns || b.cash - a.cash || String(a.nick).localeCompare(b.nick)).slice(0, 8);
+  const rows = [...(s.board || [])].sort((a, b) => b.best - a.best || b.freezes - a.freezes || String(a.nick).localeCompare(b.nick)).slice(0, 8);
   const html = rows.length ? rows.map((r, i) => {
     const av = byId(s.avatars, r.id), tag = squadTag(r.squad);
     const rig = r.rig ? `<span class="rig" style="color:${RAM[r.rig]};border-color:${RAM[r.rig]}66">DDR${r.rig}</span>` : `<span class="rig">–</span>`;
     return `<div class="row" data-id="${esc(r.id)}"><span class="rk">${i + 1}</span>` +
       `<span class="nm"><i style="background:${esc(colorOf(av ? av.color : "#6f7479"))}"></i><b>${esc(r.nick)}</b>${tag ? `<small>${esc(tag)}</small>` : ""}</span>` +
-      `<span class="td">${r.takedowns}<small>❄</small></span><span class="cash">$${n(r.cash)}</span>${rig}` +
+      `<span class="td">${r.best}<small>pts</small></span><span class="cash">❄${n(r.freezes)}</span>${rig}` +
       `<span class="al">${r.allies ? "◆" + r.allies : ""}</span></div>`;
-  }).join("") : `<div class="empty">No takedowns yet. Scan the code and be first.</div>`;
+  }).join("") : `<div class="empty">No runs yet. Scan the code and be first.</div>`;
   if ($("rows")._h !== html) {
     $("rows")._h = html;
     $("rows").innerHTML = html;
     for (const r of rows) {
-      if (prevTd.has(r.id) && prevTd.get(r.id) < r.takedowns) {
+      if (prevTd.has(r.id) && prevTd.get(r.id) < r.best) {
         const el = $("rows").querySelector(`[data-id="${CSS.escape(r.id)}"]`);
         if (el) { el.classList.add("bump"); setTimeout(() => el.classList.remove("bump"), 1200); }
       }
     }
   }
-  for (const r of rows) prevTd.set(r.id, r.takedowns);
+  for (const r of rows) prevTd.set(r.id, r.best);
   const sq = Object.entries(s.squads || {}).sort((a, b) => b[1] - a[1]).slice(0, 4);
-  setHtml("squads", sq.length ? "Squads: " + sq.map(([k, v]) => `<b>${esc(k)}</b> ${v}`).join(`${sep}`) : "");
+  setHtml("squads", sq.length ? "Teams (freezes): " + sq.map(([k, v]) => `<b>${esc(k)}</b> ${v}`).join(`${sep}`) : "");
   show("squads", sq.length > 0);
 }
 
@@ -307,16 +307,10 @@ function onEvent(e) {
   const tg = byId(s.targets, e.target), tname = `<b>${esc(tg ? tg.name : e.text || "a hunter")}</b>`;
   switch (e.kind) {
     case "frozen": lastAction = Date.now(); return feed("ice", "❄", `${who} froze ${tname}`, `suspend ${e.ms} ms`);
-    case "booked": lastAction = Date.now(); return feed("gold", "▣", `${who} booked ${tname} into the Vault`, "checkpoint");
-    case "booked-line": return feed("gold", "❝", `${tname}, from the Vault: “${esc(e.text)}”`);
-    case "sprung": {
-      lastAction = Date.now();
-      heart.beat(0.9, `${tg ? tg.name : "hunter"} · restored`);
-      const by = e.player ? `${who} sprang ${tname}` : `The crew sprang ${tname}`;
-      feed("spr", "↻", by, `resume ${e.ms} ms`);
-      return toast(`<span>↻</span><span>${by}: restored from its snapshot in <b>${esc(e.ms)} ms</b>, memory intact</span>`, "blue");
-    }
-    case "escaped": return feed("bad", "✖", `${tname} escaped with the loot`);
+    case "booked": lastAction = Date.now(); return feed("gold", "▣", `${who} booked ${tname}`, "checkpoint");
+    case "booked-line": return feed("gold", "❝", `${tname}, from its snapshot: “${esc(e.text)}”`);
+    case "deleted": return feed("", "✖", `${tname} was left frozen too long`, "delete");
+    case "escaped": return feed("bad", "➜", `${tname} finished its job and got away`);
     case "slipped": return feed("", "~", `${tname} slipped away from ${who}`, "suspend failed");
     case "policy": return feed("bad", "🛡", `agentgateway stopped ${tname}: ${esc(e.text)}`);
     case "down": return feed("bad", "✚", `${who} went down${+e.text ? `, dropped ${esc(e.text)} parts` : ""}`);
@@ -328,10 +322,10 @@ function onEvent(e) {
       heart.beat(0.8, `${nickOf(s, e.player)} · rig`);
       return feed("", "◆", `${who} deployed a <b>${esc(e.text)}</b> rig: a new ally agent`, "new session");
     }
-    case "mission-won": {
+    case "run-done": {
       const ms = byId(s.missions, e.text), tag = squadTag(e.player);
-      const who = tag ? `Squad <b>${esc(tag)}</b>` : `<b>${esc(nickOf(s, e.player.replace(/^solo-/, "")) || "A player")}</b>`;
-      return feed("gold", "✓", `${who} won <b>${esc(ms ? ms.name : "a mission")}</b>`, ms ? `$${n(ms.cash)}` : "");
+      const who = tag ? `Team <b>${esc(tag)}</b>` : `<b>${esc(nickOf(s, e.player.replace(/^solo-/, "")) || "A player")}</b>`;
+      return feed("gold", "⏱", `${who} finished a run with <b>${ms ? ms.score : 0}</b> points`);
     }
   }
 }
@@ -397,7 +391,7 @@ const heart = (() => {
     beat,
     set(awake, pool) {
       target = pool ? Math.min(1, awake / pool) * 0.9 + 0.04 : 0.04;
-      $("pulseNow").textContent = `${awake} awake · ${pool ? Math.round((100 * awake) / pool) : 0}% of ${pool} heist sandboxes`;
+      $("pulseNow").textContent = `${awake} awake · ${pool ? Math.round((100 * awake) / pool) : 0}% of ${pool} sandboxes`;
     },
   };
 })();

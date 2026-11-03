@@ -55,9 +55,14 @@
   .slot { width: 36px; height: 38px; border: 1px solid var(--gd); border-radius: 7px; background: rgba(0, 14, 4, .85); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 8px; color: var(--gt); gap: 1px; }
   .slot.ddr5 { border-color: var(--gold); box-shadow: 0 0 10px #ffd23d99; color: #ffe27a; }
   .slot.empty { opacity: .45; }
-  #stashBtn { margin-left: 4px; height: 38px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--gd); background: #04200d; font-size: 10px; font-weight: 800; letter-spacing: .06em; position: relative; }
-  #stashBtn.ready { border-color: var(--g); background: #063d18; box-shadow: 0 0 14px #2bff6a88; color: #fff; }
-  #stashBtn em { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--g); color: #001a08; font-style: normal; font-size: 9px; line-height: 16px; text-align: center; padding: 0 3px; }
+  .slot b { position: absolute; top: -5px; right: -5px; min-width: 14px; height: 14px; border-radius: 7px; background: var(--g); color: #001a08; font-size: 8px; line-height: 14px; text-align: center; padding: 0 2px; }
+  .slot { position: relative; }
+  #rigHint { font-size: 9px; color: var(--gt); margin-left: 4px; line-height: 1.2; max-width: 70px; }
+
+  /* The arrow to the nearest agent, on the screen edge when it is off screen. */
+  #arrow { position: fixed; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; pointer-events: none; z-index: 2; display: none; }
+  #arrow svg { width: 44px; height: 44px; filter: drop-shadow(0 0 6px #ff4d5e); }
+  #arrow span { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
 
   /* Thumbs: a floating joystick on the left, FIRE and ACTION on the right. */
   #stickZone { position: fixed; left: 0; bottom: 0; width: 50%; height: 168px; padding-bottom: var(--sb); touch-action: none; }
@@ -68,9 +73,7 @@
   #fire.on { background: #12803a; box-shadow: 0 0 34px #2bff6acc; transform: scale(.96); }
   #act { right: 122px; bottom: calc(70px + var(--sb)); width: 70px; height: 70px; background: #062a12; border: 2px solid var(--gd); color: var(--gt); font-size: 11px; }
   #act.on { background: #0b3d1a; }
-  #act.del { color: #fff; border-color: var(--red); background: #3a0b12; }
-  #act svg { position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); transform: rotate(-90deg); pointer-events: none; }
-  #act circle { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; }
+  #act.ready { color: #fff; border-color: var(--gold); background: #3a2f06; box-shadow: 0 0 18px #ffd23d88; }
   .btn small { display: block; font-size: 8px; letter-spacing: .04em; font-weight: 400; opacity: .8; text-align: center; }
 
   /* Sheets and cards. */
@@ -86,14 +89,13 @@
   .join button { padding: 0 16px; border-radius: 10px; border: 1px solid var(--g); background: #063d18; font-weight: 800; }
   .code { font-size: 34px; font-weight: 800; color: #fff; letter-spacing: .3em; text-align: center; text-shadow: 0 0 14px var(--g); margin: 8px 0; }
   .row { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 10px; flex-wrap: wrap; }
-  .lvl.locked { position: relative; }
-  .lvl.locked::after { content: "LOCKED"; position: absolute; right: 12px; top: 13px; font-size: 10px; color: var(--gt); }
+  .how { margin: 0 0 12px; padding: 0; list-style: none; font-size: 12px; }
+  .how li { margin: 4px 0; }
+  .how b { color: #fff; }
+  .play { text-align: center; font-size: 20px; padding: 16px; }
+  .bigScore { font-size: 54px; font-weight: 800; color: #fff; text-align: center; text-shadow: 0 0 18px var(--g); line-height: 1; margin: 6px 0; }
+  details.friends summary { cursor: pointer; font-size: 12px; margin: 8px 0; color: var(--g); }
   .err { color: #ffb4b4; min-height: 1.4em; font-size: 12px; }
-  .stashList { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
-  .stashList div { border: 1px solid var(--gd); border-radius: 8px; padding: 8px 4px; text-align: center; font-size: 10px; }
-  .stashList div.have { border-color: var(--g); }
-  .stashList b { display: block; font-size: 16px; color: #fff; }
-  .tiers { font-size: 11px; margin: 4px 0 8px; }
 
   #down { position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: radial-gradient(circle, rgba(80, 0, 10, .35), rgba(40, 0, 6, .8)); pointer-events: none; text-align: center; }
   #down h1 { margin: 0; color: #ffd0d4; font-size: 26px; letter-spacing: .12em; text-shadow: 0 0 18px var(--red); }
@@ -116,7 +118,6 @@
     #feed { display: block; top: 82px; }
     #inv { bottom: 22px; }
     .slot { width: 48px; height: 50px; font-size: 10px; }
-    #stashBtn { height: 50px; padding: 0 14px; font-size: 12px; }
     #stickZone { height: 240px; width: 40%; }
   }
 </style>
@@ -128,64 +129,58 @@
 <div id="hud" class="hidden">
   <div id="top">
     <div id="who" class="panel"><div class="n"><b id="nick">…</b> · <span id="squadName">solo</span></div><div class="hp" id="hp"><i></i></div></div>
-    <div id="clock" class="panel"><div class="t" id="time">--:--</div><div class="stars" id="stars"></div></div>
-    <div id="score" class="panel"><div class="k">TAKEDOWNS</div><div class="v" id="td">0</div><div class="c" id="cash">$0</div></div>
+    <div id="clock" class="panel"><div class="t" id="time">3:00</div><div class="stars" id="sub">SIEGE</div></div>
+    <div id="score" class="panel"><div class="k">SCORE</div><div class="v" id="pts">0</div><div class="c" id="best"></div></div>
   </div>
   <div id="row2">
     <button id="menuBtn" class="panel">MENU</button>
-    <div id="banner" class="panel">Pick a mission to start.</div>
+    <div id="banner" class="panel">Tap PLAY to start.</div>
     <canvas id="mini" width="192" height="128"></canvas>
   </div>
   <div id="feed" class="panel"></div>
+  <div id="arrow"><svg viewBox="0 0 44 44"><path d="M22 4 L38 34 L22 26 L6 34 Z" fill="#ff4d5e" stroke="#fff" stroke-width="2"/></svg><span id="arrowD"></span></div>
   <div id="inv"></div>
   <div id="stickZone"><div id="stick"><div id="knob"></div></div></div>
-  <div id="act" class="btn"><svg viewBox="0 0 100 100"><circle id="actRing" cx="50" cy="50" r="46" pathLength="100" stroke-dasharray="0 100"/></svg><span id="actTxt">ACTION<small>hold: delete</small></span></div>
+  <div id="act" class="btn"><span id="actTxt">BOOK<small>tap: +2</small></span></div>
   <div id="fire" class="btn">FIRE</div>
 </div>
 
-<div id="squad" class="sheet panel hidden">
+<div id="start" class="sheet panel hidden">
   <h2>SUBSTRATE SIEGE</h2>
-  <p>Every hunter in this city is a real AI agent in its own sandbox. Freeze them before their heist finishes.</p>
-  <button class="big" id="solo">GO SOLO<small>Play on your own.</small></button>
-  <button class="big" id="create">CREATE A SQUAD<small>Get a code for up to 3 friends.</small></button>
-  <div class="join"><input id="code" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Squad code"><button id="joinBtn">JOIN</button></div>
-  <div class="err" id="squadErr"></div>
-  <div id="made" class="hidden"><p>Your squad code. Friends type it on their phones:</p><div class="code" id="madeCode"></div><button class="big" id="toLevels">CHOOSE A MISSION</button></div>
+  <p>Every agent in this city is a real AI agent running in its own sandbox. You have <b>3 minutes</b>.</p>
+  <ul class="how">
+    <li>➤ Follow the <b style="color:#ff4d5e">red arrow</b> to the nearest agent.</li>
+    <li>❄ Hold <b>FIRE</b>: 2 hits <b>freezes</b> it (a real suspend). <b>+1</b></li>
+    <li>▣ Tap <b>BOOK</b> next to a frozen agent to snapshot it. <b>+2</b></li>
+    <li>⚠ Agents shoot back, and escape when their job is done.</li>
+  </ul>
+  <button class="big play" id="play">▶ PLAY</button>
+  <div class="err" id="startErr"></div>
+  <details class="friends" id="friends"><summary>Play with friends (one team, one clock)</summary>
+    <button class="big" id="create">CREATE A TEAM<small>Get a code for up to 3 friends.</small></button>
+    <div class="join"><input id="code" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Team code"><button id="joinBtn">JOIN</button></div>
+    <div id="made" class="hidden"><p>Your team code. Friends type it on their phones, then anyone taps PLAY:</p><div class="code" id="madeCode"></div></div>
+    <button class="ghost" id="soloBtn">Back to solo</button>
+  </details>
   <div class="row"><a href="/substrate-siege/screen" target="_blank">Watch the big screen ↗</a><a href="/">Arcade</a></div>
 </div>
 
 <div id="menu" class="sheet panel hidden">
   <h2>MENU</h2>
-  <button class="big" id="mMissions">MISSIONS<small id="mMissionsWhy">Pick a level, change squad.</small></button>
+  <button class="big" id="mPlay">PLAY / TEAM<small id="mPlayWhy">Start a run, or change team.</small></button>
   <button class="big" id="mQuality">GRAPHICS: HIGH<small>Low: sharper frame rate, no shadows.</small></button>
   <div class="row"><button class="ghost" id="mClose">Close</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
 
-<div id="levels" class="sheet panel hidden">
-  <h2>MISSIONS</h2>
-  <p>Squad: <b id="lvSquad" style="color:#fff">solo</b> · <a href="#" id="changeSquad">change</a></p>
-  <div id="lvList"></div>
-  <div class="err" id="lvErr"></div>
-  <div class="row"><button class="ghost" id="roam">Just look around</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
-</div>
-
 <div id="result" class="sheet panel hidden">
-  <h2 id="resTitle"></h2>
-  <p id="resText"></p>
-  <button class="big" id="resNext"></button>
-  <div class="row"><button class="ghost" id="resClose">Close</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
+  <h2>TIME!</h2>
+  <div class="bigScore" id="resScore">0</div>
+  <p id="resText" style="text-align:center"></p>
+  <button class="big play" id="resNext">▶ PLAY AGAIN</button>
+  <div class="row"><button class="ghost" id="resClose">Look around</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
 
-<div id="stash" class="sheet panel hidden">
-  <h2>STASH</h2>
-  <p>Parts banked in the Vault are safe. A rig takes a board, a CPU, RAM and a drive, and deploys an ally: a real agent that fights beside you.</p>
-  <div class="stashList" id="stashList"></div>
-  <div class="tiers" id="stashTiers"></div>
-  <button class="big" id="build" disabled>BUILD RIG<small id="buildWhy">Needs a board, a CPU, RAM and a drive.</small></button>
-  <div class="row"><button class="ghost" id="stashClose">Close</button></div>
-</div>
-
-<div id="down" class="hidden"><h1>DOWN — RESPAWNING</h1><div>Your unbanked loot dropped where you fell.</div></div>
+<div id="down" class="hidden"><h1>DOWN — RESPAWNING</h1><div>The parts you carried dropped where you fell.</div></div>
 <div id="toast" class="panel hidden"></div>
 <div id="status" class="panel hidden"></div>
 <div id="debug" class="panel hidden"></div>
@@ -194,11 +189,11 @@
 <script type="module">
 import { startCity, webglOK, colorOf, partColor, esc } from "/substrate-siege/static/city.js";
 import { connect } from "/substrate-siege/static/net.js";
-import { partIcon, fmtClock, starsHtml, missionLine, minimap, LEVELS } from "/substrate-siege/static/hud.js";
+import { partIcon, fmtClock, runLine, minimap, RIG_KINDS } from "/substrate-siege/static/hud.js";
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
-const SHEETS = ["squad", "levels", "result", "stash", "menu"];
+const SHEETS = ["start", "result", "menu"];
 const sheet = (id) => { for (const s of SHEETS) show(s, s === id); };
 
 // ?debug=1 shows frame and network timing (see the bottom of this script).
@@ -227,7 +222,7 @@ if (!cityR || !cityR.ok) await failed("Can't load the city map right now.");
 const city = await cityR.json();
 
 // Controls state, read by the renderer (prediction) and the send loop.
-const ctl = { mx: 0, my: 0, fire: false, act: false, stick: false, actAt: 0 };
+const ctl = { mx: 0, my: 0, fire: false, act: false, stick: false };
 
 const view = startCity($("view"), {
   mode: "phone", me: me.id, city, overlay: $("labels"), logo: "/substrate-siege/static/kagent-icon.svg",
@@ -257,86 +252,68 @@ const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${locati
 $("status").textContent = "Connecting…";
 show("status");
 
-// ---- squad and level screens ----
+// ---- start, team and result screens ----
 let pending = null; // what the last command was, for routing its error
 const isSolo = () => !mySquad || mySquad.startsWith("solo-");
 function onFirstSnap() {
   show("status", false);
   show("hud");
   $("nick").textContent = me.nick;
-  if (activeMission()) sheet(null); else sheet("squad");
+  if (activeRun()) sheet(null); else openStart();
 }
-$("solo").onclick = () => { pending = "squad"; net.send({ t: "squad", op: "solo" }); };
+function openStart() {
+  $("startErr").textContent = "";
+  if (!isSolo()) { $("friends").open = true; $("madeCode").textContent = mySquad; show("made"); }
+  sheet("start");
+}
+const play = () => { pending = "start"; net.send({ t: "start" }); };
+$("play").onclick = play;
+$("resNext").onclick = () => { play(); sheet(null); };
 $("create").onclick = () => { pending = "squad"; net.send({ t: "squad", op: "create" }); };
+$("soloBtn").onclick = () => { pending = "squad"; net.send({ t: "squad", op: "solo" }); };
 $("joinBtn").onclick = () => {
   const code = $("code").value.trim().toUpperCase();
-  if (!/^[A-Z]{4}$/.test(code)) { $("squadErr").textContent = "A squad code is 4 letters."; return; }
+  if (!/^[A-Z]{4}$/.test(code)) { $("startErr").textContent = "A team code is 4 letters."; return; }
   pending = "squad"; net.send({ t: "squad", op: "join", code });
 };
 $("code").addEventListener("input", (e) => { e.target.value = e.target.value.replace(/[^a-z]/gi, "").toUpperCase(); });
-let created = false;
-$("create").addEventListener("click", () => { created = true; });
 function onSquad(code) {
-  $("squadErr").textContent = "";
+  $("startErr").textContent = "";
   mySquad = code;
-  if (created && !code.startsWith("solo-")) {
-    created = false;
-    $("madeCode").textContent = code;
-    show("made");
-    return;
-  }
-  created = false;
-  openLevels();
+  const team = !code.startsWith("solo-");
+  $("madeCode").textContent = team ? code : "";
+  show("made", team);
 }
-$("toLevels").onclick = () => openLevels();
-$("changeSquad").onclick = (e) => { e.preventDefault(); show("made", false); sheet("squad"); };
-function openLevels() {
-  const best = (snap && snap.best) || 0;
-  $("lvSquad").textContent = isSolo() ? "solo" : mySquad;
-  $("lvErr").textContent = "";
-  $("lvList").innerHTML = LEVELS.map((l) => {
-    const locked = l.n > best + 1;
-    return `<button class="big lvl${locked ? " locked" : ""}" data-n="${l.n}" ${locked ? "disabled" : ""}>LEVEL ${l.n} · ${esc(l.name.toUpperCase())}` +
-      `<small>${esc(l.goal)} · ${fmtClock(l.secs)}${locked ? ` · win level ${l.n - 1} first` : ""}</small></button>`;
-  }).join("");
-  for (const b of $("lvList").querySelectorAll("button")) b.onclick = () => { pending = "start"; net.send({ t: "start", level: +b.dataset.n }); };
-  sheet("levels");
-}
-$("roam").onclick = () => sheet(null);
 $("menuBtn").onclick = () => {
-  const busy = !!activeMission();
-  $("mMissions").disabled = busy;
-  $("mMissionsWhy").textContent = busy ? "Finish this mission first." : "Pick a level, change squad.";
+  const busy = !!activeRun();
+  $("mPlay").disabled = busy;
+  $("mPlayWhy").textContent = busy ? "Your run is on: finish it first." : "Start a run, or change team.";
   sheet("menu");
 };
-$("mMissions").onclick = () => openLevels();
+$("mPlay").onclick = () => openStart();
 $("mClose").onclick = () => sheet(null);
-const ERRS = { "city full": "No free safehouse: the city has all the allies it can run.", "ally limit": "You already have 2 allies.", "missing parts": "Your stash is missing parts.", paused: "Missions are paused by the booth crew." };
+const ERRS = { paused: "The booth crew paused new runs.", "your squad is already playing": "Your team is already playing.", "finish your run first": "Finish your run first." };
 function onErr(msg) {
   const text = ERRS[msg] || msg;
-  if (pending === "squad") $("squadErr").textContent = text;
-  else if (pending === "start") $("lvErr").textContent = text;
+  if (pending === "squad" || pending === "start") $("startErr").textContent = text;
   else toast(text);
   pending = null;
 }
 
-// ---- missions ----
+// ---- runs ----
 const dismissed = new Set();
-const activeMission = () => snap && snap.missions.find((m) => m.squad === mySquad && !m.outcome);
+const activeRun = () => snap && snap.missions.find((m) => m.squad === mySquad && !m.outcome);
 function syncMission() {
-  const act = activeMission();
-  // A squadmate started one, or ours just launched: drop into the game.
-  if (act && !$("levels").classList.contains("hidden")) sheet(null);
-  const done = snap.missions.find((m) => m.squad === mySquad && m.outcome && !dismissed.has(m.id));
-  if (!act && done && $("result").classList.contains("hidden") && $("squad").classList.contains("hidden") && $("levels").classList.contains("hidden")) {
+  const act = activeRun();
+  // We (or a teammate) started one: drop into the game.
+  if (act && !$("start").classList.contains("hidden")) sheet(null);
+  if (act) dismissed.add("live:" + act.id);
+  const done = snap.missions.find((m) => m.squad === mySquad && m.outcome && dismissed.has("live:" + m.id) && !dismissed.has(m.id));
+  if (!act && done && $("result").classList.contains("hidden")) {
     dismissed.add(done.id);
-    const won = done.outcome === "won";
-    $("resTitle").textContent = won ? "HEIST STOPPED" : done.outcome === "escaped" ? "THE HEIST GOT AWAY" : "MISSION FAILED";
-    $("resText").innerHTML = `Level ${done.level} · ${esc(done.name)} · ${done.cash >= 0 ? "+" : ""}$${done.cash.toLocaleString()} for the squad.` +
-      (won ? " The hunters you froze were really suspended in Substrate." : " Their crew keeps reviving them; freeze faster next time.");
-    const next = won && done.level < LEVELS.length ? done.level + 1 : done.level;
-    $("resNext").innerHTML = won && next !== done.level ? `NEXT: LEVEL ${next}<small>${esc(LEVELS[next - 1].goal)}</small>` : `TRY LEVEL ${next} AGAIN`;
-    $("resNext").onclick = () => { pending = "start"; net.send({ t: "start", level: next }); sheet(null); };
+    $("resScore").textContent = snap.score || 0;
+    const team = isSolo() ? "" : ` · team ${done.score}`;
+    $("resText").innerHTML = `points${team}<br>best <b>${snap.best || 0}</b>${snap.rank ? ` · <b>#${snap.rank}</b> on the big screen` : ""}<br><small>Every freeze was a real Substrate suspend; every booking a real checkpoint.</small>`;
     sheet("result");
   }
 }
@@ -344,7 +321,39 @@ $("resClose").onclick = () => sheet(null);
 
 // ---- HUD ----
 const drawMini = minimap($("mini"), city);
-let lastHud = 0, lastMini = 0, invKey = "", stashKey = "";
+let lastHud = 0, lastMini = 0, invKey = "";
+// nearest is the closest Working agent to (x, y): your run's first, then anyone's.
+function nearest(x, y, run) {
+  let best = null, bd = Infinity, mine = false;
+  for (const t of snap.targets) {
+    if (t.state !== "Working" || t.op) continue;
+    const p = view.where ? view.where(t) : t;
+    const d = Math.hypot(p.x - x, p.y - y), own = !!run && t.mission === run.id;
+    if ((own && !mine) || (own === mine && d < bd)) { best = t; bd = d; mine = own; }
+  }
+  return best && { t: best, d: bd };
+}
+function arrow(a, run) {
+  const el = $("arrow");
+  const p = (view.view().me) || a;
+  const n = a && !a.down ? nearest(p.x, p.y, run) : null;
+  if (!n) { el.style.display = "none"; return; }
+  const sc = view.screen(n.t.x, n.t.y), me2 = view.screen(p.x, p.y);
+  if (sc.on && n.d < 9) { el.style.display = "none"; return; }
+  const W = innerWidth, H = innerHeight, m = 40;
+  let dx = sc.x - me2.x, dy = sc.y - me2.y;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  // Walk from the player towards the agent, stopping at the screen edge (inside the HUD).
+  const top = 160, bot = H - 200;
+  const tx = dx > 0 ? (W - m - me2.x) / dx : dx < 0 ? (m - me2.x) / dx : Infinity;
+  const ty = dy > 0 ? (bot - me2.y) / dy : dy < 0 ? (top - me2.y) / dy : Infinity;
+  const k = Math.max(60, Math.min(tx, ty, sc.on ? len - 50 : Infinity));
+  el.style.display = "block";
+  el.style.transform = `translate(${me2.x + dx * k}px,${me2.y + dy * k}px)`;
+  el.querySelector("svg").style.transform = `rotate(${(Math.atan2(dy, dx) * 180) / Math.PI + 90}deg)`;
+  $("arrowD").textContent = `${Math.round(n.d)} m`;
+}
 function hud(now) {
   if (!snap) return;
   const a = snap.avatars.find((x) => x.id === me.id);
@@ -353,60 +362,38 @@ function hud(now) {
     $("hp").classList.toggle("low", a.hp < 30);
     show("down", a.down);
   }
-  $("squadName").textContent = isSolo() ? "solo" : `squad ${mySquad}`;
-  $("td").textContent = snap.takedowns || 0;
-  $("cash").textContent = `$${(snap.cash || 0).toLocaleString()}`;
-  const ms = activeMission() || snap.missions.find((m) => m.squad === mySquad);
+  $("squadName").textContent = isSolo() ? "solo" : `team ${mySquad}`;
+  $("pts").textContent = snap.score || 0;
+  $("best").textContent = snap.best ? `best ${snap.best}${snap.rank ? ` · #${snap.rank}` : ""}` : "";
+  const run = activeRun();
   const worldNow = snap.now + (now - snapAt) / 1000;
-  if (ms && !ms.outcome) {
-    const left = ms.queued ? ms.level && LEVELS[ms.level - 1].secs : ms.ends - worldNow;
+  if (run) {
+    const left = run.ends - worldNow;
     $("time").textContent = fmtClock(left);
-    $("time").classList.toggle("hurry", !ms.queued && left < 15);
-    $("stars").innerHTML = starsHtml(ms.stars);
-    $("banner").innerHTML = `<span>L${ms.level} · ${missionLine(ms, snap.targets)}</span>`;
-    $("banner").classList.toggle("queued", ms.queued);
+    $("time").classList.toggle("hurry", left < 20);
+    $("banner").innerHTML = runLine(snap, me.id, a);
   } else {
-    $("time").textContent = "--:--";
+    $("time").textContent = "3:00";
     $("time").classList.remove("hurry");
-    $("stars").innerHTML = starsHtml(0);
-    $("banner").textContent = "No mission. Tap MENU to start one.";
-    $("banner").classList.remove("queued");
+    $("banner").innerHTML = "Tap <b>MENU</b> → <b>PLAY</b> to start a 3-minute run.";
   }
-  // Inventory: 8 slots.
+  // BOOK lights up next to a frozen agent.
+  const near = a && snap.targets.some((t) => t.state === "Frozen" && !t.busy && Math.hypot(t.x - a.x, t.y - a.y) < 1.6);
+  $("act").classList.toggle("ready", !!near);
+  // Parts: one slot per rig part, lit when carried.
   const inv = snap.inv || [];
   const ik = inv.map((p) => p.id).join();
   if (ik !== invKey) {
     invKey = ik;
-    let h = "";
-    for (let i = 0; i < 8; i++) {
-      const p = inv[i];
-      h += p ? `<div class="slot${p.kind === "ram" && p.tier === 5 ? " ddr5" : ""}">${partIcon(p.kind, partColor(p), 24)}${esc(p.label.toUpperCase())}</div>` : `<div class="slot empty"></div>`;
-    }
-    $("inv").innerHTML = h + `<button id="stashBtn">STASH</button>`;
-    $("stashBtn").onclick = openStash;
-    stashKey = "";
+    const have = (k) => inv.filter((p) => p.kind === k);
+    $("inv").innerHTML = RIG_KINDS.map(([k, label]) => {
+      const ps = have(k), top = ps.sort((x, y) => (y.tier || 0) - (x.tier || 0))[0];
+      return `<div class="slot${top ? "" : " empty"}${top && top.kind === "ram" && top.tier === 5 ? " ddr5" : ""}">${partIcon(k, top ? partColor(top) : "#2a4a32", 24)}${esc(top ? top.label.toUpperCase() : label)}${ps.length > 1 ? `<b>${ps.length}</b>` : ""}</div>`;
+    }).join("") + `<div id="rigHint">full set = an ally agent</div>`;
   }
-  const stash = snap.stash || [];
-  const sk = stash.map((p) => p.id).join();
-  if (sk !== stashKey) {
-    stashKey = sk;
-    const n = (k) => stash.filter((p) => p.kind === k).length;
-    const ready = ["board", "cpu", "ram", "drive"].every((k) => n(k) > 0);
-    const b = $("stashBtn");
-    b.classList.toggle("ready", ready);
-    b.innerHTML = (ready ? "⚙ BUILD" : "STASH") + (stash.length ? `<em>${stash.length}</em>` : "");
-    $("stashList").innerHTML = [["board", "BOARD"], ["cpu", "CPU"], ["ram", "RAM"], ["drive", "DRIVE"]].map(([k, l]) =>
-      `<div class="${n(k) ? "have" : ""}">${partIcon(k, n(k) ? partColor({ kind: k, tier: 2 }) : "#2a4a32", 26)}<b>${n(k)}</b>${l}</div>`).join("");
-    const rams = stash.filter((p) => p.kind === "ram").sort((x, y) => y.tier - x.tier);
-    $("stashTiers").innerHTML = rams.length ? "RAM: " + rams.map((p) => `<span style="color:${partColor(p)}">${esc(p.label)}</span>`).join(" ") + " · the best stick goes in" : "";
-    $("build").disabled = !ready;
-    $("buildWhy").textContent = ready ? `Spends 4 parts${rams.length ? `, ally runs on ${rams[0].label}` : ""}.` : "Needs a board, a CPU, RAM and a drive. Bank parts at the Vault.";
-  }
+  arrow(a, run);
   if (now - lastMini > 200) { lastMini = now; drawMini(snap, me.id, view.view()); }
 }
-function openStash() { stashKey = ""; hud(performance.now()); sheet("stash"); }
-$("stashClose").onclick = () => sheet(null);
-$("build").onclick = () => { pending = "build"; net.send({ t: "build" }); sheet(null); toast("Building your rig…"); };
 
 let toastT = 0;
 function toast(text) {
@@ -421,19 +408,19 @@ function feedEvent(e) {
   const who = (id) => { const a = snap && snap.avatars.find((x) => x.id === id); return a ? esc(a.nick) : "someone"; };
   const name = esc(e.text || (t && t.name) || "a hunter");
   const line = {
-    frozen: `<span style="color:#6ff">✓ ${who(e.player)} froze ${name} · suspended in ${e.ms} ms</span>`,
-    sprung: `<span style="color:#7ab8ff">↻ ${name} restored in ${e.ms} ms</span>`,
+    frozen: `<span style="color:#6ff">❄ ${who(e.player)} froze ${name} · suspended in ${e.ms} ms</span>`,
     booked: `<span style="color:#ffd23d">▣ ${who(e.player)} booked ${name}</span>`,
     "booked-line": `<span style="color:#ffd23d">❝ ${esc((t && t.name) || "a hunter")}: “${esc(e.text)}”</span>`,
     deleted: `✖ ${who(e.player)} deleted ${name}`,
-    escaped: `<span style="color:#ff4d5e">${name} got away with the heist</span>`,
+    escaped: `<span style="color:#ff4d5e">${name} finished its job and got away</span>`,
     drop: e.text === "DDR5" ? `<span style="color:#ffd23d">★ DDR5 RAM dropped</span>` : "",
     ally: `⚙ ${who(e.player)} built a rig · ally online`,
     slipped: `<span style="color:#ff9f43">${name} slipped away</span>`,
   }[e.kind];
   if (e.player === me.id && e.kind === "rig-failed") toast("The rig failed to boot. Parts refunded.");
-  if (e.player === me.id && e.kind === "ally") toast("Your ally is online.");
-  if (e.player === me.id && e.kind === "banked") toast(`Banked ${e.text} part${e.text === "1" ? "" : "s"} in the Vault.`);
+  if (e.player === me.id && e.kind === "ally") toast("⚙ Full rig! Your ally agent is online.");
+  if (e.player === me.id && e.kind === "frozen") toast("❄ Frozen! +1 · tap BOOK next to it for +2");
+  if (e.player === me.id && e.kind === "booked") toast("▣ Booked into Snapshot Storage. +2");
   if (!line) return;
   feed.unshift(line);
   feed.length = Math.min(feed.length, 5);
@@ -497,7 +484,7 @@ function button(el, key, onDown, onUp) {
   return release;
 }
 const releaseFire = button($("fire"), "fire");
-const releaseAct = button($("act"), "act", () => { ctl.actAt = performance.now(); }, () => { $("actRing").setAttribute("stroke-dasharray", "0 100"); $("act").classList.remove("del"); });
+const releaseAct = button($("act"), "act");
 for (const el of [zone, $("fire"), $("act")]) el.addEventListener("contextmenu", (e) => e.preventDefault());
 function releaseAll() {
   if (stickId !== null) { try { zone.releasePointerCapture(stickId); } catch {} }
@@ -513,8 +500,7 @@ addEventListener("resize", homeStick);
 homeStick();
 
 // Send input at 20 Hz while anything is held. After a release, resend the idle state at
-// 4 Hz for 1 s: one lost release frame must not leave FIRE or ACTION held (a held
-// ACTION deletes the target after 1 s).
+// 4 Hz for 1 s: one lost release frame must not leave FIRE or BOOK held.
 let wasActive = false, idleUntil = 0, idleNext = 0;
 setInterval(() => {
   const now = performance.now();
@@ -579,11 +565,6 @@ function frame(now) {
   view.draw();
   probeFrame(now);
   debug(now);
-  if (ctl.act) {
-    const p = Math.min(1, (now - ctl.actAt) / 1000);
-    $("actRing").setAttribute("stroke-dasharray", `${(p * 100).toFixed(1)} 100`);
-    $("act").classList.toggle("del", p >= 1);
-  }
   if (now - lastHud > 100) { lastHud = now; hud(now); }
   requestAnimationFrame(frame);
 }
