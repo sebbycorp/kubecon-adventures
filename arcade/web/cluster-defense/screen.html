@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Cluster Defense · Big Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #e9f1ff; --dim: #8ea0d6; --panel: rgba(10, 16, 44, .86); --edge: rgba(120, 160, 255, .3); --k8s: #326ce5; --ok: #3dff8f; --warn: #ffcc33; --bad: #ff4d5e; --ice: #9ff4ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05040f; color: var(--ink); font: 14px/1.4 "JetBrains Mono", ui-monospace, monospace; }
+  #wrap { display: grid; grid-template-columns: 1fr 400px; height: 100%; }
+  #stage { position: relative; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #side { padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; background: linear-gradient(180deg, #0b0f2e, #070820); border-left: 1px solid var(--edge); }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; padding: 10px 12px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .1em; }
+  h1 span { color: var(--k8s); }
+  .sub { font-size: 11px; color: var(--dim); }
+  #qr { display: flex; gap: 12px; align-items: center; }
+  #qrcode { width: 120px; height: 120px; background: #fff; border-radius: 8px; padding: 6px; flex: none; }
+  #qrcode svg { width: 100%; height: 100%; display: block; }
+  #qr b { display: block; font-size: 15px; }
+  #joinUrl { font-size: 11px; color: var(--ice); word-break: break-all; }
+  #gaugeBig .k { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); letter-spacing: .1em; }
+  #gaugeBig .n { font-size: 34px; font-weight: 800; }
+  .bar { height: 16px; border-radius: 9px; background: rgba(255, 255, 255, .08); overflow: hidden; margin: 6px 0; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 9px; transition: width .3s, background .3s; }
+  #hosted { font-size: 15px; }
+  #hosted b { color: var(--ice); font-size: 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; text-align: center; }
+  .grid div { font-size: 10px; color: var(--dim); letter-spacing: .06em; }
+  .grid b { display: block; font-size: 18px; color: var(--ink); }
+  #board ol { margin: 4px 0 0; padding-left: 22px; font-size: 13px; line-height: 1.6; }
+  #board li span { float: right; color: var(--ice); font-weight: 800; }
+  #feed { flex: 1; min-height: 0; overflow: hidden; font-size: 12px; line-height: 1.55; }
+  #feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #overlay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; padding: 22px 30px; min-width: 420px; }
+  #overlay h2 { margin: 0 0 6px; font-size: 40px; letter-spacing: .12em; }
+  #overlay p { margin: 6px 0; color: #c9d6ff; }
+  .hidden { display: none !important; }
+  #conn { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <div id="overlay" class="panel hidden"><h2 id="oTitle"></h2><p id="oText"></p><p id="oNext"></p></div>
+    <div id="conn"></div>
+  </div>
+  <div id="side">
+    <div><h1>CLUSTER <span>DEFENSE</span></h1><div class="sub">Every ship you shoot is a real kagent subagent on Agent Substrate.</div></div>
+    <div id="qr" class="panel"><div id="qrcode"></div><div><b>Scan to fly</b><span id="joinUrl"></span><div class="sub" style="margin-top:6px">Two hits suspends a subagent and frees its worker. Don't let the cluster fill up.</div></div></div>
+    <div id="gaugeBig" class="panel">
+      <div class="k"><span>WORKERS BUSY</span><span id="phase">—</span></div>
+      <div class="n" id="busy">0 / 16</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div id="hosted"><b id="hostedN">0</b> agents hosted on <b id="workersN">16</b> workers</div>
+      <div class="sub" id="cross">Substrate: —</div>
+    </div>
+    <div class="panel grid">
+      <div><b id="sTime">0:00</b>SURVIVED</div><div><b id="sSus">0</b>SUSPENDED</div><div><b id="sBest">—</b>RECORD</div>
+      <div><b id="sP50">—</b>SUSPEND P50</div><div><b id="sP95">—</b>P95</div><div><b id="sTok">0</b>TOKENS/MIN</div>
+    </div>
+    <div id="board" class="panel"><div class="sub">TOP SUSPENDERS THIS ROUND</div><ol id="boardList"></ol></div>
+    <div id="feed" class="panel"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script type="module">
+import { startSpace, roleOf, shipColor, esc } from "/cluster-defense/static/space.js";
+import { connect } from "/cluster-defense/static/net.js";
+
+const $ = (id) => document.getElementById(id);
+const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
+
+// The QR code opens the phone page; a screen opened on localhost points at the public
+// domain instead.
+const params = new URLSearchParams(location.search);
+const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+const joinUrl = params.get("join") || (local ? "https://kubecon.agentpwned.ai/cluster-defense" : location.origin + "/cluster-defense");
+$("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
+try {
+  const qr = qrcode(0, "M");
+  qr.addData(joinUrl);
+  qr.make();
+  $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+} catch { $("qrcode").style.display = "none"; }
+
+const view = startSpace($("view"), { mode: "screen", pos: (k, id) => net.pos(k, id) });
+let snap = null, snapAt = 0;
+const feed = [];
+const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/cluster-defense/ws?screen=1`, (s) => {
+  snap = s; snapAt = performance.now();
+  view.apply(s);
+  for (const e of s.events || []) onEvent(e, s);
+}, { cookie: false, onStatus: (st) => { $("conn").textContent = st === "open" ? "" : st === "full" ? "Too many screens; retrying…" : "Reconnecting…"; } });
+
+function onEvent(e, s) {
+  const a = s.agents.find((x) => x.id === e.agent);
+  const who = (id) => { const p = s.ships.find((x) => x.id === id); return p ? `<span style="color:${shipColor(p.color)}">${esc(p.nick)}</span>` : "someone"; };
+  const line = {
+    task: a ? `<span style="color:${roleOf(a.role).color}">${roleOf(a.role).icon} ${esc(a.name)}</span> “${esc(e.text)}”` : "",
+    suspended: `<span style="color:#9ff4ff">❄</span> ${who(e.player)} suspended ${esc(a ? a.name : e.text)} · ${e.ms} ms`,
+    spawned: a ? `<span style="color:#8ea0d6">+ ${roleOf(a.role).icon} ${esc(a.name)} spun up</span>` : "",
+    policy: `<span style="color:#ffb38a">⛔ agentgateway rate-limited a subagent</span>`,
+    round: `<span style="color:#4da3ff">☸ Round ${esc(e.text)} started</span>`,
+    over: `<span style="color:#ff4d5e">✖ ${e.text === "full" ? "CLUSTER FULL" : "Round over"}</span>`,
+  }[e.kind];
+  if (!line) return;
+  feed.unshift(line);
+  feed.length = Math.min(feed.length, 40);
+}
+
+const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+const ms = (v) => (v ? (v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${v}ms`) : "—");
+function hud() {
+  const s = snap;
+  if (!s) return;
+  const f = s.fill, k = f.slots ? f.running / f.slots : 0, r = s.round;
+  $("busy").textContent = `${f.running} / ${f.slots}`;
+  $("bar").style.width = `${Math.min(100, k * 100)}%`;
+  $("bar").style.background = k < 0.5 ? "var(--ok)" : k < 0.8 ? "var(--warn)" : "var(--bad)";
+  $("hostedN").textContent = f.hosted;
+  $("workersN").textContent = f.slots;
+  const sub = s.substrate;
+  $("cross").textContent = `Substrate says: ${sub.awake} subagents awake · ${sub.suspended} suspended · ${sub.workers} workers registered`;
+  $("phase").textContent = r.phase === "live" ? `ROUND ${r.n}` : r.phase === "over" ? "ROUND OVER" : "WAITING FOR PILOTS";
+  $("sTime").textContent = fmt(r.phase === "live" ? r.survived + (performance.now() - snapAt) / 1000 : r.survived);
+  $("sSus").textContent = r.suspended;
+  $("sBest").textContent = s.best ? fmt(s.best) : "—";
+  $("sP50").textContent = ms(s.timings.suspendP50);
+  $("sP95").textContent = ms(s.timings.suspendP95);
+  $("sTok").textContent = s.tokensPerMin >= 1000 ? `${Math.round(s.tokensPerMin / 1000)}k` : s.tokensPerMin;
+  $("boardList").innerHTML = s.board.slice(0, 8).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span><span>${b.score}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">Nobody yet. Scan the code!</li>`;
+  $("feed").innerHTML = feed.map((l) => `<div>${l}</div>`).join("");
+  show("overlay", r.phase !== "live");
+  if (r.phase === "idle") {
+    $("oTitle").textContent = "SCAN TO FLY";
+    $("oText").textContent = "Subagents are about to spin up. Every running one holds a worker.";
+    $("oNext").textContent = "The round starts when a pilot taps PLAY.";
+  } else if (r.phase === "over") {
+    $("oTitle").textContent = r.reason === "full" ? "CLUSTER FULL" : "ROUND OVER";
+    $("oTitle").style.color = r.reason === "full" ? "#ff4d5e" : "";
+    $("oText").innerHTML = `Survived <b>${fmt(r.survived)}</b> · <b>${r.suspended}</b> suspended · up to <b>${r.hosted}</b> agents hosted on <b>${f.slots}</b> workers`;
+    $("oNext").textContent = r.next > 0 ? `Next round in ${Math.ceil(r.next)} s` : "Waiting for a pilot to tap PLAY";
+  }
+}
+let lastHud = 0;
+function frame(now) {
+  view.draw();
+  if (now - lastHud > 150) { lastHud = now; hud(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

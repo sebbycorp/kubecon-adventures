@@ -182,7 +182,8 @@ type Round struct {
 	Started, Ended float64
 	Suspended      int
 	Spawned        int
-	Peak           int
+	Peak           int    // most agents running at once
+	PeakHosted     int    // most sessions (running and suspended) at once
 	Reason         string // "full" or "abandoned"
 	nextSpawn      float64
 	nextWave       float64
@@ -537,6 +538,7 @@ func (w *World) tickRound() {
 	}
 	running := w.Running()
 	r.Peak = max(r.Peak, running)
+	r.PeakHosted = max(r.PeakHosted, w.Hosted())
 	if running >= w.Slots {
 		w.end("full")
 		return

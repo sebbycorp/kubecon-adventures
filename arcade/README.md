@@ -9,7 +9,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
 | Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a 3-minute multiplayer city shooter | Playable | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
-| Agent Invaders | Scale and density | Next | |
+| Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
 ## Start
@@ -28,6 +28,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Fork Frenzy phone / big screen | http://localhost:8090/fork-frenzy, http://localhost:8090/fork-frenzy/screen |
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
 | Substrate Siege phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/substrate-siege, http://localhost:8090/substrate-siege/screen |
+| Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 

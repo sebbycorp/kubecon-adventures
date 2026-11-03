@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f2e">
+<link rel="icon" href="data:,">
+<title>Cluster Defense</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #e9f1ff; --dim: #8ea0d6; --panel: rgba(10, 16, 44, .82); --edge: rgba(120, 160, 255, .35); --blue: #4da3ff; --k8s: #326ce5;
+    --ok: #3dff8f; --warn: #ffcc33; --bad: #ff4d5e; --ice: #9ff4ff; --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05040f; color: var(--ink);
+    font: 13px/1.4 "JetBrains Mono", ui-monospace, monospace; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  a { color: var(--blue); }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); backdrop-filter: blur(4px); }
+
+  #top { position: fixed; top: calc(8px + var(--st)); left: 8px; right: 8px; display: flex; gap: 6px; pointer-events: none; }
+  #gauge { flex: 1; padding: 7px 10px; min-width: 0; }
+  #gauge .k { font-size: 10px; letter-spacing: .12em; color: var(--dim); display: flex; justify-content: space-between; }
+  #gauge .k b { color: var(--ink); font-weight: 800; }
+  .bar { height: 10px; border-radius: 6px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-top: 5px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 6px; transition: width .25s, background .25s; }
+  #me { padding: 7px 10px; text-align: right; min-width: 92px; }
+  #me .k { font-size: 10px; letter-spacing: .12em; color: var(--dim); }
+  #me .v { font-size: 22px; font-weight: 800; line-height: 1.05; }
+  #me .t { font-size: 11px; color: var(--ice); }
+  #feed { position: fixed; top: calc(70px + var(--st)); left: 10px; right: 10px; font-size: 11px; line-height: 1.5; pointer-events: none; text-shadow: 0 1px 3px #000; }
+  #feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .4s; }
+
+  #stickZone { position: fixed; left: 0; bottom: 0; width: 55%; height: 52%; touch-action: none; }
+  #stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(120, 170, 255, .45); background: rgba(40, 70, 160, .18); pointer-events: none; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(77, 163, 255, .35); border: 2px solid var(--blue); box-shadow: 0 0 14px rgba(77, 163, 255, .5); }
+  #fire { position: fixed; right: 18px; bottom: calc(26px + var(--sb)); width: 104px; height: 104px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column;
+    font-weight: 800; letter-spacing: .08em; font-size: 16px; touch-action: none; background: radial-gradient(circle at 35% 30%, #ff9a8a, #e0344a); border: 3px solid #ffd0d6; box-shadow: 0 0 26px rgba(255, 80, 100, .6); color: #fff; }
+  #fire small { font-size: 9px; font-weight: 700; opacity: .9; letter-spacing: .04em; }
+  #fire.on { transform: scale(.94); box-shadow: 0 0 40px rgba(255, 120, 140, .95); }
+
+  .sheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 24px)); max-height: calc(100% - 40px); overflow: auto; padding: 18px; z-index: 5; text-align: center; touch-action: pan-y; }
+  .sheet h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: .08em; }
+  .sheet h1 span { color: var(--k8s); }
+  .sheet p { margin: 6px 0; font-size: 12px; color: #c9d6ff; }
+  .sheet ul { text-align: left; padding-left: 18px; margin: 10px 0; font-size: 12px; line-height: 1.6; }
+  .big { width: 100%; padding: 14px; margin: 10px 0 4px; border-radius: 12px; border: 0; background: linear-gradient(180deg, #4da3ff, #326ce5); color: #fff; font-weight: 800; letter-spacing: .1em; font-size: 15px; box-shadow: 0 6px 20px rgba(50, 108, 229, .5); }
+  .big:disabled { opacity: .45; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 12px 0; }
+  .stats div { border: 1px solid var(--edge); border-radius: 10px; padding: 8px 4px; font-size: 10px; color: var(--dim); }
+  .stats b { display: block; font-size: 20px; color: var(--ink); }
+  .row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; }
+  #mute { position: fixed; right: 10px; top: calc(66px + var(--st)); padding: 5px 8px; font-size: 12px; z-index: 3; }
+  #status { position: fixed; left: 50%; top: 45%; transform: translateX(-50%); z-index: 6; padding: 10px 16px; text-align: center; }
+  #banner { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); z-index: 4; font-weight: 800; font-size: 26px; letter-spacing: .1em; color: var(--bad); text-shadow: 0 0 20px rgba(255, 60, 80, .8); pointer-events: none; white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <div id="top">
+    <div id="gauge" class="panel"><div class="k"><span>CLUSTER</span><span><b id="fillTxt">0/16</b> WORKERS BUSY</span></div><div class="bar"><i id="fillBar"></i></div></div>
+    <div id="me" class="panel"><div class="k">SUSPENDED</div><div class="v" id="score">0</div><div class="t" id="clock">—</div></div>
+  </div>
+  <div id="feed"></div>
+  <button id="mute" class="panel">🔊</button>
+  <div id="stickZone"><div id="stick"><div id="knob"></div></div></div>
+  <div id="fire">FIRE<small>hold</small></div>
+</div>
+<div id="banner" class="hidden"></div>
+
+<div id="start" class="sheet panel hidden">
+  <h1>CLUSTER <span>DEFENSE</span></h1>
+  <p>Subagents keep spinning up and every running one holds a worker. Fill all the workers and the cluster is full.</p>
+  <ul>
+    <li>🚀 Fly with the left thumb. Hold <b>FIRE</b>.</li>
+    <li>❄ Two hits <b>suspends</b> an agent for real (Agent Substrate snapshots it and frees its worker).</li>
+    <li>☸ Keep the cluster from filling. Everyone plays together.</li>
+  </ul>
+  <button class="big" id="play">PLAY</button>
+  <div class="row"><a href="/cluster-defense/screen" target="_blank">Big screen ↗</a><a href="/">Arcade</a></div>
+</div>
+
+<div id="over" class="sheet panel hidden">
+  <h1 id="overTitle">CLUSTER FULL</h1>
+  <p id="overText"></p>
+  <div class="stats"><div><b id="oTime">0:00</b>SURVIVED</div><div><b id="oSus">0</b>SUSPENDED</div><div><b id="oPeak">0</b>PEAK HOSTED</div></div>
+  <p id="oMine"></p>
+  <button class="big" id="again">PLAY AGAIN</button>
+  <p id="oNext"></p>
+</div>
+<div id="status" class="panel hidden"></div>
+
+<script type="module">
+import { startSpace, roleOf, esc } from "/cluster-defense/static/space.js";
+import { connect } from "/cluster-defense/static/net.js";
+
+const $ = (id) => document.getElementById(id);
+const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
+const halt = () => new Promise(() => {});
+
+const meR = await fetch("/api/me").catch(() => null);
+if (meR && meR.status === 401) { location.replace("/?next=/cluster-defense"); await halt(); }
+if (!meR || !meR.ok) { $("status").textContent = "Can't reach the arcade right now."; show("status"); await halt(); }
+const me = await meR.json();
+
+const ctl = { mx: 0, my: 0, fire: false, stick: false };
+const view = startSpace($("view"), { mode: "phone", me: me.id, pos: (k, id) => net.pos(k, id), input: () => ctl });
+let snap = null, snapAt = 0;
+const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/cluster-defense/ws`, (s) => {
+  snap = s; snapAt = performance.now();
+  view.apply(s);
+  for (const e of s.events || []) onEvent(e, s);
+}, {
+  onStatus: (st) => {
+    if (st === "unauthorized") return location.replace("/?next=/cluster-defense");
+    if (st === "full") { $("status").textContent = "Space is full (48 pilots). Try again in a minute."; show("status"); }
+    else if (st === "closed") { $("status").textContent = "Reconnecting…"; show("status"); }
+    else show("status", false);
+  },
+  onMsg: (m) => { if (m.t === "err") toast(m.msg); },
+});
+window.cd = { snap: () => snap, ctl }; // for the headless autopilot screenshots
+
+// ---- sound: a tiny synth, started on the first touch ----
+let soundOn = true, actx = null;
+try { soundOn = localStorage.getItem("cd-sound") !== "off"; } catch {}
+$("mute").textContent = soundOn ? "🔊" : "🔇";
+addEventListener("pointerdown", () => { if (!actx && soundOn) try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }, { capture: true });
+function sfx(kind) {
+  if (!soundOn || !actx) return;
+  const set = { shot: ["square", 900, 300, 0.06, 0.03], hit: ["triangle", 300, 160, 0.08, 0.06], sus: ["sine", 520, 1560, 0.35, 0.09], full: ["sawtooth", 220, 55, 0.9, 0.08] }[kind];
+  if (!set) return;
+  const [wave, f0, f1, dur, vol] = set, t0 = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = wave; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+}
+const buzz = (ms) => { if (soundOn && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
+$("mute").onclick = () => { soundOn = !soundOn; $("mute").textContent = soundOn ? "🔊" : "🔇"; try { localStorage.setItem("cd-sound", soundOn ? "on" : "off"); } catch {} };
+
+// ---- events: feed lines, sounds ----
+const feed = [];
+function onEvent(e, s) {
+  const a = s.agents.find((x) => x.id === e.agent);
+  const who = (id) => { const p = s.ships.find((x) => x.id === id); return p ? esc(p.nick) : "someone"; };
+  if (e.player === me.id && e.kind === "hit") { sfx("hit"); buzz(10); }
+  if (e.player === me.id && e.kind === "suspended") { sfx("sus"); buzz(40); }
+  if (e.kind === "over") { sfx("full"); buzz(200); }
+  const line = {
+    suspended: `<span style="color:#9ff4ff">❄ ${who(e.player)} suspended ${esc(a ? a.name : e.text)} in ${e.ms} ms</span>`,
+    task: a ? `<span style="color:${roleOf(a.role).color}">${roleOf(a.role).icon} ${esc(a.name)}: “${esc(e.text)}”</span>` : "",
+    policy: `<span style="color:#ffb38a">⛔ agentgateway rate-limited an agent</span>`,
+    round: `<span style="color:#4da3ff">☸ Round ${esc(e.text)}: defend the cluster!</span>`,
+  }[e.kind];
+  if (!line) return;
+  feed.unshift({ html: line, at: performance.now() });
+  feed.length = Math.min(feed.length, 3);
+}
+
+// ---- HUD ----
+const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+let lastPhase = "";
+function hud() {
+  const s = snap;
+  if (!s) return;
+  const f = s.fill, k = f.slots ? f.running / f.slots : 0;
+  $("fillTxt").textContent = `${f.running}/${f.slots}`;
+  $("fillBar").style.width = `${Math.min(100, k * 100)}%`;
+  $("fillBar").style.background = k < 0.5 ? "var(--ok)" : k < 0.8 ? "var(--warn)" : "var(--bad)";
+  $("score").textContent = s.score || 0;
+  const r = s.round;
+  $("clock").textContent = r.phase === "live" ? `⏱ ${fmt(r.survived + (performance.now() - snapAt) / 1000)}` : r.phase === "over" ? "round over" : "ready";
+  $("feed").innerHTML = feed.map((l) => `<div style="opacity:${Math.max(0, 1 - (performance.now() - l.at) / 6000)}">${l.html}</div>`).join("");
+  show("start", r.phase === "idle");
+  $("play").disabled = !r.canPlay;
+  show("over", r.phase === "over");
+  if (r.phase === "over") {
+    $("overTitle").textContent = r.reason === "full" ? "CLUSTER FULL" : "ROUND OVER";
+    $("overText").textContent = r.reason === "full" ? `All ${f.slots} workers were busy. Agent Substrate hosted up to ${r.hosted} agents on them by suspending the idle ones.` : "Nobody was flying, so the round ended.";
+    $("oTime").textContent = fmt(r.survived);
+    $("oSus").textContent = r.suspended;
+    $("oPeak").textContent = r.hosted;
+    $("oMine").innerHTML = `You suspended <b>${s.score || 0}</b>${s.rank ? ` · #${s.rank} this round` : ""}${s.best ? ` · record ${fmt(s.best)}` : ""}`;
+    $("again").disabled = !r.canPlay;
+    $("oNext").textContent = r.next > 0 ? `Next round starts on its own in ${Math.ceil(r.next)} s` : "";
+  }
+  if (r.phase !== lastPhase) {
+    if (r.phase === "over" && r.reason === "full") { $("banner").textContent = "CLUSTER FULL!"; show("banner"); setTimeout(() => show("banner", false), 1800); }
+    if (r.phase === "live" && lastPhase) { $("banner").textContent = "DEFEND THE CLUSTER!"; $("banner").style.color = "#4da3ff"; show("banner"); setTimeout(() => { show("banner", false); $("banner").style.color = ""; }, 1500); }
+    lastPhase = r.phase;
+  }
+}
+let toastT = 0;
+function toast(msg) { $("status").textContent = msg; show("status"); clearTimeout(toastT); toastT = setTimeout(() => show("status", false), 2000); }
+$("play").onclick = () => net.send({ t: "play" });
+$("again").onclick = () => net.send({ t: "play" });
+
+// ---- controls: a floating stick on the left, FIRE on the right ----
+const zone = $("stickZone"), stick = $("stick"), knob = $("knob"), R = 60, DEAD = 0.12;
+let stickId = null, sx0 = 0, sy0 = 0;
+function homeStick() { const r = zone.getBoundingClientRect(); stick.style.left = `${r.left + 90}px`; stick.style.top = `${r.bottom - 110}px`; knob.style.transform = ""; }
+const cap = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch {} };
+zone.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (stickId !== null) return;
+  stickId = e.pointerId; cap(zone, e);
+  sx0 = e.clientX; sy0 = e.clientY;
+  stick.style.left = `${sx0}px`; stick.style.top = `${sy0}px`;
+  ctl.stick = true;
+});
+zone.addEventListener("pointermove", (e) => {
+  if (e.pointerId !== stickId) return;
+  let dx = e.clientX - sx0, dy = e.clientY - sy0;
+  const m = Math.hypot(dx, dy);
+  if (m > R) { dx = (dx / m) * R; dy = (dy / m) * R; }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  const mm = Math.min(m, R) / R;
+  if (mm < DEAD) { ctl.mx = ctl.my = 0; return; }
+  ctl.mx = +(dx / R).toFixed(3); ctl.my = +(dy / R).toFixed(3);
+});
+function endStick() { stickId = null; ctl.mx = ctl.my = 0; ctl.stick = false; homeStick(); }
+for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) zone.addEventListener(ev, (e) => { if (e.pointerId === stickId) endStick(); });
+let fireId = null;
+const fire = $("fire");
+function releaseFire() { if (fireId !== null) { try { fire.releasePointerCapture(fireId); } catch {} } fireId = null; ctl.fire = false; fire.classList.remove("on"); }
+fire.addEventListener("pointerdown", (e) => { e.preventDefault(); if (fireId !== null) return; fireId = e.pointerId; cap(fire, e); ctl.fire = true; fire.classList.add("on"); });
+for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) fire.addEventListener(ev, (e) => { if (e.pointerId === fireId) releaseFire(); });
+for (const el of [zone, fire]) el.addEventListener("contextmenu", (e) => e.preventDefault());
+function releaseAll() { if (stickId !== null) { try { zone.releasePointerCapture(stickId); } catch {} } endStick(); releaseFire(); }
+addEventListener("blur", releaseAll);
+document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll(); });
+addEventListener("resize", homeStick);
+homeStick();
+
+// Input goes out at 20 Hz while anything is held, and 4 Hz for a second after, so a
+// lost release frame never leaves FIRE held.
+let quietSince = 0, lastSent = 0, lastShot = 0;
+setInterval(() => {
+  const now = performance.now(), active = ctl.stick || ctl.fire;
+  if (active) quietSince = now;
+  if (active || (now - quietSince < 1000 && now - lastSent > 240)) {
+    net.send({ t: "in", mx: ctl.mx, my: ctl.my, fire: ctl.fire });
+    lastSent = now;
+  }
+  if (ctl.fire && snap && snap.round.phase === "live" && now - lastShot > 160) { lastShot = now; sfx("shot"); }
+}, 50);
+
+let lastHud = 0;
+function frame(now) {
+  view.draw();
+  if (now - lastHud > 100) { lastHud = now; hud(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

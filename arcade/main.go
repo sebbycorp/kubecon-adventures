@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sebbycorp/kubecon-adventures/arcade/games/defense"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/duckhunt"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/escape"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/flow"
@@ -56,6 +57,7 @@ func main() {
 	flw := flow.New(p, agentClient("flowbot"))
 	gta := heist.New(p, heist.NewKagentOps(agentClient("heister"), agentClient("sidekick"), envOr("HEIST_EXTRACT", "resume-first")),
 		strings.Split(envOr("HEIST_NODES", "kagent-worker,kagent-worker2"), ","))
+	cd := defense.New(p, defense.NewKagentOps(agentClient(defense.AgentName)))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -66,6 +68,7 @@ func main() {
 	frk.Run(ctx)
 	flw.Run(ctx)
 	gta.Run(ctx)
+	cd.Run(ctx)
 
 	web := func(dir string) fs.FS {
 		sub, err := fs.Sub(webFS, path.Join("web", dir))
@@ -79,12 +82,13 @@ func main() {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "index.html") })
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
-	arcadeAPI(mux, p, duck, esc, frk, flw, gta)
+	arcadeAPI(mux, p, duck, esc, frk, flw, gta, cd)
 	duck.Routes(mux, web("duck-hunt"))
 	esc.Routes(mux, web("sandbox-escape"))
 	frk.Routes(mux, web("fork-frenzy"))
 	flw.Routes(mux, web("agent-flow"))
 	gta.Routes(mux, web("substrate-siege"))
+	cd.Routes(mux, web("cluster-defense"))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	go func() {
@@ -98,10 +102,14 @@ func main() {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
-	// Substrate Siege deletes its booked checkpoints on the way out (bounded).
-	select {
-	case <-gta.Stopped():
-	case <-time.After(20 * time.Second):
+	// Substrate Siege deletes its booked checkpoints and Cluster Defense its round's
+	// sessions on the way out (bounded).
+	deadline := time.After(20 * time.Second)
+	for _, stopped := range []<-chan struct{}{gta.Stopped(), cd.Stopped()} {
+		select {
+		case <-stopped:
+		case <-deadline:
+		}
 	}
 }
 
@@ -113,7 +121,7 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, esc *escape.Game, frk *fork.Game, flw *flow.Game, gta *heist.Game) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, esc *escape.Game, frk *fork.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game) {
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -159,6 +167,9 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, es
 		}
 		for k, v := range gta.Stats() {
 			out["heist_"+k] = v
+		}
+		for k, v := range cd.Stats() {
+			out["clusterDefense_"+k] = v
 		}
 		platform.WriteJSON(w, out)
 	})

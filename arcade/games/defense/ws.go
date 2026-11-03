@@ -75,6 +75,7 @@ type RoundView struct {
 	Suspended int     `json:"suspended"`
 	Spawned   int     `json:"spawned"`
 	Peak      int     `json:"peak"`
+	Hosted    int     `json:"hosted"` // peak sessions hosted at once, running and suspended
 	Reason    string  `json:"reason"`
 	Survived  float64 `json:"survived"`
 	Next      float64 `json:"next"` // seconds until the next round starts on its own (over)
@@ -161,7 +162,7 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		Bullets: []BulletView{}, Events: []EventView{}, Board: []ScoreView{}, Timings: map[string]int64{},
 		TokensPerMin: g.tokensPerMin(), Paused: g.paused}
 	rv := RoundView{N: r.N, Phase: string(r.Phase), Started: r2(r.Started), Ended: r2(r.Ended), Suspended: r.Suspended,
-		Spawned: r.Spawned, Peak: r.Peak, Reason: r.Reason, CanPlay: !g.listing && !g.paused}
+		Spawned: r.Spawned, Peak: r.Peak, Hosted: r.PeakHosted, Reason: r.Reason, CanPlay: !g.listing && !g.paused}
 	switch r.Phase {
 	case Live:
 		rv.Survived = r2(w.Now - r.Started)
