@@ -1,6 +1,6 @@
 // Tunes Gateway Defense: plays many headless runs with scripted strategies on sim.js
-// and prints when they first lose a life, where they fall, and how often they beat the
-// boss. No page loads it.
+// and prints when they first lose a life, where they fall, and what share get past waves
+// 10, 20, 30 and the 99th. No page loads it.
 //   node balance.mjs <rules.json> [runs]
 // (dump rules.json with: GATEDEF_RULES_OUT=/tmp/rules.json go test -run TestDumpRules ./games/gatewaydef/)
 import { readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { createSim, waveAt } from "./sim.js";
 
 const rules = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const RUNS = +(process.argv[3] || 40);
-const MAXWAVE = rules.waves.length + 10;
+const MAXWAVE = rules.waves.length + 20;
 
 // Pads ranked by how much lane each tower type would cover from them.
 function coverage(sim, pad, range) {
@@ -85,7 +85,7 @@ function play(kind, rnd) {
     if (sim.st.phase === "build") { spend(); sim.startWave(); }
     sim.step(1 / 30);
     if (++t % 30 === 0) spend(); // a player keeps building during a wave
-    if (t > 30 * 60 * 90) break;
+    if (t > 30 * 60 * 600) break;
   }
   const st = sim.st;
   return { firstLeak: st.firstLeakWave || null, end: st.wave, won: st.won, score: st.score, lives: st.lives };
@@ -103,7 +103,9 @@ for (const kind of ["focused", "spread"]) {
   const won = res.filter((r) => r.won).length;
   const ends = {};
   for (const r of res) ends[r.end] = (ends[r.end] || 0) + 1;
+  const past = (n) => `${Math.round((100 * res.filter((r) => r.end > n).length) / RUNS)}%`;
   console.log(`${kind.padEnd(6)} runs ${RUNS} · first leak median wave ${med(res.map((r) => r.firstLeak))} · leaked by wave 5: ${leakBy5}/${RUNS}` +
-    ` · fell on wave median ${med(res.map((r) => r.end))} · beat the boss ${won}/${RUNS} · score median ${med(res.map((r) => r.score))}`);
+    ` · fell on wave median ${med(res.map((r) => r.end))} · past 10: ${past(10)} · past 20: ${past(20)} · past 30: ${past(30)}` +
+    ` · all ${rules.waves.length}: ${won}/${RUNS} · score median ${med(res.map((r) => r.score))}`);
   console.log("        fell on wave: " + Object.entries(ends).sort((a, b) => a[0] - b[0]).map(([w, n]) => `${w}:${n}`).join(" "));
 }

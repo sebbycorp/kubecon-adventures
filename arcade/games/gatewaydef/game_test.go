@@ -90,8 +90,8 @@ func TestRulesAreConsistent(t *testing.T) {
 			t.Fatalf("endless mix has unknown creep %q", id)
 		}
 	}
-	if len(towers) != 4 || len(r.Creeps) != 6 || len(r.Waves) != 15 {
-		t.Fatalf("want 4 towers, 6 creeps and 15 waves: %d %d %d", len(towers), len(r.Creeps), len(r.Waves))
+	if len(towers) != 4 || len(r.Creeps) != 9 || len(r.Waves) != 99 {
+		t.Fatalf("want 4 towers, 9 creeps and 99 waves: %d %d %d", len(towers), len(r.Creeps), len(r.Waves))
 	}
 	// Every tower is somebody's weakness, so a run needs all four.
 	weak := map[string]bool{}
@@ -115,13 +115,13 @@ func sign(n int) int {
 
 func TestMaxScore(t *testing.T) {
 	r := TheRules
-	// Wave 1 reached: 10 jailbreakers at 10, nothing cleared.
-	if got := r.MaxScore(1); got != 100 {
-		t.Fatalf("MaxScore(1) = %d, want 100", got)
+	// Wave 1 reached: 13 jailbreakers at 10, nothing cleared.
+	if got := r.MaxScore(1); got != 130 {
+		t.Fatalf("MaxScore(1) = %d, want 130", got)
 	}
-	// Wave 2 reached: wave 1's creeps and clear bonus, plus wave 2's 14 at 12.
-	if got := r.MaxScore(2); got != 100+15+14*12 {
-		t.Fatalf("MaxScore(2) = %d, want %d", got, 100+15+14*12)
+	// Wave 2 reached: wave 1's creeps and clear bonus, plus wave 2's 14 (burners at 12 the best).
+	if got := r.MaxScore(2); got != 130+15+14*12 {
+		t.Fatalf("MaxScore(2) = %d, want %d", got, 130+15+14*12)
 	}
 	// A burst burner is worth its points and the two burners it splits into; the boss,
 	// its points and the obfuscated jailbreaks it summons twice.
@@ -147,6 +147,55 @@ func TestMaxScore(t *testing.T) {
 	}
 }
 
+// TestCampaign checks the 99 numbered waves: harder every wave, a boss every tenth and on
+// the last, every creep kind and every tower's weakness showing up, and the endless waves
+// carrying on from the last.
+func TestCampaign(t *testing.T) {
+	r := TheRules
+	seen := map[string]bool{}
+	for i, w := range r.Waves {
+		n := i + 1
+		if wantBoss := n%10 == 0 || n == 99; w.Boss != wantBoss || w.Boss != (w.BossScale > 0) {
+			t.Fatalf("wave %d: boss %v, boss scale %v", n, w.Boss, w.BossScale)
+		}
+		if i > 0 && w.HPScale <= r.Waves[i-1].HPScale {
+			t.Fatalf("wave %d is not harder than wave %d: %v <= %v", n, n-1, w.HPScale, r.Waves[i-1].HPScale)
+		}
+		for _, id := range w.Mix {
+			if at := r.Campaign.Unlock[id]; at > n {
+				t.Fatalf("wave %d has %s, unlocked at %d", n, id, at)
+			}
+			seen[id] = true
+		}
+	}
+	for _, c := range r.Creeps {
+		if !seen[c.ID] {
+			t.Fatalf("creep %s never shows up", c.ID)
+		}
+	}
+	// Each of the first ten waves leans on a tower in turn, so all four are needed early.
+	weak := map[string]bool{}
+	for _, w := range r.Waves[:10] {
+		c, _ := r.creep(w.Mix[0])
+		weak[c.Weak] = true
+	}
+	if len(weak) != 4 {
+		t.Fatalf("the first ten waves only lean on %v", weak)
+	}
+	if r.Waves[9].Name != "Rogue Orchestrator" || r.Waves[19].Name != "Rogue Orchestrator II" || r.Waves[98].Name != "The Last Orchestrator" {
+		t.Fatalf("boss names: %q %q %q", r.Waves[9].Name, r.Waves[19].Name, r.Waves[98].Name)
+	}
+	if r.Waves[98].BossScale <= r.Waves[89].BossScale*r.Campaign.FinalBoss {
+		t.Fatalf("the last boss (%v) is not the toughest (%v)", r.Waves[98].BossScale, r.Waves[89].BossScale)
+	}
+	if w := r.WaveAt(100); w.HPScale <= r.Waves[98].HPScale || w.Count < r.Waves[98].Count {
+		t.Fatalf("endless 1 is easier than wave 99: %+v", w)
+	}
+	if r.AutoNext <= 0 || r.FirstWave <= 0 {
+		t.Fatal("waves don't send themselves")
+	}
+}
+
 func TestEndlessWaves(t *testing.T) {
 	r := TheRules
 	last := r.Waves[len(r.Waves)-1]
@@ -160,8 +209,8 @@ func TestEndlessWaves(t *testing.T) {
 		if w.N != n || w.Name != "Endless "+strconv.Itoa(k) || w.Count <= prev.Count && k > 1 || w.HPScale <= prev.HPScale || w.Gap < r.Endless.MinGap {
 			t.Fatalf("endless wave %d: %+v after %+v", n, w, prev)
 		}
-		if w.Boss != (k%r.Endless.BossEvery == 0) {
-			t.Fatalf("endless wave %d boss = %v", n, w.Boss)
+		if w.Boss != (k%r.Endless.BossEvery == 0) || w.Boss != (w.BossScale > 0) {
+			t.Fatalf("endless wave %d boss = %v, boss scale %v", n, w.Boss, w.BossScale)
 		}
 		prev = w
 	}

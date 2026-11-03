@@ -4,7 +4,7 @@
 "use strict";
 
 const TAU = Math.PI * 2;
-const BADGE = { jailbreak: "💬", burner: "🔥", escaper: "📤", runaway: "💤", obfus: "🔒", burst: "💥", boss: "👑" };
+const BADGE = { jailbreak: "💬", burner: "🔥", escaper: "📤", runaway: "💤", obfus: "🔒", burst: "💥", flood: "🌊", smuggler: "🕳️", zombie: "🧟", boss: "👑" };
 
 // startGame runs a game on canvas. hooks: onHud(hud), onKill(kill), onLeak(creep, lost),
 // onWave(n, cleared, wave), onEnd(result), onPad(padIndex), onTower(towerIndex),
@@ -323,7 +323,7 @@ export function startGame(canvas, rules, hooks, createSim) {
       // Level pips.
       for (let l = 0; l < L; l++) {
         ctx.fillStyle = "#fde68a";
-        ctx.beginPath(); ctx.arc(-ts * 0.2 + l * ts * 0.2, ts * 0.34, ts * 0.05, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc((l - (L - 1) / 2) * ts * 0.14, ts * 0.34, ts * 0.045, 0, TAU); ctx.fill();
       }
       ctx.restore();
     });
@@ -395,7 +395,7 @@ export function startGame(canvas, rules, hooks, createSim) {
     const s = st();
     for (const c of s.creeps) {
       const k = sim.creepKind[c.id], [x, y, dx, dy] = sim.posAt(c.s), boss = c.id === rules.boss.id;
-      const r = ts * (boss ? 0.5 : c.id === "runaway" ? 0.3 : 0.26);
+      const r = ts * (boss ? 0.5 : c.id === "zombie" ? 0.34 : c.id === "runaway" || c.id === "smuggler" ? 0.3 : c.id === "flood" ? 0.21 : 0.26);
       const sx = X(x), sy = Y(y) + Math.sin(now / 160 + c.bob) * ts * 0.04;
       const stunned = s.t < c.stunUntil, slowed = s.t < c.slowUntil;
       light(sx, sy, r * 2.2, k.color, boss ? 0.8 : 0.45);
@@ -638,6 +638,7 @@ export function startGame(canvas, rules, hooks, createSim) {
     upgrade: (i) => sim.upgrade(i),
     sell: (i) => { const ok = sim.sell(i); sel = null; return ok; },
     startWave: () => sim.startWave(),
+    arm: (secs) => sim.arm(secs),
     reset: () => { sim.reset(); fx.length = floats.length = pops.length = 0; sel = null; shake = hurt = bossFlash = 0; combo = { n: 0, t: 0 }; },
     quit: () => sim.quit(),
     floater,

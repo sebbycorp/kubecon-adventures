@@ -7,8 +7,11 @@
 export function waveAt(rules, n) {
   if (n >= 1 && n <= rules.waves.length) return rules.waves[n - 1];
   const e = rules.endless, k = n - rules.waves.length;
+  let hpScale = e.hpScale;
+  for (let i = 0; i < k; i++) hpScale *= e.hpGrowth; // as config.go does, so the floats agree
+  const boss = e.bossEvery > 0 && k % e.bossEvery === 0;
   return { n, name: "Endless " + k, mix: e.mix, count: e.count + k * e.countStep, gap: Math.max(e.minGap, e.gap - k * e.gapStep),
-    hpScale: e.hpScale * Math.pow(e.hpGrowth, k), boss: e.bossEvery > 0 && k % e.bossEvery === 0, endless: true };
+    hpScale, boss, bossScale: boss ? hpScale / e.bossNorm : 0, endless: true };
 }
 
 // createSim runs one game. hooks (all optional): onHud(), onKill(kill), onLeak(kind,
@@ -92,7 +95,7 @@ export function createSim(rules, hooks = {}) {
     st.auto = 0;
     st.spawnQ = [];
     for (let i = 0; i < w.count; i++) st.spawnQ.push({ at: st.t + 0.6 + i * w.gap, id: w.mix[i % w.mix.length], scale: w.hpScale });
-    if (w.boss) st.spawnQ.push({ at: st.t + 0.6 + w.count * w.gap + 1.5, id: rules.boss.id, scale: w.hpScale / rules.waves[rules.waves.length - 1].hpScale });
+    if (w.boss) st.spawnQ.push({ at: st.t + 0.6 + w.count * w.gap + 1.5, id: rules.boss.id, scale: w.bossScale || 1, waveScale: w.hpScale });
     call("onWave", st.wave, false, w);
     call("sfx", w.boss ? "bossWave" : "wave");
     call("onHud");
@@ -103,7 +106,7 @@ export function createSim(rules, hooks = {}) {
   function spawn(q, s = 0, hpOverride = 0) {
     const k = creepKind[q.id], hp = hpOverride || k.hp * q.scale;
     const c = { uid: ++seq, id: q.id, hp, max: hp, s, slowUntil: 0, slowF: 0, stunUntil: 0, by: null, bob: Math.random() * 6.283,
-      summoned: 0, scale: q.scale, flash: 0, deflect: 0 };
+      summoned: 0, scale: q.scale, waveScale: q.waveScale || q.scale, flash: 0, deflect: 0 };
     st.creeps.push(c);
     if (q.id === rules.boss.id) call("fx", "bossIn", { uid: c.uid });
     return c;
@@ -198,7 +201,8 @@ export function createSim(rules, hooks = {}) {
       call("sfx", st.wave === rules.waves.length ? "victory" : "clear");
       call("onHud");
     }
-    if (st.phase === "build" && st.wave > 0 && st.auto > 0) {
+    // Waves send themselves: arm() starts the first countdown, and every cleared wave the next.
+    if (st.phase === "build" && st.auto > 0) {
       st.auto -= dt;
       if (st.auto <= 0) startWave();
       else if (Math.ceil(st.auto) !== Math.ceil(st.auto + dt)) call("onHud");
@@ -232,7 +236,7 @@ export function createSim(rules, hooks = {}) {
     if (ck.summon) {
       while (c.summoned < ck.summonAt.length && c.hp / c.max <= ck.summonAt[c.summoned]) {
         c.summoned++;
-        for (let i = 0; i < ck.summonN; i++) spawn({ id: ck.summon, scale: c.scale * rules.waves[rules.waves.length - 1].hpScale * 0.6 }, Math.max(0, c.s - 0.4 - i * 0.35));
+        for (let i = 0; i < ck.summonN; i++) spawn({ id: ck.summon, scale: c.waveScale * 0.6 }, Math.max(0, c.s - 0.4 - i * 0.35));
         call("fx", "summon", { x, y, n: ck.summonN });
         call("sfx", "summon");
       }
@@ -264,6 +268,11 @@ export function createSim(rules, hooks = {}) {
     call("onEnd", { wave: reached, quit: !!st.quit, score: st.score, lives: st.lives, won: st.won, kills: st.kills, leaks: st.leaks, bestCombo: st.bestCombo });
   }
 
+  // arm starts the countdown to wave 1 (the page calls it on PLAY).
+  function arm(secs = rules.firstWave) {
+    if (st.phase === "build" && st.wave === 0) { st.auto = secs; call("onHud"); }
+  }
+
   // quit ends the run where it is (from the menu), as if the cluster fell.
   function quit() {
     if (st.phase === "over") return;
@@ -276,7 +285,7 @@ export function createSim(rules, hooks = {}) {
   return {
     rules, pts, posAt, LANE, creepKind, towerKind,
     get st() { return st; },
-    reset, step, build, upgrade, sell, startWave, quit,
+    reset, step, build, upgrade, sell, startWave, quit, arm,
     towerAt, rangeOf, damageOf, upCost, sellValue, canHurt, clearMoney,
   };
 }

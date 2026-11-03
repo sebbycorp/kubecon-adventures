@@ -111,7 +111,7 @@ const CREEP = { jailbreak: "a jailbreaker", burner: "a token-burner", escaper: "
   burst: "a burst burner", boss: "the Rogue Orchestrator" };
 const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" };
 const ms = (v) => (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms");
-let BOSS_WAVE = 15; // from the server's state
+let BOSS_WAVE = 99; // the last numbered wave, from the server's state
 
 // The QR code points phones at /gateway-defense; a screen on localhost points at the public domain.
 const params = new URLSearchParams(location.search);
@@ -168,7 +168,7 @@ function drawBoard(list) {
       rows.set(key, row);
     }
     const climbed = !fresh && rank < row.rank, improved = !fresh && r.score > row.score;
-    const sub = r.won ? (r.wave > BOSS_WAVE ? `boss beaten · endless ${r.wave - BOSS_WAVE}` : "boss beaten 🏆") : `fell on wave ${r.wave}`;
+    const sub = r.won ? (r.wave > BOSS_WAVE ? `all ${BOSS_WAVE} waves · endless ${r.wave - BOSS_WAVE}` : `all ${BOSS_WAVE} waves 🏆`) : `fell on wave ${r.wave}`;
     const badge = fresh && rows.size > 1 ? `<span class="badge" style="background:#22d3ee;color:#022c35">NEW</span>`
       : climbed ? `<span class="badge" style="background:#4ade80;color:#052e16">▲ ${row.rank - rank}</span>` : "";
     row.el.className = `lb p${rank}` + (fresh ? " fresh" : climbed || improved ? " up" : "");

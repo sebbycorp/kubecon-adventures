@@ -42,6 +42,9 @@
     box-shadow: 0 0 22px #22d3ee66, inset 0 1px 0 #ffffff66; }
   #next:disabled { background: #111a3d; color: var(--mute); box-shadow: none; }
   #next.boss:not(:disabled) { background: linear-gradient(180deg, #f87171, #b91c1c); color: #fff; box-shadow: 0 0 24px #ef444488; }
+  #next small { display: block; font-size: 10px; font-weight: 700; letter-spacing: .08em; opacity: .75; text-transform: uppercase; }
+  #next .cd { display: inline-block; min-width: 1.1em; font-size: 20px; animation: cdpulse 1s ease-in-out infinite; }
+  @keyframes cdpulse { 0% { transform: scale(1.35); } 60%, 100% { transform: scale(1); } }
   #fast { padding: 0 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-weight: 900; }
   #fast.on { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 14px #fbbf2455; }
 
@@ -110,7 +113,7 @@
 <div id="top" class="hidden">
   <div class="chip" id="lives"><small>LIVES</small><b id="livesV">15</b></div>
   <div class="chip" id="money"><small>MONEY</small><b id="moneyV">$0</b></div>
-  <div class="chip" id="waveChip"><small id="waveK">WAVE 0/15</small><b id="waveV">Build your defenses</b></div>
+  <div class="chip" id="waveChip"><small id="waveK">WAVE 0/99</small><b id="waveV">Build your defenses</b></div>
   <div class="chip"><small>SCORE</small><b id="scoreV">0</b></div>
   <button id="menuBtn" aria-label="Menu">☰</button>
 </div>
@@ -125,7 +128,7 @@
   <h1>Gateway Defense</h1>
   <p>Rogue agent traffic is heading for your cluster. Build the platform's <b style="color:#fff">real</b> controls to stop it: every block you see is a real call.</p>
   <div class="legend" id="legend"></div>
-  <p class="warn">🔒 Obfuscated jailbreaks need a level-2 Prompt Guard. 💥 Burst burners split. 👑 Wave 15 is the boss, then it's endless.</p>
+  <p class="warn">⏱ 99 waves that start on their own: build while they come. 👑 A boss every 10th wave. 🔒 Obfuscated jailbreaks need a level-2 Prompt Guard. After 99 it's endless.</p>
   <button class="big" id="play">PLAY</button>
   <div class="row"><button class="big ghost" id="startBoard">🏆 LEADERBOARD</button></div>
 </div>
@@ -177,7 +180,7 @@
 <script src="/static/arcade.js?v=2"></script>
 <script type="module">
 import { startGame } from "/gateway-defense/static/td.js";
-import { createSim } from "/gateway-defense/static/sim.js";
+import { createSim, waveAt } from "/gateway-defense/static/sim.js";
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
@@ -239,7 +242,7 @@ function boardHtml(rows, me, n = 10) {
   if (!rows.length) return `<div class="none">No finished runs yet. Be the first on the big screen.</div>`;
   let html = rows.slice(0, n).map((r) => `<div class="${r.you ? "you" : ""}"><span class="r">#${r.rank}</span>
     <span><span class="dot" style="background:${COLORS[r.color] || "#94a3b8"}"></span>${esc(r.nick)}${r.won ? " 🏆" : ""}${r.you ? " · you" : ""}</span>
-    <span class="s">${r.score.toLocaleString()}<small>${r.won ? (r.wave > rules.waves.length ? "endless " + (r.wave - rules.waves.length) : "boss beaten") : "wave " + r.wave}</small></span></div>`).join("");
+    <span class="s">${r.score.toLocaleString()}<small>${r.won ? (r.wave > rules.waves.length ? "endless " + (r.wave - rules.waves.length) : "all " + rules.waves.length + " waves") : "wave " + r.wave}</small></span></div>`).join("");
   if (me && me.rank > n) html += `<div class="gap">⋯</div><div class="you"><span class="r">#${me.rank}</span><span>${esc(me.nick)} · you</span><span class="s">${me.score.toLocaleString()}<small>wave ${me.wave}</small></span></div>`;
   return html;
 }
@@ -286,12 +289,12 @@ const game = startGame($("board"), rules, {
       if (w.boss) return; // the boss's own entrance banner comes when it appears
       banner(n > rules.waves.length ? `ENDLESS ${n - rules.waves.length}` : `WAVE ${n}`, w.name + ` · ${w.count} incoming`);
     } else if (n === rules.waves.length) {
-      banner("🏆 CLUSTER SAVED", `Boss down · +${rules.lifeBonus} per life · endless waves next`, "win");
+      banner(`🏆 ALL ${rules.waves.length} WAVES`, `+${rules.lifeBonus} per life · endless waves next`, "win");
       buzz([80, 40, 80, 40, 160]);
     } else banner(n > rules.waves.length ? `ENDLESS ${n - rules.waves.length} CLEARED` : `WAVE ${n} CLEARED`,
       `+${rules.clearBonus * n} score · +$${rules.clearMoney + rules.clearStep * n}`, "clear");
   },
-  onBoss() { banner(`⚠ ${rules.boss.name.toUpperCase()} ⚠`, "Armoured. Summons obfuscated jailbreaks. Bring Suspend Beams.", "boss"); buzz([120, 60, 120]); },
+  onBoss() { banner(`⚠ ${(waveAt(rules, Math.max(1, hudState.wave || 1)).name || rules.boss.name).toUpperCase()} ⚠`, "Armoured. Summons obfuscated jailbreaks. Bring Suspend Beams.", "boss"); buzz([120, 60, 120]); },
   onCombo(n) { if (n % 3 === 0) sfx("combo"); },
   onEnd: finish,
   onPad(i) { closeSheets(); if (i >= 0 && game.phase() !== "over") openBuild(i); },
@@ -313,11 +316,15 @@ function hud(h) {
   $("waveK").textContent = endless ? `ENDLESS ${shown - h.waves}` : `WAVE ${Math.min(shown, h.waves)}/${h.waves}`;
   $("waveChip").classList.toggle("endless", endless);
   $("waveV").textContent = h.phase === "over" ? "Run over" : h.phase === "wave" ? h.waveName : h.wave ? `Next: ${h.waveName}` : "Tap a ⬡ to build";
-  const nb = $("next"), nextBoss = h.phase === "build" && (h.wave + 1 === h.waves || (endless && (shown - h.waves) % rules.endless.bossEvery === 0));
-  nb.disabled = h.phase !== "build";
+  // The bar is a countdown: waves send themselves. Tapping it during a countdown sends the
+  // next wave now.
+  const nb = $("next"), nextBoss = h.phase === "build" && waveAt(rules, shown).boss;
+  nb.disabled = h.phase !== "build" || !(h.auto > 0);
   nb.classList.toggle("boss", nextBoss);
-  nb.textContent = h.phase === "wave" ? "Wave in progress…" : h.phase === "over" ? "Run over"
-    : `▶ SEND ${nextBoss ? "THE BOSS" : endless ? "ENDLESS " + (shown - h.waves) : "WAVE " + shown}${h.auto > 0 ? ` (${h.auto})` : ""}`;
+  nb.classList.toggle("count", h.phase === "build" && h.auto > 0);
+  const label = nextBoss ? `👑 BOSS WAVE ${shown}` : endless ? `ENDLESS ${shown - h.waves}` : `WAVE ${shown}`;
+  nb.innerHTML = h.phase === "wave" ? `Wave ${Math.max(1, h.wave)} in progress…` : h.phase === "over" ? "Run over"
+    : h.auto > 0 ? `${label} in <b class="cd">${h.auto}</b><small>tap to send now</small>` : `${label} coming…`;
   $("fast").classList.toggle("on", h.fast);
   if (!$("build").classList.contains("hidden")) refreshCards();
   if (run) ticker(h.score);
@@ -410,6 +417,7 @@ async function begin() {
   ended = false; tickRank = 0;
   pending.length = 0;
   game.reset();
+  game.arm();
   layout();
   run = null;
   loadBoard();
@@ -422,7 +430,7 @@ async function finish(res) {
   ended = true;
   show("ticker", false);
   const beyond = res.wave - rules.waves.length;
-  $("endTitle").textContent = res.won ? (beyond > 0 ? `🏆 BOSS BEATEN · ${res.quit ? "STOPPED" : "FELL"} IN ENDLESS ${beyond}` : "🏆 CLUSTER SAVED")
+  $("endTitle").textContent = res.won ? (beyond > 0 ? `🏆 ALL ${rules.waves.length} WAVES · ${res.quit ? "STOPPED" : "FELL"} IN ENDLESS ${beyond}` : `🏆 ALL ${rules.waves.length} WAVES`)
     : res.quit ? `RUN ENDED ON WAVE ${res.wave}` : `CLUSTER DOWN ON WAVE ${res.wave}`;
   $("endScore").textContent = res.score.toLocaleString();
   $("endMeta").textContent = `${res.kills} blocked · ${res.leaks} got through · best combo ×${res.bestCombo || 1}`;
