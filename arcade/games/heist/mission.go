@@ -45,12 +45,12 @@ const (
 	ptsFreeze      = 1
 	ptsBook        = 2
 	frozenTTL      = 8.0 // a frozen agent nobody books is deleted after this long
-	stepMin        = 8.0
+	stepMin        = 10.0
 	stepJitter     = 4.0
 	runSteps       = 4 // an agent that finishes its 4th step escapes
 	spawnRetry     = 2.0
 	maxStepsBusy   = 24 // no new agents while this many steps are running
-	maxLiveTargets = 32 // live agents in the whole city
+	maxLiveTargets = 24 // live agents in the whole city (the LLM token budget)
 	sayMax         = 60
 )
 

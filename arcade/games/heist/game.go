@@ -284,6 +284,9 @@ func (g *Game) submit(in Intent) {
 		sess = al.SessionID
 	}
 	if g.s.Submit(in.Kind, in.Target, sess, 0, 0) {
+		if in.Kind == "freeze" {
+			g.s.Drop("step", in.Target) // a step still queued would wake it again
+		}
 		return
 	}
 	if t != nil {

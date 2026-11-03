@@ -409,3 +409,29 @@ func TestPanickingOpBecomesFailedResult(t *testing.T) {
 		t.Fatalf("second panic: %+v", r)
 	}
 }
+
+func TestDropQueuedStep(t *testing.T) {
+	f := newFakeOps()
+	s := NewScheduler(f, 1, 1)
+	t.Cleanup(s.Close)
+	s.Submit("step", "a", "sa", 1, 4)
+	f.next(t) // a's step runs and holds the only slot
+	if !s.Submit("step", "b", "sb", 1, 4) {
+		t.Fatal("queue refused")
+	}
+	if s.Drop("step", "a") {
+		t.Fatal("dropped a running step")
+	}
+	if !s.Drop("step", "b") || s.Drop("step", "b") {
+		t.Fatal("drop of the queued step")
+	}
+	if r := result(t, s); r.Kind != "step" || r.Target != "b" || r.OK || r.Err != "dropped" {
+		t.Fatalf("result %+v", r)
+	}
+	if !s.Submit("step", "b", "sb", 1, 4) { // its lane is free again
+		t.Fatal("lane still busy after drop")
+	}
+	if _, _, q := s.InFlight(); q != 1 {
+		t.Fatalf("queued = %d", q)
+	}
+}

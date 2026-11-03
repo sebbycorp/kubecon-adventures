@@ -1358,7 +1358,7 @@ func TestLiveTargetCap(t *testing.T) {
 	t.Cleanup(func() { g.s.Close() })
 	var ms []*Mission
 	g.mu.Lock()
-	for i := range 20 { // 20 solo runs want 2 each: 40 > 32
+	for i := range maxLiveTargets + 6 { // more solo runs than the city has agents for
 		id := fmt.Sprintf("p%02d", i)
 		g.joinLocked(platform.Player{ID: id})
 		m, err := g.start(id)
@@ -1368,7 +1368,7 @@ func TestLiveTargetCap(t *testing.T) {
 		ms = append(ms, m)
 	}
 	g.mu.Unlock()
-	pumpUntil(t, g, "32 agents", func() bool { return len(g.w.Targets) == maxLiveTargets })
+	pumpUntil(t, g, "city full", func() bool { return len(g.w.Targets) == maxLiveTargets })
 	for range 30 {
 		g.tick()
 	}

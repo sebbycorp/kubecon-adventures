@@ -182,9 +182,9 @@ func TestStepPacingAndEscape(t *testing.T) {
 	if stepped.Step != 1 || stepped.Say != "hi" {
 		t.Fatalf("after one step: %+v", stepped)
 	}
-	// The next step is 8-12 s after the last one started.
-	got := x.tickUntil(13, func() bool { return x.stepsInFlight() > 1 })
-	if got < 7.5 || got > 12.5 {
+	// The next step is 10-14 s after the last one started.
+	got := x.tickUntil(stepMin+stepJitter+1, func() bool { return x.stepsInFlight() > 1 })
+	if got < stepMin-0.5 || got > stepMin+stepJitter+0.5 {
 		t.Fatalf("next step after %v s", got)
 	}
 	// The last step lets it escape; the run goes on and refills.

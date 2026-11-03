@@ -3,6 +3,7 @@ package heist
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 )
@@ -242,6 +243,32 @@ func (s *Scheduler) run(ctx context.Context, j job) (r Result) {
 	}
 	r.OK = true
 	return r
+}
+
+// Drop takes a queued op of kind off target's lane before it starts, and reports
+// whether there was one. Its Result comes back with OK false and Err "dropped", so the
+// caller's bookkeeping still sees exactly one Result. A frozen agent's queued step is
+// dropped this way: run later, its turn would wake the suspended session.
+func (s *Scheduler) Drop(kind, target string) bool {
+	c := s.classOf(kind)
+	s.mu.Lock()
+	i := slices.IndexFunc(s.queue[c], func(j job) bool { return j.kind == kind && j.target == target })
+	if c == classNone || s.closed || i < 0 {
+		s.mu.Unlock()
+		return false
+	}
+	s.queue[c] = slices.Delete(s.queue[c], i, i+1)
+	delete(s.busy, laneOf(kind, target))
+	s.wg.Add(1)
+	s.mu.Unlock()
+	go func() {
+		defer s.wg.Done()
+		select {
+		case s.results <- Result{Kind: kind, Target: target, Err: "dropped"}:
+		case <-s.ctx.Done():
+		}
+	}()
+	return true
 }
 
 // InFlight reports running steps, running resumes, and ops waiting in queues.
