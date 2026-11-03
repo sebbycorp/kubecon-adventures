@@ -17,25 +17,26 @@
     background: linear-gradient(transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 100% 40px, linear-gradient(90deg, transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 40px 100%, var(--bg); }
 
   /* Left: live traffic. */
-  .left { display: grid; grid-template-rows: auto auto 1fr; gap: 16px; min-height: 0; }
-  /* The big numbers: every agent on Substrate right now, and every kill since the arcade started. */
-  .big { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-  .bn { --c: var(--fg); border: 1px solid #2a2d30; border-radius: 16px; background: #111412; padding: 12px 16px 12px; position: relative; overflow: hidden; }
-  .bn::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); box-shadow: 0 0 18px var(--c); }
-  .bn b { display: block; font-size: 56px; line-height: 1; font-weight: 800; color: var(--c); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: text-shadow .3s; }
-  .bn b.bump { text-shadow: 0 0 26px var(--c); }
-  .bn span { display: block; margin-top: 6px; font-size: 16px; font-weight: 800; letter-spacing: .12em; color: var(--fg); }
-  .bn small { display: block; font-size: 14px; color: var(--mute); margin-top: 1px; }
-  .slim { display: flex; gap: 22px; color: var(--mute); font-size: 17px; margin-top: 6px; }
-  .slim b { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .hdr { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
-  .hdr img { height: 40px; display: block; margin-bottom: 8px; }
-  .hdr h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.01em; }
-  .hdr p { margin: 4px 0 0; color: var(--mute); font-size: 19px; }
-  .pills { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; max-width: 470px; }
-  .pill { border: 1px solid #2a2d30; background: #121314ee; border-radius: 999px; padding: 7px 16px; font-size: 17px; color: var(--mute); white-space: nowrap; }
-  .pill b { color: var(--fg); font-weight: 800; margin-right: 6px; font-variant-numeric: tabular-nums; }
-  .pill.green b { color: var(--green); }
+  .left { display: grid; grid-template-rows: auto 1fr; gap: 14px; min-height: 0; }
+  .hdr { display: flex; align-items: center; gap: 18px; }
+  .hdr img { height: 46px; display: block; }
+  .hdr h1 { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
+  .hdr .sub { display: flex; gap: 18px; align-items: center; margin-top: 6px; color: var(--mute); font-size: 16px; white-space: nowrap; }
+  .hdr .sub b { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hdr .sub .live { margin: 0; }
+  /* The big numbers sit on the factory, each tied by a line to the station it counts. */
+  .co { --c: var(--fg); position: absolute; z-index: 3; min-width: 196px; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); border-radius: 16px;
+    background: #0d100ef0; padding: 10px 16px 11px; box-shadow: 0 0 34px color-mix(in srgb, var(--c) 16%, transparent); }
+  .co b { display: block; font-size: 58px; line-height: 1; font-weight: 800; color: var(--c); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: text-shadow .3s; }
+  .co b.bump { text-shadow: 0 0 26px var(--c); }
+  .co span { display: block; margin-top: 5px; font-size: 16px; font-weight: 800; letter-spacing: .12em; }
+  .co small { display: block; font-size: 14px; color: var(--mute); margin-top: 1px; }
+  #leads { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: visible; }
+  #leads line { stroke-width: 2; stroke-dasharray: 5 6; opacity: .75; animation: march 1.2s linear infinite; }
+  #leads circle.dot { opacity: .95; }
+  #leads circle.ring { fill: none; stroke-width: 2; animation: ring 2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes march { to { stroke-dashoffset: -22; } }
+  @keyframes ring { from { transform: scale(.6); opacity: .9; } to { transform: scale(2.4); opacity: 0; } }
   .live { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-weight: 700; letter-spacing: .12em; font-size: 15px; margin-top: 10px; }
   .live i { width: 11px; height: 11px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); animation: beat 1.4s ease-in-out infinite; }
   @keyframes beat { 50% { transform: scale(.6); opacity: .5; } }
@@ -44,7 +45,7 @@
   .factory .vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, var(--bg) 100%); }
   .factory .cap { position: absolute; left: 16px; top: 14px; font-size: 17px; color: var(--mute); background: #0d0e0fd9; border: 1px solid #2a2d30; border-radius: 999px; padding: 6px 14px; }
   .factory .cap b { color: var(--fg); }
-  #feed { position: absolute; left: 16px; bottom: 14px; width: 560px; display: flex; flex-direction: column; gap: 6px; }
+  #feed { position: absolute; right: 16px; top: 14px; width: 470px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
   #feed div { display: flex; gap: 10px; align-items: center; font-size: 17px; background: #0f1311ee; border: 1px solid #2a2d30; border-radius: 10px; padding: 6px 12px; animation: in .4s ease-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #feed i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   #feed b { font-weight: 600; }
@@ -74,28 +75,23 @@
 <div id="stage">
   <section class="left">
     <div class="hdr">
+      <img src="/agent-flow/static/kagent-logo.svg" alt="kagent">
       <div>
-        <img src="/agent-flow/static/kagent-logo.svg" alt="kagent">
         <h1>Agent Arcade on Agent Substrate</h1>
-        <p>Every character is a real AI agent in its own gVisor sandbox.</p>
-        <div class="live"><i></i>LIVE TRAFFIC FROM EVERY GAME</div>
+        <div class="sub"><div class="live"><i></i>LIVE FROM EVERY GAME</div><span><b id="nWorkers">–</b> sandboxes</span><span><b id="nRestore">–</b> wake-up p50</span><span><b id="nTurns">0</b> turns/min</span><span id="nSince"></span></div>
       </div>
-    </div>
-    <div>
-      <div class="big">
-        <div class="bn"><b id="nActors">–</b><span>AGENTS</span><small>on Agent Substrate</small></div>
-        <div class="bn" style="--c: var(--green)"><b id="nAwake">–</b><span>AWAKE</span><small>running in a sandbox</small></div>
-        <div class="bn" style="--c: #60a5fa"><b id="nAsleep">–</b><span>SUSPENDED</span><small>snapshots · 0 CPU</small></div>
-        <div class="bn" style="--c: #fbbf24"><b id="nKilled">–</b><span>KILLED</span><small>shot down &amp; suspended</small></div>
-        <div class="bn" style="--c: #f87171"><b id="nDestroyed">–</b><span>DESTROYED</span><small>sessions deleted</small></div>
-      </div>
-      <div class="slim"><span><b id="nWorkers">–</b> sandboxes</span><span><b id="nRestore">–</b> wake-up p50</span><span><b id="nTurns">0</b> turns/min</span><span id="nSince"></span></div>
     </div>
     <div class="factory">
-      <svg id="scene" viewBox="40 70 1320 650" preserveAspectRatio="xMidYMid meet" aria-label="Live map of every agent on Agent Substrate"></svg>
+      <svg id="scene" viewBox="150 150 1130 640" preserveAspectRatio="xMidYMid meet" aria-label="Live map of every agent on Agent Substrate"></svg>
       <div class="vig"></div>
       <div class="cap">Every cube is a real agent turn · <b id="density">–</b></div>
       <div id="feed" aria-live="polite"></div>
+      <svg id="leads" aria-hidden="true"></svg>
+      <div class="co" data-at="7,9,1.2" style="left: 22px; top: 70px"><b id="nActors">–</b><span>AGENTS</span><small>actors on Agent Substrate</small></div>
+      <div class="co" data-at="13,9,0.9" style="--c: var(--green); left: 22px; bottom: 22px"><b id="nAwake">–</b><span>AWAKE</span><small>running in a gVisor sandbox</small></div>
+      <div class="co" data-at="16.9,10.9,0.9" style="--c: #60a5fa; left: 266px; bottom: 22px"><b id="nAsleep">–</b><span>SUSPENDED</span><small>snapshots · 0 CPU</small></div>
+      <div class="co" data-at="15.6,10.1,0.5" style="--c: #fbbf24; left: 510px; bottom: 22px"><b id="nKilled">–</b><span>KILLED</span><small>shot down &amp; suspended</small></div>
+      <div class="co" data-at="18.2,10.3,0.2" style="--c: #f87171; right: 22px; bottom: 22px"><b id="nDestroyed">–</b><span>DESTROYED</span><small>sessions deleted</small></div>
     </div>
   </section>
 
@@ -124,8 +120,29 @@ function fit() {
   st.style.left = (innerWidth - 1920 * k) / 2 + "px";
   st.style.top = (innerHeight - 1080 * k) / 2 + "px";
 }
-addEventListener("resize", fit);
+addEventListener("resize", () => { fit(); leads(); });
 fit();
+
+// leads draws a line from each big number to the station it counts, using the scene's own
+// projection (P, from scene.js) so it follows the map at any screen size.
+function leads() {
+  const svg = $("scene"), lay = $("leads"), box = lay.getBoundingClientRect(), m = svg.getScreenCTM();
+  if (!m || !box.width || typeof P !== "function") return;
+  const k = box.width / lay.clientWidth; // the stage's scale
+  lay.setAttribute("viewBox", `0 0 ${lay.clientWidth} ${lay.clientHeight}`);
+  let out = "";
+  for (const co of document.querySelectorAll(".co")) {
+    const [x, y, z] = co.dataset.at.split(",").map(Number), [sx, sy] = P(x, y, z);
+    const pt = new DOMPoint(sx, sy).matrixTransform(m);
+    const ax = (pt.x - box.left) / k, ay = (pt.y - box.top) / k;
+    const r = co.getBoundingClientRect(), L = (r.left - box.left) / k, T = (r.top - box.top) / k, W = r.width / k, H = r.height / k;
+    // Leave the card from the side facing the station.
+    const cx = ax < L ? L : ax > L + W ? L + W : L + W / 2, cy = ay < T ? T : ay > T + H ? T + H : T + H / 2;
+    const c = getComputedStyle(co).getPropertyValue("--c").trim() || "#e8e8e8";
+    out += `<line x1="${cx}" y1="${cy}" x2="${ax}" y2="${ay}" stroke="${c}"/><circle class="dot" cx="${ax}" cy="${ay}" r="5" fill="${c}"/><circle class="ring" cx="${ax}" cy="${ay}" r="7" stroke="${c}"/>`;
+  }
+  lay.innerHTML = out;
+}
 
 // qr draws url's QR code into el (an SVG that fills it); if that fails, the address shows.
 function qr(el, url, cell) {
@@ -214,6 +231,9 @@ const flow = startFlowScreen($("scene"), {
   },
 });
 setInterval(() => { $("nTurns").textContent = flow.turnsPerMin(); }, 1000);
+leads();
+document.fonts?.ready.then(leads);
+setTimeout(leads, 1500);
 </script>
 </body>
 </html>
