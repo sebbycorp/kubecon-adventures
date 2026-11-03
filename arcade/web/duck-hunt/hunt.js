@@ -234,7 +234,7 @@ export function startHunt(canvas, api, hooks) {
   function start(seconds) {
     agents.length = 0; parts.length = 0; texts.length = 0; marks.length = 0; mascot = null;
     Object.assign(g, { playing: true, t0: performance.now(), ends: performance.now() + seconds * 1000, wave: 1, shownWave: 0, score: 0, combo: 0, lastHit: 0,
-      hits: 0, shots: 0, escapes: 0, golden: 0, bestCombo: 0, binCount: 0, pending: false, nextLaunch: performance.now() + 1500, waking: null,
+      hits: 0, shots: 0, escapes: 0, golden: 0, bestCombo: 0, binCount: 0, snapMs: [], pending: false, nextLaunch: performance.now() + 1500, waking: null,
       ammo: 3, reloadAt: 0, row: [], pinkUntil: 0, banner: null });
     Object.assign(aim, { x: st.GW / 2, y: (top() + low()) / 2, on: true });
     hooks.onScore(g);
@@ -370,6 +370,7 @@ export function startHunt(canvas, api, hooks) {
   }
   // snapText: the real snapshot time, over the crate, one line per recent snapshot.
   function snapText(ms) {
+    (g.snapMs = g.snapMs || []).push(ms); // the run's real snapshot times, for sharing
     const busy = texts.filter((t) => t.crate && t.t < 1.2).length;
     float(`snapshotted in ${ms} ms`, st.GW / 2, sc.grassTop - 18 - busy * 8, "#5fd068", 1.8, 5);
     texts[texts.length - 1].crate = true;

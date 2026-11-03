@@ -7,6 +7,19 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Duck Hunt</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Agent Arcade · kagent + Agent Substrate">
+<meta property="og:title" content="Duck Hunt · shoot real AI agents">
+<meta property="og:description" content="Turn your phone sideways and shoot real AI agents out of the sky. Every hit snapshots a real agent on kagent + Agent Substrate.">
+<meta property="og:url" content="https://kubecon.agentpwned.ai/duck-hunt">
+<meta property="og:image" content="https://kubecon.agentpwned.ai/static/og/duck-hunt.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Duck Hunt · shoot real AI agents">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Duck Hunt · shoot real AI agents">
+<meta name="twitter:description" content="Turn your phone sideways and shoot real AI agents out of the sky. Every hit snapshots a real agent on kagent + Agent Substrate.">
+<meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/duck-hunt.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
@@ -147,6 +160,7 @@
         <a class="opt" href="/duck-hunt/screen" target="_blank" rel="noopener">BIG SCREEN</a>
         <a class="opt" href="/">ARCADE</a>
       </div>
+      <div id="endShare" style="--ab-accent:#facc15"></div>
       <div class="cta" id="endCta"></div>
     </div>
     <div class="board nes"><h3>TOP 5 HUNTERS</h3><div id="endBoard"></div></div>
@@ -168,7 +182,7 @@
 
 <div id="rotate"><div class="phone"></div><h2>TURN YOUR PHONE</h2><p>DUCK HUNT PLAYS IN LANDSCAPE:<br>LEFT THUMB AIMS, RIGHT THUMB FIRES.</p></div>
 
-<script src="/static/arcade.js?v=2"></script>
+<script src="/static/arcade.js?v=3"></script>
 <script type="module">
 import { startHunt, duckIcon } from "/duck-hunt/static/hunt.js";
 const $ = (id) => document.getElementById(id);
@@ -359,6 +373,9 @@ async function finish() {
   $("endRank").textContent = res && res.rank ? (res.rank === 1 ? "#1 ON THE BIG SCREEN!" : `#${res.rank} ON THE BIG SCREEN`) : score ? "" : "NO HITS THIS TIME";
   $("endBeat").textContent = res && res.beat ? `BEAT ${res.beat.nick.toUpperCase()} BY ${res.beat.by} TO REACH #${res.beat.rank}` : res && res.rank === 1 ? "NOBODY IS AHEAD OF YOU. DEFEND IT." : "";
   board($("endBoard"), res ? res.top : [], true);
+  const ms = (g.snapMs || []).slice().sort((a, b) => a - b), snapshotMs = ms.length ? ms[ms.length >> 1] : 0;
+  if (score) Arcade.share($("endShare"), { game: "Duck Hunt", score, path: "/duck-hunt", facts: { hits, snapshotMs } });
+  else $("endShare").innerHTML = "";
   show("endSheet");
   runId = null;
   loadBoard();
