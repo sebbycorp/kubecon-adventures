@@ -8,6 +8,8 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,35 +45,47 @@ type Game struct {
 	city  *City
 	every time.Duration // tick interval
 
-	mu       sync.Mutex
-	w        *World
-	m        *Missions
-	q        *Squads
-	s        *Scheduler
-	inflight map[opKey]int       // ops accepted by s whose result has not been routed
-	zaps     map[string]zap      // cleanup deletes waiting to be submitted, by key
-	zapping  map[string]zap      // cleanup deletes in flight, by key
-	allyMs   map[string]*Mission // the owner's active mission when a rig was built
-	ended    map[*Mission]float64
-	cleaned  map[*Mission]bool
-	offline  map[string]float64 // world time each player went offline
-	conns    map[string]int     // open connections per player
-	screens  int                // open spectator connections
-	clients  map[*client]bool
-	booked   map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
-	paused   bool
-	listing  bool             // the startup sweep is still listing sessions; no spawns yet
-	timings  map[string]int64 // p50 ms, refreshed once a second
-	ticks    int
-	done     chan struct{} // closed when Run stops
+	mu         sync.Mutex
+	w          *World
+	m          *Missions
+	q          *Squads
+	s          *Scheduler
+	inflight   map[opKey]int       // ops accepted by s whose result has not been routed
+	zaps       map[string]zap      // cleanup deletes waiting to be submitted, by key
+	zapping    map[string]zap      // cleanup deletes in flight, by key
+	allyMs     map[string]*Mission // the owner's active mission when a rig was built
+	ended      map[*Mission]float64
+	cleaned    map[*Mission]bool
+	offline    map[string]float64 // world time each player went offline
+	conns      map[string]int     // open connections per player
+	screens    int                // open spectator connections
+	clients    map[*client]bool
+	booked     map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
+	paused     bool
+	listing    bool             // the startup sweep is still listing sessions; no spawns yet
+	timings    map[string]int64 // p50 ms, refreshed once a second
+	podHourUSD float64          // POD_HOUR_USD, for the big screen's cost estimate
+	ticks      int
+	done       chan struct{} // closed when Run stops
 }
 
 // New builds the game on a city with a district per node. Run starts it.
 func New(p *platform.Platform, ops Ops, nodes []string) *Game {
 	g := &Game{p: p, ops: ops, city: NewCity(nodes), every: time.Second / tickHz,
-		conns: map[string]int{}, booked: map[string]bool{}, clients: map[*client]bool{}, timings: map[string]int64{}, done: make(chan struct{})}
+		conns: map[string]int{}, booked: map[string]bool{}, clients: map[*client]bool{}, timings: map[string]int64{}, done: make(chan struct{}),
+		podHourUSD: podHourFromEnv()}
 	g.fresh()
 	return g
+}
+
+// podHourFromEnv is POD_HOUR_USD, or $0.02 (roughly 0.25 vCPU and 512 MiB on a public
+// cloud), the same default Agent Flow uses.
+func podHourFromEnv() float64 {
+	price, err := strconv.ParseFloat(os.Getenv("POD_HOUR_USD"), 64)
+	if err != nil || price <= 0 {
+		return 0.02
+	}
+	return price
 }
 
 // fresh replaces the world, missions, squads and scheduler. The caller holds g.mu (or

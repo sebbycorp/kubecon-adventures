@@ -18,8 +18,9 @@ const MIN_DELAY = 100, MAX_DELAY = 250, EXTRAPOLATE = 120;
 // opts.onMsg(msg) gets every frame that is not a snapshot or a pong. opts.onStatus(s)
 // gets "open", "closed" (retrying), "full" or "unauthorized" (no arcade cookie: the
 // caller should send the player to join first; no retry). opts.ping: ms between pings
-// (0 = never), for the round-trip time in stats().
-export function connect(url, onSnap, { onMsg = () => {}, onStatus = () => {}, ping = 0 } = {}) {
+// (0 = never), for the round-trip time in stats(). opts.cookie: false for a big screen
+// (?screen=1 needs no player), which never asks /api/me and always retries.
+export function connect(url, onSnap, { onMsg = () => {}, onStatus = () => {}, ping = 0, cookie = true } = {}) {
   let ws = null, backoff = 1000, timer = 0, closed = false, opened = false;
   let buf = []; // {wt, maps, snap}, oldest first
   let offset = null; // performance.now() - world time (ms) for the fastest recent packet
@@ -49,7 +50,7 @@ export function connect(url, onSnap, { onMsg = () => {}, onStatus = () => {}, pi
     ws.onclose = async () => {
       ws = null;
       if (closed) return;
-      if (!opened) {
+      if (!opened && cookie) {
         // A refused upgrade hides its status; ask the arcade whether we have a player.
         const me = await fetch("/api/me").catch(() => null);
         if (me && me.status === 401) { onStatus("unauthorized"); return; }

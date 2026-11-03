@@ -12,6 +12,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -46,6 +47,7 @@ type Mission struct {
 type ScoreRow struct {
 	PlayerID, Nick, Squad  string
 	Takedowns, Cash, Level int
+	Rig                    int // best RAM tier of an ally the player deployed
 }
 
 // Scoring and pacing.
@@ -222,6 +224,11 @@ func (m *Missions) OnResult(r Result, w *World) {
 		p := m.player(t.FrozenBy, w)
 		p.Takedowns++
 		m.squadTD[p.Squad]++
+	}
+	if (r.Kind == "step" || r.Kind == "spring") && !r.OK && strings.HasPrefix(r.Err, "policy: ") && t != nil {
+		// agentgateway stopped the target's LLM call (prompt guard or rate limit).
+		why, _, _ := strings.Cut(strings.TrimPrefix(r.Err, "policy: "), ":")
+		w.Events = append(w.Events, Event{Kind: "policy", Target: t.ID, Text: why})
 	}
 	tr := m.targets[r.Target]
 	if tr == nil {

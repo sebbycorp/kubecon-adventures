@@ -233,7 +233,12 @@ func (w *World) resolveAlly(al *Ally, kind string, ok bool, ms int64) {
 // mission-end deletes.
 func (m *Missions) allyResult(r Result, w *World) bool {
 	if r.Kind == "ally" {
+		p := w.pending[r.Target]
 		w.allySpawned(r)
+		if p != nil && w.Allies[r.Target] != nil {
+			row := m.player(p.owner, w)
+			row.Rig = max(row.Rig, p.tier)
+		}
 		return true
 	}
 	if _, ok := m.retire[r.Target]; ok && r.Kind == "delete" {

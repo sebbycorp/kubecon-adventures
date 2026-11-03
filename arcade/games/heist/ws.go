@@ -19,9 +19,11 @@ import (
 	"math"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
 )
 
@@ -70,6 +72,13 @@ type SnapCommon struct {
 	Substrate SubstrateView    `json:"substrate"`
 	Cap       CapView          `json:"cap"`
 	Timings   map[string]int64 `json:"timings"` // p50 ms of freeze, spring, extract
+	// Vault is how many targets were booked: checkpoints kept in Snapshot Storage until
+	// the next reset. PodHourUSD is the assumed price of one always-on agent pod
+	// (POD_HOUR_USD, as on Agent Flow), for the big screen's cost estimate.
+	Vault      int     `json:"vault"`
+	PodHourUSD float64 `json:"podHourUsd"`
+	// Squads is takedowns per shared squad (by code); solo players are left out.
+	Squads map[string]int `json:"squads"`
 }
 
 // Snap is a whole snapshot as a client decodes it.
@@ -158,6 +167,8 @@ type EventView struct {
 	Ms     int64  `json:"ms,omitempty"`
 }
 
+// ScoreView is a leaderboard row. Rig is the best RAM tier (1-5) of any ally the
+// player deployed (0: none); Allies is how many of their allies are in the city now.
 type ScoreView struct {
 	ID        string `json:"id"`
 	Nick      string `json:"nick"`
@@ -165,14 +176,46 @@ type ScoreView struct {
 	Takedowns int    `json:"takedowns"`
 	Cash      int    `json:"cash"`
 	Level     int    `json:"level"`
+	Rig       int    `json:"rig"`
+	Allies    int    `json:"allies"`
 }
 
+// SubstrateView is the whole Substrate (actors, workers) plus this game's share: Pool
+// is the heist WorkerPool's registered workers, and Agents, Awake and Asleep count the
+// actors of the heister and sidekick Agents.
 type SubstrateView struct {
 	Actors      int64 `json:"actors"`
 	Running     int64 `json:"running"`
 	Suspended   int64 `json:"suspended"`
 	Workers     int64 `json:"workers"`
 	BusyWorkers int64 `json:"busyWorkers"`
+	Pool        int   `json:"pool"`
+	Agents      int   `json:"agents"`
+	Awake       int   `json:"awake"`
+	Asleep      int   `json:"asleep"`
+}
+
+// heistPool and heistAgents name this game's WorkerPool and Agents (manifests/heist-agent.yaml).
+const heistPool = "heist"
+
+var heistAgents = []string{"heister", "sidekick"}
+
+// substrateView is s as snapshots carry it.
+func substrateView(s kagent.SubstrateStats) SubstrateView {
+	v := SubstrateView{Actors: s.Actors, Running: s.Running, Suspended: s.Suspended, Workers: s.Workers, BusyWorkers: s.BusyWorkers}
+	for _, p := range s.Pools {
+		if p.Name == heistPool {
+			v.Pool = p.Workers
+		}
+	}
+	for _, a := range s.Agents {
+		if slices.Contains(heistAgents, a.Name) {
+			v.Agents += a.Actors
+			v.Awake += a.Awake
+			v.Asleep += a.Suspended
+		}
+	}
+	return v
 }
 
 type CapView struct {
@@ -195,7 +238,17 @@ func parts(ps []Part) *[]PartView {
 func (g *Game) commonLocked(ev []Event) SnapCommon {
 	w := g.w
 	c := SnapCommon{Now: r2(w.Now), Avatars: []AvatarView{}, Targets: []TargetView{}, Allies: []AllyView{},
-		Drops: []DropView{}, Missions: []MissionView{}, Events: []EventView{}, Board: []ScoreView{}, Timings: maps.Clone(g.timings)}
+		Drops: []DropView{}, Missions: []MissionView{}, Events: []EventView{}, Board: []ScoreView{}, Timings: maps.Clone(g.timings),
+		Vault: len(g.booked), PodHourUSD: g.podHourUSD, Squads: map[string]int{}}
+	for sq, n := range g.m.SquadTotals() {
+		if !strings.HasPrefix(sq, "solo-") && n > 0 {
+			c.Squads[sq] = n
+		}
+	}
+	allies := map[string]int{}
+	for _, al := range w.Allies {
+		allies[al.Owner]++
+	}
 	for _, id := range slices.Sorted(maps.Keys(w.Avatars)) {
 		a := w.Avatars[id]
 		c.Avatars = append(c.Avatars, AvatarView{a.PlayerID, a.Nick, a.Color, a.Squad, r2(a.Pos.X), r2(a.Pos.Y),
@@ -205,6 +258,9 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		t := w.Targets[id]
 		c.Targets = append(c.Targets, TargetView{t.ID, t.Name, t.MissionID, t.Squad, t.Node, t.Say, r2(t.Pos.X), r2(t.Pos.Y),
 			string(t.State), t.Hits, t.Step, t.Steps, t.Busy, t.New, t.Restored})
+		if t.State == Booked {
+			c.Vault++ // booked but still in the world (its mission has not been cleaned up)
+		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(w.Allies)) {
 		al := w.Allies[id]
@@ -228,10 +284,9 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		if i == boardRows {
 			break
 		}
-		c.Board = append(c.Board, ScoreView{r.PlayerID, r.Nick, r.Squad, r.Takedowns, r.Cash, r.Level})
+		c.Board = append(c.Board, ScoreView{r.PlayerID, r.Nick, r.Squad, r.Takedowns, r.Cash, r.Level, r.Rig, allies[r.PlayerID]})
 	}
-	s := g.p.Substrate()
-	c.Substrate = SubstrateView{s.Actors, s.Running, s.Suspended, s.Workers, s.BusyWorkers}
+	c.Substrate = substrateView(g.p.Substrate())
 	c.Cap.Steps, c.Cap.Resumes, c.Cap.Queued = g.s.InFlight()
 	return c
 }

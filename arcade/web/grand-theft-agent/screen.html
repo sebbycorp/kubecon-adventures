@@ -3,11 +3,409 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>Grand Theft Agent</title>
-<style>html,body{margin:0;height:100%;background:#000;color:#3f3;font:16px/1.5 monospace;display:grid;place-items:center;text-align:center}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* The booth's big screen: the whole city on the left, the QR card, leaderboard and
+     mission feed on the right, a compute heartbeat along the bottom. Same chrome as
+     Agent Flow's screen; green only in the UI. */
+  :root { --bg: #0d0e0f; --fg: #e8e8e8; --mute: #8a8f94; --line: #2a2d30; --panel: #121314ee; --green: #5fd068; --greenDim: #3d7a45;
+    --gold: #ffd23d; --red: #f87171; --cyan: #67e8f9; --blue: #7ab8ff; --right: 452px; --head: 118px; --foot: 124px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 14px/1.4 Inter, system-ui, sans-serif; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+  /* Header over the city: title, LIVE pill and the subtle stat lines. */
+  #head { position: fixed; left: 28px; top: 20px; right: calc(var(--right) + 16px); height: calc(var(--head) - 20px); display: flex; gap: 22px; align-items: flex-start; }
+  #head h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
+  #head h1 small { display: block; font-size: 13px; font-weight: 400; color: var(--mute); letter-spacing: 0; margin-top: 2px; }
+  #live { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--mute); border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 12px 4px 10px; }
+  #live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: beat 1.4s ease-in-out infinite; }
+  #live b { color: var(--fg); font-weight: 600; letter-spacing: .06em; }
+  #live.off i { background: #6f7479; box-shadow: none; animation: none; }
+  @keyframes beat { 50% { transform: scale(.6); opacity: .5; } }
+  #lines { margin-left: auto; text-align: right; font-size: 13.5px; color: var(--mute); line-height: 1.75; }
+  #lines b { color: var(--fg); font-weight: 600; }
+  #lines .g b { color: var(--green); }
+  #lines span.sep { color: #4a4f54; margin: 0 6px; }
+
+  /* The city. */
+  #cityBox { position: fixed; left: 0; top: var(--head); right: var(--right); bottom: var(--foot); }
+  #city { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #labels { position: absolute; inset: 0; }
+  /* The renderer's labels, a size up for a screen read from across the booth. */
+  #labels .gl-nick { font-size: 15px; } #labels .gl-name { font-size: 13px; } #labels .gl-bub { font-size: 13px; max-width: 240px; }
+  #labels .gl-place { font-size: 12px; } #labels .gl-float { font-size: 14px; }
+  #msg { position: fixed; left: calc((100% - var(--right)) / 2); top: 42%; transform: translateX(-50%); z-index: 4; text-align: center; font-size: 18px; line-height: 1.6; color: var(--mute);
+    background: #121314f4; border: 1px solid var(--line); border-radius: 14px; padding: 16px 26px; box-shadow: 0 10px 40px #000a; }
+  #msg b { color: var(--fg); }
+  .hidden { display: none !important; }
+
+  /* Right column. */
+  #side { position: fixed; top: 20px; right: 24px; bottom: 20px; width: calc(var(--right) - 44px); display: flex; flex-direction: column; gap: 14px; }
+  #qr { display: flex; gap: 14px; align-items: center; border: 1px solid var(--greenDim); border-radius: 14px; padding: 12px 16px 12px 12px; background: #111412; box-shadow: 0 0 40px #5fd06814; flex: none; }
+  #qr .code { width: 124px; height: 124px; background: #fff; border-radius: 6px; padding: 6px; flex: none; }
+  #qr .code svg { width: 100%; height: 100%; display: block; }
+  #qr b { display: block; font-size: 17px; }
+  #qr span { color: var(--mute); font-size: 12.5px; }
+  #qr .ask { display: block; margin-top: 6px; color: var(--green); min-height: 2.8em; transition: opacity .4s; }
+  body.idle #qr { animation: invite 2.4s ease-in-out infinite; }
+  @keyframes invite { 50% { box-shadow: 0 0 70px #5fd06855; border-color: var(--green); transform: translateY(-3px); } }
+
+  .card { border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 12px 14px; }
+  .card h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--mute); display: flex; justify-content: space-between; }
+  .card h2 em { font-style: normal; letter-spacing: 0; color: #6f7479; }
+  #board { flex: none; }
+  #rows .row { display: grid; grid-template-columns: 20px 1fr auto 62px 48px 34px; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid #1c1f21; font-size: 13.5px; transition: background .6s; }
+  #rows .row:first-child { border-top: 0; }
+  #rows .row.bump { background: #5fd06818; }
+  #rows .rk { color: #6f7479; font: 12px "JetBrains Mono", monospace; text-align: right; }
+  #rows .nm { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  #rows .nm i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  #rows .nm b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rows .nm small { color: var(--mute); font: 11px "JetBrains Mono", monospace; flex: none; }
+  #rows .td { font: 700 17px "JetBrains Mono", monospace; text-align: right; min-width: 34px; }
+  #rows .td small { font-size: 10px; font-weight: 400; color: var(--mute); margin-left: 2px; }
+  #rows .cash { color: var(--gold); font: 12.5px "JetBrains Mono", monospace; text-align: right; }
+  #rows .rig { font: 700 10.5px "JetBrains Mono", monospace; text-align: center; border: 1px solid #33383c; border-radius: 6px; padding: 1px 0; color: #6f7479; }
+  #rows .al { font: 12px "JetBrains Mono", monospace; color: var(--mute); text-align: right; }
+  #rows .empty { color: var(--mute); font-size: 13px; padding: 4px 0 2px; }
+  #squads { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1c1f21; font-size: 12.5px; color: var(--mute); }
+  #squads b { color: var(--fg); font-weight: 600; }
+
+  #feedCard { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #feed { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+  .ev { display: flex; gap: 8px; align-items: baseline; font-size: 13px; animation: in .35s ease; }
+  .ev .ic { flex: none; min-width: 18px; text-align: center; white-space: nowrap; }
+  .ev .ic sub { font-size: 9.5px; color: var(--mute); vertical-align: baseline; margin-left: 1px; }
+  .ev span { color: #c3c7cb; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev span b { color: var(--fg); font-weight: 600; }
+  .ev code { margin-left: auto; padding-left: 8px; font: 12px "JetBrains Mono", monospace; color: var(--green); flex: none; }
+  .ev.ice code { color: var(--cyan); } .ev.spr code { color: var(--blue); } .ev.gold span b.t { color: var(--gold); }
+  .ev.bad span { color: #fca5a5; }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } }
+
+  /* Toasts over the city. */
+  #toasts { position: fixed; left: calc((100% - var(--right)) / 2); top: calc(var(--head) + 6px); transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; z-index: 3; pointer-events: none; }
+  .toast { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 10px; border: 1px solid var(--greenDim); background: #0f1a12e8; box-shadow: 0 0 24px #5fd06822; font-size: 14px; animation: pop .5s cubic-bezier(.2, 1.6, .4, 1); }
+  .toast.gold { border-color: #b8901a; background: #221a06f0; box-shadow: 0 0 30px #ffd23d44; }
+  .toast.blue { border-color: #3b6ea8; background: #0e1a2af0; box-shadow: 0 0 30px #7ab8ff44; }
+  .toast b { font-weight: 600; }
+  .toast.out { animation: fade .5s forwards; }
+  @keyframes pop { from { opacity: 0; transform: translateY(-14px) scale(.9); } }
+  @keyframes fade { to { opacity: 0; transform: translateY(-10px); } }
+
+  /* The compute heartbeat along the bottom (Agent Flow's #pulseBox). */
+  #pulseBox { position: fixed; left: 24px; right: calc(var(--right) + 4px); bottom: 20px; height: calc(var(--foot) - 32px); border: 1px solid #1f2326; border-radius: 12px; background: #0b0d0cd9; overflow: hidden; }
+  #pulse { width: 100%; height: 100%; display: block; }
+  #pulseLbl { position: absolute; left: 12px; top: 8px; font: 600 10.5px Inter, sans-serif; letter-spacing: .12em; color: #6f7479; }
+  #pulseLbl b { color: var(--green); letter-spacing: 0; font-weight: 600; margin-left: 6px; }
+
+  #nogl { position: fixed; left: 0; right: var(--right); top: 40%; text-align: center; color: var(--mute); }
+</style>
 </head>
-<body>
-<!-- Placeholder (screen); Task 9 replaces this page. -->
-<main><h1>Grand Theft Agent</h1><p>Coming soon.</p></main>
+<body class="idle">
+<div id="head">
+  <div><h1>Grand Theft Agent<small>Every hunter is a real kagent agent on Agent Substrate.</small></h1>
+    <div id="live" class="off"><i></i><b>LIVE</b><span id="since">connecting…</span></div></div>
+  <div id="lines">
+    <div id="line1"></div>
+    <div id="line2"></div>
+    <div id="line3"></div>
+  </div>
+</div>
+<div id="cityBox"><canvas id="city" aria-label="Live map of Substrate City"></canvas><div id="labels"></div></div>
+<div id="msg" class="hidden"></div>
+<div id="nogl" class="hidden">This browser can't run WebGL, so the city can't be drawn here.</div>
+<div id="toasts" aria-live="polite"></div>
+<div id="pulseBox"><canvas id="pulse" aria-label="Compute heartbeat"></canvas><div id="pulseLbl">COMPUTE<b id="pulseNow"></b></div></div>
+
+<div id="side">
+  <div id="qr"><div class="code" id="qrcode"></div><div><b>Scan to join the heist</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
+  <div id="board" class="card"><h2>MOST AGENTS FROZEN <em>takedowns · cash · rig · allies</em></h2><div id="rows"></div><div id="squads" class="hidden"></div></div>
+  <div id="feedCard" class="card"><h2>MISSION FEED</h2><div id="feed" aria-live="polite"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script type="module">
+import { startCity, webglOK, colorOf, esc } from "/grand-theft-agent/static/city.js";
+import { connect } from "/grand-theft-agent/static/net.js";
+
+const $ = (id) => document.getElementById(id);
+const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
+
+// ---- QR card: points phones at /grand-theft-agent. ?join=<url> overrides it; a screen
+// opened on localhost points at the public domain instead (as on Agent Flow). ----
+const params = new URLSearchParams(location.search);
+const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+const joinUrl = params.get("join") || (local ? "https://kubecon.agentpwned.ai/grand-theft-agent" : location.origin + "/grand-theft-agent");
+$("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
+try {
+  const qr = qrcode(0, "M");
+  qr.addData(joinUrl);
+  qr.make();
+  $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+} catch (e) {
+  $("qrcode").style.display = "none";
+}
+const IDEAS = ["Freeze hunters with FIRE: three hits suspends a real agent.", "Drag a frozen hunter to the Vault to book its snapshot.",
+  "Loot RAM, CPU, drive and board, then build a rig: your own agent.", "Rival crew? Spring their frozen hunters back to life.",
+  "DDR5 is the rarest drop. It glows gold."];
+let ideaI = 0;
+const idea = () => {
+  const el = $("askIdea");
+  el.style.opacity = 0;
+  setTimeout(() => { el.textContent = IDEAS[ideaI++ % IDEAS.length]; el.style.opacity = 1; }, 400);
+};
+idea();
+setInterval(idea, 5000);
+
+// ---- the city ----
+function message(html) { $("msg").innerHTML = html; show("msg", !!html); }
+if (!webglOK()) { show("nogl"); }
+let city = null;
+for (let wait = 1000; !city; wait = Math.min(wait * 2, 10000)) {
+  const r = await fetch("/grand-theft-agent/api/city").catch(() => null);
+  if (r && r.ok) city = await r.json();
+  else { message("Can't load the city map. Retrying…"); await new Promise((ok) => setTimeout(ok, wait)); }
+}
+message("");
+let view = null;
+if (webglOK()) {
+  view = startCity($("city"), {
+    mode: "screen", city, overlay: $("labels"), logo: "/grand-theft-agent/static/kagent-icon.svg",
+    pos: (k, id) => (net ? net.pos(k, id) : null), onEvent,
+  });
+  const frame = () => { view.draw(); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+}
+
+// ---- the socket: a spectator (?screen=1) needs no cookie and sends nothing ----
+let snap = null, lastSnapAt = 0, full = false;
+const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/grand-theft-agent/ws?screen=1`, onSnap, {
+  cookie: false,
+  onStatus(st) {
+    if (st === "full") {
+      full = true;
+      message("<b>Eight big screens are already watching this city.</b><br>This one will keep trying, every few seconds.");
+    } else if (st === "closed" && !full) message(snap ? "" : "Connecting to the city…");
+    $("live").classList.toggle("off", st !== "open");
+  },
+});
+
+// ---- snapshots ----
+const byId = (list, id) => (list || []).find((e) => e.id === id);
+const nickOf = (s, id) => (byId(s.avatars, id) || byId(s.board, id) || {}).nick || "";
+const steps = new Map(); // target ID -> last step seen, for step and spawn beats
+let primed = false;
+function onSnap(s) {
+  if (full) { full = false; message(""); }
+  if (!snap) message("");
+  if (snap && s.now < snap.now - 0.5) { steps.clear(); primed = false; } // admin reset
+  snap = s; lastSnapAt = Date.now();
+  if (view) view.apply(s);
+  // Spawns and steps come from state, so a dropped snapshot only delays the beat.
+  for (const t of s.targets) {
+    const o = steps.get(t.id);
+    if (o === undefined) { if (primed) heart.beat(1, `${t.name} · new`); }
+    else if (t.step > o) heart.beat(0.45); // a step: an LLM turn in the hunter's sandbox
+    steps.set(t.id, t.step);
+  }
+  for (const id of steps.keys()) if (!s.targets.some((t) => t.id === id)) steps.delete(id);
+  primed = true;
+  stats(s);
+  board(s);
+  heart.set(s.substrate?.awake ?? 0, s.substrate?.pool ?? 0);
+  document.body.classList.toggle("idle", !s.avatars.some((a) => a.online));
+}
+
+// ---- the subtle stat lines ----
+const fmtMs = (v) => (v ? (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms") : "–");
+const n = (v) => Number(v || 0).toLocaleString();
+const sep = `<span class="sep">·</span>`;
+function stats(s) {
+  const sub = s.substrate || {}, t = s.timings || {};
+  const hunters = s.targets.filter((x) => x.state !== "Booked" && x.state !== "Deleted").length;
+  const allies = s.allies.length;
+  setHtml("line1", `<b>${n(sub.pool)}</b> workers${sep}<b>${n(hunters)}</b> hunters${sep}<b>${n(allies)}</b> allies${sep}<b>${n(sub.awake)}</b> awake`);
+  setHtml("line2", `p50 suspend <b>${fmtMs(t.freeze)}</b>${sep}resume <b>${fmtMs(t.spring)}</b>${sep}checkpoint <b>${fmtMs(t.extract)}</b>${sep}<b>${n(s.vault)}</b> snapshots in the vault`);
+  // What the same agents would cost as always-on pods (one pod each, all day), at the
+  // stated POD_HOUR_USD price, as Agent Flow estimates it.
+  const agents = sub.agents || 0, price = s.podHourUsd || 0.02;
+  setHtml("line3", agents
+    ? `As always-on pods: <b>${agents}</b> pods ≈ <b>$${(agents * 24 * price).toFixed(2)}/day</b>${sep}here <b>${n(sub.asleep)}</b> sleep in snapshots for free <span style="color:#6f7479">(est. $${price}/pod-hour)</span>`
+    : `As always-on pods, every hunter and ally would be a pod all day <span style="color:#6f7479">(est. $${price}/pod-hour)</span>`);
+}
+function setHtml(id, html) { const el = $(id); if (el._h !== html) { el._h = html; el.innerHTML = html; } }
+
+// ---- leaderboard: top 8 players by takedowns (cash breaks ties), from state ----
+const RAM = ["#6f7479", "#c8d6cc", "#2bff6a", "#4aa8ff", "#c77dff", "#ffd23d"];
+const squadTag = (sq) => (!sq || sq.startsWith("solo-") ? "" : sq);
+const prevTd = new Map();
+function board(s) {
+  const rows = [...(s.board || [])].sort((a, b) => b.takedowns - a.takedowns || b.cash - a.cash || String(a.nick).localeCompare(b.nick)).slice(0, 8);
+  const html = rows.length ? rows.map((r, i) => {
+    const av = byId(s.avatars, r.id), tag = squadTag(r.squad);
+    const rig = r.rig ? `<span class="rig" style="color:${RAM[r.rig]};border-color:${RAM[r.rig]}66">DDR${r.rig}</span>` : `<span class="rig">–</span>`;
+    return `<div class="row" data-id="${esc(r.id)}"><span class="rk">${i + 1}</span>` +
+      `<span class="nm"><i style="background:${esc(colorOf(av ? av.color : "#6f7479"))}"></i><b>${esc(r.nick)}</b>${tag ? `<small>${esc(tag)}</small>` : ""}</span>` +
+      `<span class="td">${r.takedowns}<small>❄</small></span><span class="cash">$${n(r.cash)}</span>${rig}` +
+      `<span class="al">${r.allies ? "◆" + r.allies : ""}</span></div>`;
+  }).join("") : `<div class="empty">No takedowns yet. Scan the code and be first.</div>`;
+  if ($("rows")._h !== html) {
+    $("rows")._h = html;
+    $("rows").innerHTML = html;
+    for (const r of rows) {
+      if (prevTd.has(r.id) && prevTd.get(r.id) < r.takedowns) {
+        const el = $("rows").querySelector(`[data-id="${CSS.escape(r.id)}"]`);
+        if (el) { el.classList.add("bump"); setTimeout(() => el.classList.remove("bump"), 1200); }
+      }
+    }
+  }
+  for (const r of rows) prevTd.set(r.id, r.takedowns);
+  const sq = Object.entries(s.squads || {}).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  setHtml("squads", sq.length ? "Squads: " + sq.map(([k, v]) => `<b>${esc(k)}</b> ${v}`).join(`${sep}`) : "");
+  show("squads", sq.length > 0);
+}
+
+// ---- mission feed, toasts and heartbeat from events (best-effort: the server may
+// drop a stale snapshot with its events) ----
+// A line that repeats the newest one (a hunter slipping away hit after hit) bumps a
+// counter on it instead of filling the feed.
+function feed(cls, icon, html, code = "") {
+  const f = $("feed"), key = cls + icon + html + code, top = f.firstChild;
+  if (top && top._key === key) {
+    top._n++;
+    top.querySelector(".ic").innerHTML = `${icon}<sub>×${top._n}</sub>`;
+    return;
+  }
+  const d = document.createElement("div");
+  d.className = "ev " + cls;
+  d._key = key; d._n = 1;
+  d.innerHTML = `<span class="ic">${icon}</span><span>${html}</span>${code ? `<code>${esc(code)}</code>` : ""}`;
+  f.prepend(d);
+  while (f.children.length > 40) f.lastChild.remove();
+}
+function toast(html, cls = "") {
+  const t = document.createElement("div");
+  t.className = "toast " + cls;
+  t.innerHTML = html;
+  $("toasts").appendChild(t);
+  while ($("toasts").children.length > 2) $("toasts").firstChild.remove();
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 500); }, 3600);
+}
+let lastAction = 0;
+function onEvent(e) {
+  const s = snap; // city.js calls this from apply(), after snap was set
+  const who = `<b>${esc(nickOf(s, e.player) || "someone")}</b>`;
+  const tg = byId(s.targets, e.target), tname = `<b>${esc(tg ? tg.name : e.text || "a hunter")}</b>`;
+  switch (e.kind) {
+    case "frozen": lastAction = Date.now(); return feed("ice", "❄", `${who} froze ${tname}`, `suspend ${e.ms} ms`);
+    case "booked": lastAction = Date.now(); return feed("gold", "▣", `${who} booked ${tname} into the Vault`, "checkpoint");
+    case "sprung": {
+      lastAction = Date.now();
+      heart.beat(0.9, `${tg ? tg.name : "hunter"} · restored`);
+      const by = e.player ? `${who} sprang ${tname}` : `The crew sprang ${tname}`;
+      feed("spr", "↻", by, `resume ${e.ms} ms`);
+      return toast(`<span>↻</span><span>${by}: restored from its snapshot in <b>${esc(e.ms)} ms</b>, memory intact</span>`, "blue");
+    }
+    case "escaped": return feed("bad", "✖", `${tname} escaped with the loot`);
+    case "slipped": return feed("", "~", `${tname} slipped away from ${who}`, "suspend failed");
+    case "policy": return feed("bad", "🛡", `agentgateway stopped ${tname}: ${esc(e.text)}`);
+    case "down": return feed("bad", "✚", `${who} went down${+e.text ? `, dropped ${esc(e.text)} parts` : ""}`);
+    case "drop":
+      if (e.text !== "DDR5") return;
+      feed("gold", "★", `${tname} dropped <b class="t">DDR5</b>, the rarest RAM`);
+      return toast(`<span>★</span><span><b>DDR5</b> dropped near ${tname}: the rarest RAM in the city</span>`, "gold");
+    case "ally": {
+      heart.beat(0.8, `${nickOf(s, e.player)} · rig`);
+      return feed("", "◆", `${who} deployed a <b>${esc(e.text)}</b> rig: a new ally agent`, "new session");
+    }
+    case "mission-won": {
+      const ms = byId(s.missions, e.text), tag = squadTag(e.player);
+      const who = tag ? `Squad <b>${esc(tag)}</b>` : `<b>${esc(nickOf(s, e.player.replace(/^solo-/, "")) || "A player")}</b>`;
+      return feed("gold", "✓", `${who} won <b>${esc(ms ? ms.name : "a mission")}</b>`, ms ? `$${n(ms.cash)}` : "");
+    }
+  }
+}
+
+// The compute heartbeat (ported from Agent Flow): a scrolling trace whose baseline is
+// the share of heist sandboxes with an awake agent, with an ECG spike each time a
+// hunter spawns or is restored (named), and a smaller blip on every heist step.
+const heart = (() => {
+  const cv = $("pulse"), cx = cv.getContext("2d");
+  const BEAT = [0, .04, .1, .06, 0, -.12, 1, -.38, 0, .06, .14, .18, .12, .05, 0];
+  let W = 0, H = 0, ys = [], labels = [], pending = [], queue = [], level = 0, target = 0, last = performance.now(), carry = 0;
+  const fit = () => {
+    const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+    cv.width = r.width * d; cv.height = r.height * d; cx.setTransform(d, 0, 0, d, 0, 0);
+    W = r.width; H = r.height;
+    while (ys.length < W) { ys.unshift(0); labels.unshift(null); }
+  };
+  addEventListener("resize", fit); fit();
+  function beat(size, tag) {
+    const k = 30, start = queue.length < 6 ? 0 : queue.length; // beats queue up, never overlap
+    if (queue.length > 600) return; // a burst never builds a minute-long backlog
+    for (let i = 0; i < k; i++) {
+      const f = (i / (k - 1)) * (BEAT.length - 1), j = Math.floor(f), t = f - j;
+      queue[start + i] = (queue[start + i] || 0) + (BEAT[j] * (1 - t) + (BEAT[j + 1] ?? 0) * t) * size;
+    }
+    if (tag) pending.push({ at: start + 6, text: tag });
+  }
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    level += (target - level) * (1 - Math.exp(-dt * 1.5));
+    carry += dt * 70;
+    while (carry >= 1) {
+      carry--;
+      const spike = queue.length ? queue.shift() : 0;
+      const due = pending.findIndex((t) => t.at <= 0);
+      ys.push(level + spike + (Math.random() - 0.5) * 0.015);
+      labels.push(due >= 0 ? pending.splice(due, 1)[0].text : null);
+      pending.forEach((t) => t.at--);
+      if (ys.length > W) { ys.shift(); labels.shift(); }
+    }
+    cx.clearRect(0, 0, W, H);
+    cx.strokeStyle = "#16201a"; cx.lineWidth = 1;
+    for (let x = W - ((now / 1000 * 70) % 28); x > 0; x -= 28) { cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H); cx.stroke(); }
+    const base = H - 16, amp = H - 34, Y = (v) => base - Math.max(-0.4, Math.min(1.15, v)) * amp * 0.62;
+    cx.shadowColor = "#5fd068"; cx.shadowBlur = 8; cx.strokeStyle = "#5fd068"; cx.lineWidth = 1.8; cx.lineJoin = "round";
+    cx.beginPath();
+    const off = W - ys.length;
+    ys.forEach((v, i) => (i ? cx.lineTo(off + i, Y(v)) : cx.moveTo(off + i, Y(v))));
+    cx.stroke(); cx.shadowBlur = 0;
+    cx.fillStyle = "#c8ffcb"; cx.beginPath(); cx.arc(W - 3, Y(ys[ys.length - 1] || 0), 3, 0, 7); cx.fill();
+    cx.font = "11px ui-monospace, monospace"; cx.fillStyle = "#cfe9d2";
+    // Named spikes, skipping a name that would overprint the one before it.
+    let lastX = -1e9;
+    labels.forEach((t, i) => {
+      if (!t || off + i - lastX < cx.measureText(t).width + 16) return;
+      cx.fillText(t, off + i - 10, 38);
+      lastX = off + i;
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  return {
+    beat,
+    set(awake, pool) {
+      target = pool ? Math.min(1, awake / pool) * 0.9 + 0.04 : 0.04;
+      $("pulseNow").textContent = `${awake} awake · ${pool ? Math.round((100 * awake) / pool) : 0}% of ${pool} heist sandboxes`;
+    },
+  };
+})();
+
+// "Last action" ticker under the title.
+setInterval(() => {
+  const ago = Math.round((Date.now() - lastAction) / 1000);
+  $("since").textContent = !snap || Date.now() - lastSnapAt > 3000 ? "waiting for the city" : !lastAction ? `${snap.avatars.filter((a) => a.online).length} players in the city`
+    : ago < 3 ? "takedown just now" : `last takedown ${ago < 60 ? ago + "s" : Math.round(ago / 60) + "m"} ago`;
+}, 1000);
+
+// For tests and the booth crew.
+window.gta = { snap: () => snap, net: () => net.stats(), stats: () => (view ? view.stats() : null), feed: () => [...$("feed").children].map((e) => e.textContent) };
+</script>
 </body>
 </html>
