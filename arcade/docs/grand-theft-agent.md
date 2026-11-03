@@ -12,6 +12,7 @@ Working title, my call: "Grand Theft Agent". It's a parody name. The art, sprite
 | Booth scope | **Levels 1–3 and the big screen** must be ready for the booth: Rookie, Booking, The Crew. Levels 4–6 and cars come after. |
 | Winner | **Whoever freezes the most agents.** The leaderboard ranks players by takedowns (freezes they landed). Cash from extractions and missions only breaks ties. Squads see each member's count and a squad total. |
 | Booth date | Not set yet |
+| Status | **Playable, levels 1–3** (2026-11-02), live at `https://kubecon.agentpwned.ai/grand-theft-agent`; booth load measured below |
 
 ## Why
 
@@ -67,6 +68,31 @@ Also known from Duck Hunt: Substrate snapshots an idle actor about 1 s after eac
 - **Up to 48 players** in one city. Players are browser connections, not agents, so this cap is about screen readability and fairness, not the cluster.
 - Never resume more than **8 targets at the same moment** (queue the rest), because a mass resume takes all 8 CPUs.
 
+## Booth load, measured (2026-11-02)
+
+`TestBoothLoad` (`games/heist/cluster_test.go`, build tag `cluster`) plays a busy booth through the real phone protocol: 24 players join with `/api/join` and open the game's WebSocket with their cookie, 8 solo and 4 squads of 4. Bots play Levels 1–3 in unlock order: they steer along the roads to the nearest hunter and shoot it, pick up parts, bank them in the Vault, build rigs, and on Levels 2–3 drag frozen targets into the Vault. A `?screen=1` spectator counts everything; token use comes from agentgateway's own metrics for the `/heist/v1` route, and op errors from the arcade's log. One 5-minute run:
+
+| | Measured | Target |
+|---|---|---|
+| Missions | 79 won (12 at Level 1, 12 at Level 2, 55 at Level 3), none failed or escaped | |
+| Freeze, third hit to frozen (includes waiting for the target's turn to end) | n=224, p50 69 ms, **p95 4.8 s** | p95 < 1 s: **missed** |
+| Freeze, the suspend call alone | p50 28 ms, **p95 66 ms** | p95 < 1 s: met |
+| Spring, asked to sprung (resume plus the sprung turn) | n=8, p50 3.4 s, **p95 8.7 s** | p95 < 6 s: **missed** |
+| Spring, the resume alone | p50 195 ms, p95 622 ms | |
+| Booking, in the Vault to booked (resume, booked turn, checkpoint, delete) | n=187, p50 2.6 s, p95 8.3 s | |
+| Booking, the Substrate work alone | p50 501 ms, p95 884 ms | |
+| Allies | 8 rigs built, spawn p50 1.6 s, p95 2.4 s; at most 2 alive at once | |
+| Scheduler cap (peak) | 16 of 24 steps, 7 of 8 resumes, nothing queued, no queued missions | |
+| Heist actors | 24–32 sessions, 1–8 awake | |
+| agentgateway tokens (input + output) | **297k a minute on average, 331k in the busiest minute**; 1.46M input (54% cached), 46k output; 1,044 LLM requests, 32 answered 429 by the budget | < 300k a minute: **missed at peak** |
+| Op errors | none (no slipped freezes, failed bookings or failed springs); 75 fallback lines for replies that failed output validation | none |
+| Stuck missions (timer at 0, no outcome after 10 s) | none | none |
+
+Why the misses:
+- **Freeze, with the wait.** By design (since 2026-11-02) a freeze lands when the target's current turn ends, because kagent refuses a suspend mid-turn. A step turn takes 2–8 s, so a freeze that arrives mid-step waits for it; the suspend itself stays under 70 ms. The p50 of 69 ms shows most shots land between turns.
+- **Spring.** It includes one full LLM turn (the sprung target's reaction), which takes 3–8 s with gpt-4.1-mini, sometimes with a validation fallback. Only 8 springs happened, so the p95 is the slowest one or two. The resume itself is 0.2–0.6 s.
+- **Tokens.** The bots clear a mission every few seconds (a person takes far longer), and every new target starts its first step on arrival, so target churn drives token use. agentgateway enforced the budget: 32 requests got 429, and none of them surfaced as a game error (kagent's model client most likely retried them; not checked). At a real booth, with slower players, the use will be lower, but a full city can hit the budget; the per-step cadence (15–25 s) is the knob.
+
 ## The city (big screen and phones)
 
 A cute top-down 3D city in Three.js. Every landmark is a real component; this matches Agent Flow's mapping so the two games tell one story.
@@ -98,8 +124,8 @@ Phones show a follow-cam on your character, with a virtual joystick (left thumb)
 |-------------|-----------|-----------|
 | Target spawns ("a new job hits the street") | `CreateSession` on the `heister` Agent | Car drops the target off in the district of its node; **NEW** tag |
 | Target works its heist | One A2A turn per step (see below) | Progress bar over its head; speech bubble with the real command output |
-| Stun shot (3 hits) | `SuspendSession` | Target freezes in ice/static; label `suspended in N ms` (atelet timing) |
-| Extraction (carry the stunned target to the Impound Vault) | `Checkpoint` of the session (a durable, named snapshot), then the live session is deleted | Target is filed into the vault wall; cash awarded |
+| Stun shot (3 hits) | `SuspendSession`, which lands when the target's current turn ends (a suspend mid-turn is refused) | Target freezes in ice/static once the suspend lands; label `suspended in N ms` (the suspend call alone) |
+| Extraction (drag the stunned target into the Impound Vault) | `ResumeSession`, one "you got booked" turn, `Checkpoint` of that turn (a durable, named snapshot), then `DeleteSession` | Target is filed into the vault wall with its booked line; cash awarded |
 | DELETE (finish off a stunned target instead) | `DeleteSession` | De-rez into pixels; fewer points than extraction, no evidence |
 | Rival crew or the target's own crew revives it | `ResumeSession` | Ice shatters; **RESTORED** tag; it resumes its heist at the step it was on, and says so |
 | Interrogate an extracted target (later level) | `Fork` from its checkpoint plus one prompt | A copy appears in the interview room and answers from memory |
@@ -110,7 +136,7 @@ Takedowns decide the winner (see Decisions). Cash, which breaks ties (my call): 
 
 One kagent `Agent` on its own Harness and `heist` WorkerPool. Its model goes through its own agentgateway route (`/heist/v1`) with its own prompt guard and token budget, the same pattern as Agent Flow's `flow-model`.
 
-**The heist (long-running work).** Each target gets a job of 4–8 steps (crack a safe = write and run a small script, count the loot = wc/sha256 a file, call the getaway driver = an allowed outbound fetch on later levels). The game server sends one step per turn, every 15–25 s, while the target isn't stunned. The work lands in `/data/workspace` and survives suspend and resume (verified in the load test). If the last step finishes before players stop it, the target **escapes**: the mission fails and its crew's wanted level goes up.
+**The heist (long-running work).** Each target gets a job (built: 3 fixed jobs of 4 bash steps for levels 1–3; later levels may use up to 8) (crack a safe = write and run a small script, count the loot = wc/sha256 a file, call the getaway driver = an allowed outbound fetch on later levels). The game server sends one step per turn, every 15–25 s, while the target isn't stunned. The work lands in `/data/workspace` and survives suspend and resume (verified in the load test). If the last step finishes before players stop it, the target **escapes**: the mission fails and its crew's wanted level goes up.
 
 **Talking back.** Each step's reply carries a short line (≤ 60 characters) in structured output, like Duck Hunt's quack:
 
@@ -124,6 +150,8 @@ properties:
 ```
 
 After a resume, the first prompt is "You were frozen by the cops and just got sprung. React, then continue your heist." The reply has to show it remembers the step and the loot. That's the visible proof of restored memory.
+
+**Fallbacks (built).** gpt-4.1-mini sometimes answers in prose or loops on tool calls, and kagent then fails the turn's output validation. The turn still ran, so the game doesn't resend it: a step counts with a fixed quip ("Shh... working on it."), a spring uses a fixed line ("I'm out! Back to the heist."), and a booking checkpoints that turn with "Booked. I'll be back.". In the booth load run about 7% of LLM requests ended in a fallback line.
 
 **Movement is not the LLM.** Targets walk, run, flee and hide by server-side scripted behaviour (waypoints, flee from the nearest player within range). The LLM is never asked where to move.
 
@@ -152,7 +180,7 @@ Rival crews: any player or squad can stun or extract any target. A rival's stunn
 
 The targets fight back, and players loot hardware from them to run agents of their own. This makes Substrate capacity the thing you play for.
 
-**What the user decided:** a 3D **Matrix look**; collected parts let you **deploy your own agents**; and when hunters drop you, you **lose your unextracted loot**. Everything else in this section is my call, and the numbers are starting values to tune in play.
+**What the user decided:** a 3D look (first a Matrix look, since replaced by the stylised night city below); collected parts let you **deploy your own agents**; and when hunters drop you, you **lose your unextracted loot**. Everything else in this section is my call, and the numbers are starting values to tune in play.
 
 **Hunters.** Every Working target is also a hunter.
 - It shoots the nearest player or ally within 5 tiles: 10 damage per hit, 1.2 s between shots. Frozen, dragged and booked targets don't shoot.
@@ -198,7 +226,8 @@ Everything is original: no film assets, names or logos.
 ## Players, squads and controls
 
 - Join with the arcade nickname (existing `platform.Players` cookie), then either **Go solo** or **Join a squad** with a 4-letter code shown on a squadmate's phone. Squads share score and missions.
-- Controls: a joystick to move, FIRE (auto-aims at the nearest target in range), and ACTION (grab or drag a stunned target, or interrogate at the vault).
+- Controls are on-screen only, on phones and laptops alike (no keyboard): a joystick to move, FIRE (auto-aims at the nearest target in range), and ACTION. A tap of ACTION grabs a frozen target to drag (your own mission's), springs a rival's frozen target (20 s cooldown) or springs your own frozen ally; holding it for 1 s DELETEs the frozen target. The STASH button opens your banked parts; BUILD RIG there spends a rig.
+- Phones switch to low quality (pixel ratio 1.25, no shadows) by themselves when the first few seconds average over 33 ms a frame; MENU has a GRAPHICS switch, remembered on the phone. `?debug=1` shows an overlay with frame time, snapshot gaps, interpolation buffer, ping and draw calls.
 - Players can't hurt players (my call: no PvP damage; rivalry is only over targets). Players never type free text to targets in levels 1–5. Level 6's interrogation question is a fixed menu, so no player text reaches the LLM.
 
 ## Architecture
@@ -215,9 +244,10 @@ admin  ─┘                                                  │  world tick (
 ```
 
 - **Backend:** a new package `games/heist` in the existing arcade binary. It reuses `platform` (players, SSE hub, timings) and `internal/kagent`. The game world (positions, hits, timers) is authoritative on the server and in memory. kagent and Substrate are the source of truth for target state; the actor poller (as in Agent Flow) maps each target to its real node and state.
-- **Realtime transport (my call): WebSocket**, one per client, at `/grand-theft-agent/ws`. Joystick input goes up at ~15 Hz; world snapshots come down at 15 Hz, and clients interpolate. The other games use SSE plus POSTs, but per-frame POSTs would also hit the front-door limit of 300 requests per minute per IP. A single WebSocket is one request. This adds one Go dependency (`github.com/coder/websocket`, pinned). The Cloudflare Tunnel passes WebSockets through.
-- **Agent calls are asynchronous to the game loop.** A shot that triggers `SuspendSession` freezes the sprite at once (the animation starts on the hit). The label shows the real time when the call returns. If the call fails, the target thaws, with an "it slipped away" bubble. The game never waits on an agent call inside a tick.
-- **Pages:** `/grand-theft-agent` (phone), `/grand-theft-agent/screen` (big screen with QR), plus admin under `/admin/grand-theft-agent/api/*` (reset, state, pause spawns, set level), hidden from the tunnel like the other admin routes.
+- **Realtime transport (my call): WebSocket**, one per client, at `/grand-theft-agent/ws`. Joystick input goes up at up to 20 Hz while a control is held; world snapshots come down at 15 Hz, and clients interpolate. The other games use SSE plus POSTs, but per-frame POSTs would also hit the front-door limit of 300 requests per minute per IP. A single WebSocket is one request. This adds one Go dependency (`github.com/coder/websocket`, pinned). The Cloudflare Tunnel passes WebSockets through.
+- **Agent calls are asynchronous to the game loop.** The game never waits on an agent call inside a tick. A third hit marks the target busy (it stops shooting and can't be hit) and asks for the freeze. kagent refuses a suspend while a turn is in flight, so the freeze retries until that turn ends and then lands; the target shows Frozen only then. If the target's final step completes while its freeze is pending, the freeze wins and it doesn't escape. If the freeze fails, the target thaws with an "it slipped away" bubble.
+- **Extraction (booking).** A suspend writes a new snapshot, so the turn before the freeze can no longer be checkpointed ("snapshot changed"). Booking therefore resumes the target, asks it for one booked line, checkpoints that fresh turn and deletes the live session. If any part fails after the resume, the target is suspended again and the dragger can retry.
+- **Pages:** `/grand-theft-agent` (phone, `?debug=1` for the timing overlay), `/grand-theft-agent/screen` (big screen with QR), `GET /grand-theft-agent/api/city` (the map), plus admin under `/admin/grand-theft-agent/api/*` (reset, state, pause), hidden from the tunnel like the other admin routes.
 - **Manifests:** `manifests/heist-agent.yaml` (WorkerPool `heist`, 40 replicas; Harness with `s3://ate-snapshots/heist/`; ModelConfig; Agent `heister` with `outputSchema`) and `manifests/heist-policies.yaml` (HTTPRoute `/heist/v1`, prompt guard, token and request limits, in-cluster-only authorization). An EgressPolicy `getaway` allows one harmless host for level 5's "allowed" contrast; every other host is blocked.
 
 ## Big-screen stats (subtle, as on Agent Flow)
@@ -230,15 +260,16 @@ admin  ─┘                                                  │  world tick (
 
 ## Safety and cost
 
-- Prompt guard and token budget on `/heist/v1`. The per-step prompt is small and fixed, with `gpt-4.1-mini`. Target budget: ≤ 24 steps in flight, one step per target every 15–25 s, which is roughly 60–100 turns per minute at peak. This needs measuring in the first build.
-- A mission timer and an idle sweeper delete targets nobody is hunting, so snapshots don't pile up. Admin reset deletes everything.
+- Prompt guard and token budget on `/heist/v1`. The per-step prompt is small and fixed, with `gpt-4.1-mini`. Target budget: ≤ 24 steps in flight, one step per target every 15–25 s. Measured at booth load: about 205 LLM requests and 297k tokens a minute on average, so the 300k a minute budget is the real ceiling (see the measured results).
+- A mission timer deletes the targets 10 s after their mission ends, so snapshots don't pile up; booked checkpoints stay until the admin reset, which deletes everything.
+- **Startup sweep (built).** Game state lives in memory, so a redeploy used to orphan the sessions of running missions. On start the game lists every `heister` and `sidekick` session and deletes them all (none can be its own yet), and refuses missions and rigs until the list is in.
 - Rate limits: the front door keys on `cf-connecting-ip`, and venue Wi-Fi often puts everyone behind one IP. The WebSocket keeps the request count low, but the existing 300 per minute per IP is still shared by every game on that network. That needs a look before the booth (see the open items).
 
 ## Open items for the builder
 
-- **Checked: `Checkpoint` does not work on a suspended session.** kagent answers `FailedPrecondition: cannot checkpoint in state RUNTIME_STATE_SUSPENDED with operation RUNTIME_OPERATION_NONE: resource conflict`, and `Kagent.Checkpoint` retried that for its full 2 minutes without success. **Extraction mode: `resume-first`**: resume the target off-screen through the queue (measured about 0.2 s), checkpoint it, then delete the live session, so level 6 still has a checkpoint to fork from. Don't call `Checkpoint` on a suspended session: it burns the 2 minute retry. Also: right after a turn, `Suspend`, `Resume`+`Prompt` and `Delete` can answer `FailedPrecondition: runtime cleanup or lifecycle work is not yet settled`; retry for about a second (suspend succeeded on the 2nd try, 0.5 s). The `heister` outputSchema can't use `maxLength` or `minimum` (the portable output profile rejects them), so the 60 character limit lives in the prompt and the game must clip `say`.
-- The 4 errors at 80 agents in the load test weren't diagnosed. Rerun at 40 with error logging before sizing for the booth.
-- The token use per minute at peak is an estimate; measure it in the first playable build and tune the step interval.
-- Node hops on resume never happened in the load test. Draw the district from the real node, and don't promise teleporting.
+- **Closed: `Checkpoint` of a suspended session.** It fails (`FailedPrecondition ... RUNTIME_STATE_SUSPENDED`), and after a suspend the pre-freeze turn can't be checkpointed either ("SnapshotTagFailed: snapshot changed"; a suspend writes a new snapshot). Booking resumes the target, prompts it once for its booked line and checkpoints that turn, then deletes it (see Architecture). Right after a turn, `Suspend`, `Resume`+`Prompt` and `Delete` can answer `FailedPrecondition` ("not yet settled") or `Aborted` (a turn in flight); the adapter retries those with backoff capped at 500 ms. The `heister` outputSchema can't use `maxLength` or `minimum` (the portable output profile rejects them), so the 60 character limit lives in the prompt and the game clips `say`.
+- **Closed: token use at peak.** Measured at booth load: 297k tokens a minute on average and 331k in the busiest minute, against the 300k budget, which agentgateway enforced (see Booth load, measured). If a real booth hits the budget often, slow the step cadence.
+- **Closed: node hops on resume.** None seen; targets are drawn in the district of their real node, with no teleporting.
+- The 4 errors at 80 agents in the first capacity test weren't diagnosed. The game stays at 40 workers, and the booth load run at 24–32 actors had no errors.
 - Decide whether the front-door limit should key on the player cookie instead of the IP for venue Wi-Fi.
 - Car driving (GTA flavour) is a stretch goal after levels 1–3 play well.

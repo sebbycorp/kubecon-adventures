@@ -3,14 +3,25 @@
 package heist
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"maps"
+	"math"
+	"net/http"
 	"os"
+	"os/exec"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -425,4 +436,744 @@ func TestFreezeDuringStep(t *testing.T) {
 	if got := sessionState(t, heister, sid); got != "SUSPENDED" {
 		t.Fatalf("after freeze: actor %s, want SUSPENDED", got)
 	}
+}
+
+// ---- TestBoothLoad: 24 phones on the real protocol for 5 minutes ----
+
+// boothCity is GET /grand-theft-agent/api/city with BFS steering on its tiles.
+type boothCity struct {
+	CityView
+}
+
+func (c *boothCity) open(x, y int) bool {
+	return x >= 0 && y >= 0 && x < c.W && y < c.H && c.Tiles[y][x] != '#'
+}
+
+// steer is a unit move from (x,y) toward (gx,gy) along the road grid: the next tile of
+// a BFS path, or straight at the goal when it is in the same tile.
+func (c *boothCity) steer(x, y, gx, gy float64) (float64, float64) {
+	sx, sy, tx, ty := int(x), int(y), int(gx), int(gy)
+	if !c.open(tx, ty) || (sx == tx && sy == ty) {
+		return unit(gx-x, gy-y)
+	}
+	type pt struct{ x, y int }
+	prev := map[pt]pt{{sx, sy}: {-1, -1}}
+	q := []pt{{sx, sy}}
+	for len(q) > 0 {
+		p := q[0]
+		q = q[1:]
+		if p.x == tx && p.y == ty {
+			break
+		}
+		for _, d := range []pt{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			n := pt{p.x + d.x, p.y + d.y}
+			if _, seen := prev[n]; !seen && c.open(n.x, n.y) {
+				prev[n] = p
+				q = append(q, n)
+			}
+		}
+	}
+	cur, ok := pt{tx, ty}, false
+	if _, ok = prev[cur]; !ok {
+		return unit(gx-x, gy-y)
+	}
+	for {
+		p := prev[cur]
+		if p.x == sx && p.y == sy || p.x < 0 {
+			break
+		}
+		cur = p
+	}
+	return unit(float64(cur.x)+0.5-x, float64(cur.y)+0.5-y)
+}
+
+func unit(x, y float64) (float64, float64) {
+	m := math.Hypot(x, y)
+	if m < 1e-9 {
+		return 0, 0
+	}
+	return x / m, y / m
+}
+
+// boothBot is one phone: a joined player on its own WebSocket.
+type boothBot struct {
+	nick, cookie string
+	leader       bool // starts the squad's missions
+	conn         *websocket.Conn
+
+	mu      sync.Mutex
+	snap    *Snap
+	squad   string
+	errs    map[string]int // {"t":"err"} replies by message
+	startAt time.Time
+	buildAt time.Time
+	tapping bool
+	grabAt  time.Time
+}
+
+func (b *boothBot) send(ctx context.Context, v any) {
+	raw, _ := json.Marshal(v)
+	wctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_ = b.conn.Write(wctx, websocket.MessageText, raw)
+}
+
+func boothJoin(ctx context.Context, base, nick string) (string, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/join", strings.NewReader(`{"nick":"`+nick+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("join %s: %s", nick, resp.Status)
+	}
+	for _, c := range resp.Cookies() {
+		return c.Name + "=" + c.Value, nil
+	}
+	return "", fmt.Errorf("join %s: no cookie", nick)
+}
+
+func boothDial(ctx context.Context, base, path, cookie string) (*websocket.Conn, error) {
+	h := http.Header{}
+	if cookie != "" {
+		h.Set("Cookie", cookie)
+	}
+	conn, _, err := websocket.Dial(ctx, strings.Replace(base, "http", "ws", 1)+path, &websocket.DialOptions{HTTPHeader: h})
+	if err != nil {
+		return nil, err
+	}
+	conn.SetReadLimit(8 << 20)
+	return conn, nil
+}
+
+// read keeps the newest snapshot and the squad code. onSnap sees every snapshot.
+func (b *boothBot) read(ctx context.Context, onSnap func(*Snap)) {
+	for {
+		_, raw, err := b.conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		var head struct{ T, Code, Msg string }
+		if json.Unmarshal(raw, &head) != nil {
+			continue
+		}
+		switch head.T {
+		case "snap":
+			s := &Snap{}
+			if json.Unmarshal(raw, s) != nil {
+				continue
+			}
+			b.mu.Lock()
+			b.snap = s
+			b.mu.Unlock()
+			if onSnap != nil {
+				onSnap(s)
+			}
+		case "squad":
+			b.mu.Lock()
+			b.squad = head.Code
+			b.mu.Unlock()
+		case "err":
+			b.mu.Lock()
+			b.errs[head.Msg]++
+			b.mu.Unlock()
+		}
+	}
+}
+
+// tick decides one input frame: start a mission (leader), build a rig, drag a catch to
+// the Vault, bank parts, pick up drops, grab a frozen target (Level 2+), or chase and
+// shoot the nearest hunter.
+func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick string)) {
+	b.mu.Lock()
+	s, squad := b.snap, b.squad
+	b.mu.Unlock()
+	if s == nil || squad == "" {
+		return
+	}
+	now := time.Now()
+	var cur *MissionView
+	for i := range s.Missions {
+		if m := &s.Missions[i]; m.Squad == squad && m.Outcome == "" {
+			cur = m
+		}
+	}
+	if b.leader && cur == nil && now.Sub(b.startAt) > 3*time.Second {
+		b.startAt = now
+		b.send(ctx, map[string]any{"t": "start", "level": min(s.Best+1, 3)})
+	}
+	if s.Stash != nil && now.Sub(b.buildAt) > 5*time.Second && hasRig(*s.Stash) {
+		b.buildAt = now
+		b.send(ctx, map[string]any{"t": "build"})
+		built(b.nick)
+	}
+	var me *AvatarView
+	for i := range s.Avatars {
+		if s.Avatars[i].ID == s.Me {
+			me = &s.Avatars[i]
+		}
+	}
+	in := map[string]any{"t": "in", "mx": 0.0, "my": 0.0, "fire": false, "act": false}
+	defer func() { b.send(ctx, in) }()
+	if me == nil || me.Down {
+		return
+	}
+	move := func(gx, gy float64) { in["mx"], in["my"] = c.steer(me.X, me.Y, gx, gy) }
+	d := func(x, y float64) float64 { return math.Hypot(x-me.X, y-me.Y) }
+	vx, vy := c.Vault.X+c.Vault.W/2, c.Vault.Y+c.Vault.H/2
+	if b.tapping { // release ACTION: a press shorter than holdTime is a tap
+		b.tapping = false
+		return
+	}
+	if me.Dragging != "" {
+		move(vx, vy)
+		return
+	}
+	mine := func(t TargetView) bool { return cur != nil && t.Mission == cur.ID }
+	var frozen, working *TargetView
+	for i := range s.Targets {
+		t := &s.Targets[i]
+		switch {
+		case t.State == "Frozen" && !t.Busy && mine(*t) && cur.Level >= 2:
+			if frozen == nil || d(t.X, t.Y) < d(frozen.X, frozen.Y) {
+				frozen = t
+			}
+		case t.State == "Working" && !t.Busy:
+			// Own mission's hunters first; anyone's within reach otherwise.
+			if !mine(*t) && d(t.X, t.Y) > 8 {
+				continue
+			}
+			if working == nil || mine(*t) && !mine(*working) || mine(*t) == mine(*working) && d(t.X, t.Y) < d(working.X, working.Y) {
+				working = t
+			}
+		}
+	}
+	inv := 0
+	if s.Inv != nil {
+		inv = len(*s.Inv)
+	}
+	var drop *DropView
+	if inv < invSlots {
+		for i := range s.Drops {
+			if dd := &s.Drops[i]; d(dd.X, dd.Y) < 10 && (drop == nil || d(dd.X, dd.Y) < d(drop.X, drop.Y)) {
+				drop = dd
+			}
+		}
+	}
+	switch {
+	case frozen != nil:
+		if d(frozen.X, frozen.Y) > 0.9 {
+			move(frozen.X, frozen.Y)
+		} else if now.Sub(b.grabAt) > 1500*time.Millisecond {
+			b.grabAt, b.tapping, in["act"] = now, true, true
+		}
+	case working != nil && mine(*working):
+		dist := d(working.X, working.Y)
+		in["fire"] = dist < fireRange-0.5
+		if dist > 3.5 {
+			move(working.X, working.Y)
+		}
+	case drop != nil:
+		move(drop.X, drop.Y)
+	case inv > 0:
+		move(vx, vy) // standing in the Vault banks the whole inventory
+	case working != nil:
+		in["fire"] = d(working.X, working.Y) < fireRange-0.5
+		move(working.X, working.Y)
+	}
+}
+
+func hasRig(stash []PartView) bool {
+	have := map[string]bool{}
+	for _, p := range stash {
+		have[p.Kind] = true
+	}
+	return have["board"] && have["cpu"] && have["ram"] && have["drive"]
+}
+
+// boothTiming is wall time (the op asked, from the snapshot where the target turned Busy,
+// to its result event) and call time (the event's ms: the op the server timed).
+type boothTiming struct{ wall, call []float64 }
+
+func pct(xs []float64, p float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	s := slices.Sorted(slices.Values(xs))
+	return s[min(len(s)-1, int(math.Ceil(p*float64(len(s))))-1)]
+}
+
+func (bt boothTiming) String() string {
+	return fmt.Sprintf("n=%d wall p50/p95 %.0f/%.0f ms, call p50/p95 %.0f/%.0f ms",
+		len(bt.wall), pct(bt.wall, .5), pct(bt.wall, .95), pct(bt.call, .5), pct(bt.call, .95))
+}
+
+// boothObserver is a ?screen=1 spectator: it sees every event once, so it does the
+// counting for the whole city.
+type boothObserver struct {
+	mu        sync.Mutex
+	busyAt    map[string]time.Time // target -> when it turned Busy, by state
+	timings   map[string]*boothTiming
+	events    map[string]int
+	outcomes  map[string]int
+	levelsWon map[int]int
+	stuck     map[string]string
+	builtAt   map[string]time.Time // nick -> last build frame
+	nickOf    map[string]string    // player id -> nick
+	allyMs    []float64
+	capMax    CapView
+	cap       CapView
+	allies    int
+	alliesMax int
+	queuedMax int
+	last      *Snap
+}
+
+func newBoothObserver() *boothObserver {
+	o := &boothObserver{busyAt: map[string]time.Time{}, events: map[string]int{}, outcomes: map[string]int{},
+		levelsWon: map[int]int{}, stuck: map[string]string{}, builtAt: map[string]time.Time{}, nickOf: map[string]string{}}
+	o.timings = map[string]*boothTiming{"freeze": {}, "spring": {}, "extract": {}}
+	return o
+}
+
+func (o *boothObserver) built(nick string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if _, ok := o.builtAt[nick]; !ok {
+		o.builtAt[nick] = time.Now()
+	}
+}
+
+func (o *boothObserver) onSnap(s *Snap) {
+	now := time.Now()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.last = s
+	for _, a := range s.Avatars {
+		o.nickOf[a.ID] = a.Nick
+	}
+	// Which op a Busy target is waiting on follows from its state: Working -> freeze,
+	// Frozen -> spring (the bots never hold ACTION to delete), Dragged -> extract.
+	busy := map[string]bool{}
+	for _, t := range s.Targets {
+		if !t.Busy {
+			continue
+		}
+		k := t.ID + "/" + t.State
+		busy[k] = true
+		if _, ok := o.busyAt[k]; !ok {
+			o.busyAt[k] = now
+		}
+	}
+	take := func(id, state string) (float64, bool) {
+		at, ok := o.busyAt[id+"/"+state]
+		if !ok {
+			return 0, false
+		}
+		delete(o.busyAt, id+"/"+state)
+		return float64(now.Sub(at).Milliseconds()), true
+	}
+	for _, e := range s.Events {
+		o.events[e.Kind]++
+		switch e.Kind {
+		case "frozen":
+			if w, ok := take(e.Target, "Working"); ok {
+				o.timings["freeze"].wall = append(o.timings["freeze"].wall, w)
+				o.timings["freeze"].call = append(o.timings["freeze"].call, float64(e.Ms))
+			}
+		case "sprung":
+			if w, ok := take(e.Target, "Frozen"); ok {
+				o.timings["spring"].wall = append(o.timings["spring"].wall, w)
+				o.timings["spring"].call = append(o.timings["spring"].call, float64(e.Ms))
+			}
+		case "booked":
+			if w, ok := take(e.Target, "Dragged"); ok {
+				o.timings["extract"].wall = append(o.timings["extract"].wall, w)
+				o.timings["extract"].call = append(o.timings["extract"].call, float64(e.Ms))
+			}
+		case "ally", "rig-failed":
+			nick := o.nickOf[e.Player]
+			if at, ok := o.builtAt[nick]; ok {
+				delete(o.builtAt, nick)
+				if e.Kind == "ally" {
+					o.allyMs = append(o.allyMs, float64(now.Sub(at).Milliseconds()))
+				}
+			}
+		case "mission-won", "mission-failed", "mission-escaped":
+			o.outcomes[strings.TrimPrefix(e.Kind, "mission-")]++
+			if e.Kind == "mission-won" {
+				for _, m := range s.Missions {
+					if m.ID == e.Text {
+						o.levelsWon[m.Level]++
+					}
+				}
+			}
+		}
+	}
+	for k := range o.busyAt { // a busy flag that cleared without its event (a failed op)
+		if !busy[k] && now.Sub(o.busyAt[k]) > 2*time.Second {
+			delete(o.busyAt, k)
+		}
+	}
+	queued := 0
+	for _, m := range s.Missions {
+		if m.Queued {
+			queued++
+		}
+		if m.Outcome == "" && !m.Queued && s.Now > m.Ends+10 {
+			o.stuck[m.ID] = fmt.Sprintf("mission %s (squad %s, level %d) timer ran out at %.0f s, no outcome at %.0f s", m.ID, m.Squad, m.Level, m.Ends, s.Now)
+		}
+	}
+	o.queuedMax = max(o.queuedMax, queued)
+	o.cap = s.Cap
+	o.capMax = CapView{max(o.capMax.Steps, s.Cap.Steps), max(o.capMax.Resumes, s.Cap.Resumes), max(o.capMax.Queued, s.Cap.Queued)}
+	o.allies = len(s.Allies)
+	o.alliesMax = max(o.alliesMax, len(s.Allies))
+}
+
+// agwTokens reads agentgateway's token counters for the heist route (heister and
+// sidekick): input, output and cached input tokens, and LLM requests by status.
+func agwTokens(ctx context.Context, url string) (map[string]float64, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	out := map[string]float64{}
+	typ := regexp.MustCompile(`gen_ai_token_type="([^"]+)"`)
+	st := regexp.MustCompile(`status="([^"]+)"`)
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.Contains(line, `route="agentgateway-system/openai-heist"`) {
+			continue
+		}
+		f := strings.Fields(line)
+		v, err := strconv.ParseFloat(f[len(f)-1], 64)
+		if err != nil {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "agentgateway_gen_ai_client_token_usage_sum{"):
+			if m := typ.FindStringSubmatch(line); m != nil {
+				out[m[1]] += v
+			}
+		case strings.HasPrefix(line, "agentgateway_requests_total{"):
+			if m := st.FindStringSubmatch(line); m != nil {
+				out["req_"+m[1]] += v
+			}
+		}
+	}
+	return out, sc.Err()
+}
+
+// opFailures reads the arcade's "op failed" log lines since t0: counts by kind and error
+// class, and the failures that are not agentgateway policy stops. Fallback lines for
+// replies that failed output validation are counted too (they are not op errors).
+func opFailures(ctx context.Context, t0 time.Time) (byKind map[string]int, bad []string, fallbacks int, err error) {
+	out, err := exec.CommandContext(ctx, "kubectl", "--context", "kind-kagent", "-n", "arcade", "logs", "deploy/arcade",
+		"--since-time="+t0.UTC().Format(time.RFC3339)).Output()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	byKind = map[string]int{}
+	kindRe := regexp.MustCompile(`\bkind=(\S+)`)
+	errRe := regexp.MustCompile(`\berr=("(?:[^"\\]|\\.)*"|\S+)`)
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "failed output validation") || strings.Contains(line, "unreadable, using fallback") {
+			fallbacks++
+		}
+		if !strings.Contains(line, "grand theft agent: op failed") {
+			continue
+		}
+		kind, msg := "?", ""
+		if m := kindRe.FindStringSubmatch(line); m != nil {
+			kind = m[1]
+		}
+		if m := errRe.FindStringSubmatch(line); m != nil {
+			msg, _ = strconv.Unquote(m[1])
+			if msg == "" {
+				msg = m[1]
+			}
+		}
+		if strings.HasPrefix(msg, "policy: ") {
+			byKind[kind+":policy"]++
+			continue
+		}
+		byKind[kind]++
+		bad = append(bad, kind+": "+msg)
+	}
+	return byKind, bad, fallbacks, nil
+}
+
+// TestBoothLoad plays a busy booth for BOOTH_SECS (default 300) seconds through the real
+// phone protocol: 24 players (8 solo, 4 squads of 4) join with /api/join, open the
+// game's WebSocket with their cookie and play Levels 1-3 in unlock order. Bots chase
+// and shoot the nearest hunter, pick up parts, bank them in the Vault, build rigs, and
+// on Levels 2-3 drag frozen targets into the Vault. Every 30 s it logs freeze, spring
+// and booking times, the cap, errors by kind, allies and agentgateway tokens a minute.
+// It fails on a stuck mission or on any op error that is not an agentgateway policy
+// stop. It resets the game first and last (BOOTH_RESET=0 skips that).
+func TestBoothLoad(t *testing.T) {
+	base := strings.TrimRight(os.Getenv("ARCADE_URL"), "/")
+	if base == "" {
+		t.Skip("ARCADE_URL not set")
+	}
+	secs := 300
+	if v, err := strconv.Atoi(os.Getenv("BOOTH_SECS")); err == nil && v > 0 {
+		secs = v
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(secs+300)*time.Second)
+	defer cancel()
+
+	reset := func() {
+		if os.Getenv("BOOTH_RESET") == "0" {
+			return
+		}
+		rctx, rc := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer rc()
+		req, _ := http.NewRequestWithContext(rctx, http.MethodPost, base+"/admin/grand-theft-agent/api/reset", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Logf("reset: %v", err)
+			return
+		}
+		var body bytes.Buffer
+		_, _ = body.ReadFrom(resp.Body)
+		resp.Body.Close()
+		t.Logf("reset: %s %s", resp.Status, strings.TrimSpace(body.String()))
+	}
+	reset()
+	defer reset()
+
+	// agentgateway's metrics port (15020), port-forwarded unless AGW_METRICS_URL is set.
+	metrics := os.Getenv("AGW_METRICS_URL")
+	if metrics == "" {
+		pf := exec.Command("kubectl", "--context", "kind-kagent", "-n", "agentgateway-system", "port-forward", "deploy/arcade", "15021:15020")
+		if err := pf.Start(); err != nil {
+			t.Fatalf("port-forward agentgateway metrics: %v", err)
+		}
+		defer func() { _ = pf.Process.Kill(); _ = pf.Wait() }()
+		metrics = "http://localhost:15021/metrics"
+		for range 50 {
+			if _, err := agwTokens(ctx, metrics); err == nil {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	var city boothCity
+	resp, err := http.Get(base + "/grand-theft-agent/api/city")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.NewDecoder(resp.Body).Decode(&city.CityView)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	obs := newBoothObserver()
+	oconn, err := boothDial(ctx, base, "/grand-theft-agent/ws?screen=1", "")
+	if err != nil {
+		t.Fatalf("observer: %v", err)
+	}
+	defer oconn.CloseNow()
+	ob := &boothBot{nick: "observer", conn: oconn, errs: map[string]int{}}
+	go ob.read(ctx, obs.onSnap)
+
+	// 8 solo players, then 4 squads of 4 (the first of each creates, the rest join).
+	var bots []*boothBot
+	for i := range 24 {
+		nick := fmt.Sprintf("load-%02d", i+1)
+		cookie, err := boothJoin(ctx, base, nick)
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn, err := boothDial(ctx, base, "/grand-theft-agent/ws", cookie)
+		if err != nil {
+			t.Fatalf("%s: %v", nick, err)
+		}
+		defer conn.CloseNow()
+		b := &boothBot{nick: nick, cookie: cookie, conn: conn, errs: map[string]int{}, leader: i < 8 || (i-8)%4 == 0}
+		go b.read(ctx, nil)
+		bots = append(bots, b)
+	}
+	waitSquad := func(b *boothBot) string {
+		for range 100 {
+			b.mu.Lock()
+			sq := b.squad
+			b.mu.Unlock()
+			if sq != "" {
+				return sq
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("%s: no squad code", b.nick)
+		return ""
+	}
+	for i, b := range bots {
+		switch {
+		case i < 8:
+			b.send(ctx, map[string]any{"t": "squad", "op": "solo"})
+		case (i-8)%4 == 0:
+			b.send(ctx, map[string]any{"t": "squad", "op": "create"})
+			code := waitSquad(b)
+			for _, m := range bots[i+1 : i+4] {
+				m.send(ctx, map[string]any{"t": "squad", "op": "join", "code": code})
+			}
+		}
+	}
+	for _, b := range bots {
+		waitSquad(b)
+	}
+	t.Logf("24 players joined: 8 solo, 4 squads of 4")
+
+	t0 := time.Now()
+	tok0, err := agwTokens(ctx, metrics)
+	if err != nil {
+		t.Logf("agentgateway metrics: %v (token use will read n/a)", err)
+	}
+	type tokSample struct {
+		at time.Time
+		v  map[string]float64
+	}
+	toks := []tokSample{{t0, tok0}}
+	maxPerMin := 0.0
+
+	var wg sync.WaitGroup
+	end := t0.Add(time.Duration(secs) * time.Second)
+	for _, b := range bots {
+		wg.Go(func() {
+			tk := time.NewTicker(100 * time.Millisecond)
+			defer tk.Stop()
+			for time.Now().Before(end) {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+				}
+				b.tick(ctx, &city, obs.built)
+			}
+			b.send(ctx, map[string]any{"t": "in"})
+		})
+	}
+
+	sample := func(final bool) {
+		now := time.Now()
+		cur, terr := agwTokens(ctx, metrics)
+		tokLine := "tokens n/a"
+		if terr == nil && tok0 != nil {
+			toks = append(toks, tokSample{now, cur})
+			// Per minute over the trailing 60 s (or the run so far).
+			ref := toks[0]
+			for _, s := range toks {
+				if now.Sub(s.at) >= 60*time.Second-time.Second {
+					ref = s
+				}
+			}
+			io := func(m map[string]float64) float64 { return m["input"] + m["output"] }
+			mins := now.Sub(ref.at).Minutes()
+			perMin := (io(cur) - io(ref.v)) / max(mins, 1.0/60)
+			if now.Sub(t0) >= 59*time.Second {
+				maxPerMin = max(maxPerMin, perMin)
+			}
+			tokLine = fmt.Sprintf("tokens/min %.0f (last %.0fs; in %.0f out %.0f cached-in %.0f since start; LLM requests 200=%.0f 429=%.0f other=%.0f)",
+				perMin, now.Sub(ref.at).Seconds(), cur["input"]-tok0["input"], cur["output"]-tok0["output"],
+				cur["input_cache_read"]-tok0["input_cache_read"], cur["req_200"]-tok0["req_200"], cur["req_429"]-tok0["req_429"],
+				sumOther(cur)-sumOther(tok0))
+		}
+		byKind, bad, fb, lerr := opFailures(ctx, t0)
+		obs.mu.Lock()
+		evErr := map[string]int{}
+		for k, n := range obs.events {
+			if strings.HasSuffix(k, "-failed") && !strings.HasPrefix(k, "mission") || k == "slipped" || k == "policy" {
+				evErr[k] = n
+			}
+		}
+		replies := map[string]int{}
+		for _, b := range bots {
+			b.mu.Lock()
+			for k, n := range b.errs {
+				replies[k] += n
+			}
+			b.mu.Unlock()
+		}
+		online := 0
+		if s := obs.last; s != nil {
+			for _, a := range s.Avatars {
+				if a.Online {
+					online++
+				}
+			}
+		}
+		subs := SubstrateView{}
+		if obs.last != nil {
+			subs = obs.last.Substrate
+		}
+		t.Logf("[+%3.0fs]%s online %d | missions %v levels won %v | freeze %s | spring %s | booking %s",
+			now.Sub(t0).Seconds(), map[bool]string{true: " FINAL", false: ""}[final], online, obs.outcomes, obs.levelsWon,
+			obs.timings["freeze"], obs.timings["spring"], obs.timings["extract"])
+		t.Logf("        cap now steps %d resumes %d queued %d (max %d/%d/%d), queued missions max %d | allies live %d (max %d), spawn %d p50/p95 %.0f/%.0f ms | heist actors %d awake %d asleep %d",
+			obs.cap.Steps, obs.cap.Resumes, obs.cap.Queued, obs.capMax.Steps, obs.capMax.Resumes, obs.capMax.Queued, obs.queuedMax,
+			obs.allies, obs.alliesMax, len(obs.allyMs), pct(obs.allyMs, .5), pct(obs.allyMs, .95), subs.Agents, subs.Awake, subs.Asleep)
+		t.Logf("        events %v | op errors (arcade log) %v, fallback lines %d%s | replies %v | %s",
+			evErr, byKind, fb, map[bool]string{true: " (log read failed: " + fmt.Sprint(lerr) + ")", false: ""}[lerr != nil], replies, tokLine)
+		t.Logf("        activity: hits-on-players %d downs %d drops %d pickups %d banked %d allies %d",
+			obs.events["hit"], obs.events["down"], obs.events["drop"], obs.events["pickup"], obs.events["banked"], obs.events["ally"])
+		obs.mu.Unlock()
+		if final {
+			for _, b := range bad {
+				t.Errorf("op error: %s", b)
+			}
+		}
+	}
+
+	report := time.NewTicker(30 * time.Second)
+	defer report.Stop()
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+loop:
+	for {
+		select {
+		case <-report.C:
+			sample(false)
+		case <-done:
+			break loop
+		case <-ctx.Done():
+			t.Fatal("timed out")
+		}
+	}
+	// Let the last frozen-or-dragged ops land so their times count.
+	time.Sleep(5 * time.Second)
+	sample(true)
+
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	for _, k := range slices.Sorted(maps.Keys(obs.stuck)) {
+		t.Errorf("stuck: %s", obs.stuck[k])
+	}
+	fr, sp := obs.timings["freeze"], obs.timings["spring"]
+	verdict := func(ok bool) string { return map[bool]string{true: "PASS", false: "MISS"}[ok] }
+	t.Logf("TARGETS tokens/min max %.0f < 300000: %s | p95 freeze wall %.0f ms (call alone %.0f ms) < 1000: %s | p95 spring wall %.0f ms (call %.0f ms) < 6000: %s",
+		maxPerMin, verdict(maxPerMin < 300000), pct(fr.wall, .95), pct(fr.call, .95), verdict(pct(fr.wall, .95) < 1000),
+		pct(sp.wall, .95), pct(sp.call, .95), verdict(pct(sp.wall, .95) < 6000))
+	if len(fr.wall) == 0 {
+		t.Errorf("no freeze landed in %d s", secs)
+	}
+}
+
+func sumOther(m map[string]float64) float64 {
+	n := 0.0
+	for k, v := range m {
+		if strings.HasPrefix(k, "req_") && k != "req_200" && k != "req_429" {
+			n += v
+		}
+	}
+	return n
 }

@@ -8,7 +8,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
 | Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
-| Grand Theft Agent | Lifecycle: suspend, snapshot, resume, delete, as a multiplayer city shooter | Designed | [docs/grand-theft-agent.md](docs/grand-theft-agent.md) |
+| Grand Theft Agent | Lifecycle: suspend, snapshot, resume, delete, as a multiplayer city shooter | Playable (levels 1–3) | [below](#grand-theft-agent), [docs/grand-theft-agent.md](docs/grand-theft-agent.md) |
 | Agent Invaders | Scale and density | Next | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
@@ -27,6 +27,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Sandbox Escape phone / big screen | http://localhost:8090/sandbox-escape, http://localhost:8090/sandbox-escape/screen |
 | Fork Frenzy phone / big screen | http://localhost:8090/fork-frenzy, http://localhost:8090/fork-frenzy/screen |
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
+| Grand Theft Agent phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/grand-theft-agent, http://localhost:8090/grand-theft-agent/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -134,3 +135,26 @@ A line under the headline rotates through facts from live data: sandboxes per po
 The webhook works because agents already reach agentgateway's in-cluster host for LLM calls, and the arcade route on that Gateway matches any host. Measured on this cluster: new actor about 35 ms, snapshot about 275 ms, restore about 150 ms, a whole run 3 to 7 s.
 
 The QR code points at `https://kubecon.agentpwned.ai/agent-flow` when the screen is opened on localhost, otherwise at the screen's own origin. Open `/agent-flow/screen?join=http://<lan-ip>:8090/agent-flow` to point phones somewhere else. Reset the round with `curl -XPOST localhost:8090/admin/agent-flow/api/reset`.
+
+## Grand Theft Agent
+
+A multiplayer extraction shooter in a stylised night city (`games/heist`, design in [docs/grand-theft-agent.md](docs/grand-theft-agent.md)). Every wanted target is a real `heister` agent session on its own 40-worker `heist` pool (`manifests/heist-agent.yaml`). Players play solo or in squads of up to 4 (a 4-letter code), with an on-screen joystick, FIRE and ACTION; there is no keyboard. The server runs the world at 15 Hz over one WebSocket per phone (`/grand-theft-agent/ws`), and every game action is the real Substrate call:
+
+| In the game | Real call |
+|-------------|-----------|
+| A target spawns and works a 4-step heist, one turn every 15–25 s | `CreateSession`, then one A2A turn per step (its line is the speech bubble) |
+| Three hits freeze it | `SuspendSession`, which lands when the target's current turn ends. A freeze that races the final step wins. |
+| Drag it into the Vault (Levels 2–3) | Book it: `ResumeSession`, one "you got booked" turn, `Checkpoint` of that turn, then `DeleteSession` |
+| Its crew or a rival springs it | `ResumeSession` plus one turn: it reacts and carries on from the step it was on |
+| Hold ACTION on a frozen target | `DeleteSession` |
+| Build a rig from looted parts (DDR1–5 RAM, CPU, drive, motherboard, banked in the Vault) | A real `sidekick` ally session that follows you and shoots hunters |
+
+Levels: 1 Rookie (freeze one target, 90 s), 2 Booking (freeze and book it, 120 s), 3 The Crew (three targets whose crew springs them, 180 s). Each needs the previous one won. Hunters shoot back; a downed player drops the parts they haven't banked. The leaderboard ranks by takedowns (freezes landed, your ally's count as yours); cash only breaks ties.
+
+- A turn whose reply fails the agent's output validation falls back to a fixed line, so a target never stalls on a bad reply.
+- Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process, and refuses new missions and rigs until that list is in.
+- `manifests/heist-policies.yaml` gives the heist agents their own LLM route (`/heist/v1`) with a prompt guard and a budget of 300k tokens and 400 requests a minute; a policy stop shows on the screen.
+- The phone switches to low quality (lower pixel ratio, no shadows) by itself on a slow first few seconds; MENU has a switch for it.
+- The big screen (`/grand-theft-agent/screen`) shows the whole city, a QR code, the leaderboard, the mission feed and live suspend, resume and checkpoint times.
+
+Booth load (24 players for 5 minutes, `TestBoothLoad`, measured numbers in the design doc): no op errors and no stuck missions. Reset the round with `curl -XPOST localhost:8090/admin/grand-theft-agent/api/reset`.

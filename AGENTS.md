@@ -10,7 +10,7 @@ A collection of KubeCon demo/lab builds. Each top-level folder is a self-contain
 |--------|------------|----------|
 | `vault/` | HashiCorp Vault 1.21 in Docker, file storage, UI on | `cd vault && ./init.sh` |
 | `kagent/` | kind cluster with kagent 1.0 alpha, Agent Substrate, agentgateway | `cd kagent && ./setup.sh` |
-| `arcade/` | Agent arcade (Duck Hunt, Sandbox Escape, Fork Frenzy, Agent Flow): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
+| `arcade/` | Agent arcade (Duck Hunt, Sandbox Escape, Fork Frenzy, Agent Flow, Grand Theft Agent): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
 | `tunnel/` | Cloudflare Tunnel: public `https://kubecon.agentpwned.ai` to the arcade, cloudflared in the kind cluster, `/admin` blocked | `cd tunnel && ./setup.sh` |
 | `homepage/` | Homepage dashboard for the host, cluster, and containers (port 3000) | `cd homepage && ./start.sh` |
 
