@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -232,7 +233,7 @@ func (o *agentOps) prompt(ctx context.Context, k agentAPI, sid, text string) (ka
 			r, err = k.Prompt(ctx, sid, text)
 			return err
 		})
-		if r.Task != nil && r.Task.ID != "" {
+		if err == nil && r.Task != nil && r.Task.ID != "" { // a failed task never becomes Checkpoint's head
 			o.mu.Lock()
 			o.sessLocked(sid).lastTask = string(r.Task.ID)
 			o.mu.Unlock()
@@ -261,6 +262,8 @@ func (o *agentOps) Spawn(ctx context.Context, name string) (string, string, erro
 	o.mu.Lock()
 	o.sessLocked(sid)
 	o.mu.Unlock()
+	// Nothing after CreateSession can fail here (an unknown node is just ""), so the
+	// session always reaches the game, which owns its deletion.
 	return sid, node(ctx, o.heister, sid), nil
 }
 
@@ -272,12 +275,32 @@ func (o *agentOps) SpawnAlly(ctx context.Context, name string) (string, string, 
 	o.mu.Lock()
 	o.sessLocked(sid).ally = true
 	o.mu.Unlock()
-	r, err := o.prompt(ctx, o.sidekick, sid, allyGreeting)
+	say, err := func() (string, error) {
+		r, err := o.prompt(ctx, o.sidekick, sid, allyGreeting)
+		if err != nil {
+			return "", err
+		}
+		return parseSay(r)
+	}()
 	if err != nil {
-		return sid, "", "", err
+		// The game never learns this session's ID, so nothing else would delete it.
+		o.discard(sid)
+		return "", "", "", err
 	}
-	say, err := parseSay(r)
-	return sid, node(ctx, o.sidekick, sid), say, err
+	return sid, node(ctx, o.sidekick, sid), say, nil
+}
+
+// discard deletes a session the game will never hear about, on a fresh context (the op's
+// may be what failed), and forgets it.
+func (o *agentOps) discard(sid string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := o.Delete(ctx, sid); err != nil {
+		slog.Warn("heist: delete of failed ally session", "session", sid, "err", err)
+		o.mu.Lock()
+		delete(o.sessions, sid)
+		o.mu.Unlock()
+	}
 }
 
 // parseSay decodes sidekick's {say} output.
@@ -358,6 +381,7 @@ func (o *agentOps) Spring(ctx context.Context, sid string) (string, string, int6
 		return nd, "", ms, err
 	case err != nil || say == "":
 		// The session is awake again either way; only its line failed.
+		slog.Warn("heist: spring line failed, using fallback", "session", sid, "ally", ally, "err", err)
 		say = fallback
 	}
 	return nd, say, ms, nil

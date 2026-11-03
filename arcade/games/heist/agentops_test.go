@@ -486,3 +486,52 @@ func TestSpringFallsBackWhenLineFails(t *testing.T) {
 		t.Fatalf("spring policy: %v", err)
 	}
 }
+
+func TestSpawnAllyCleansUpOnFailure(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(s *fakeAgent)
+	}{
+		{"prompt fails", func(s *fakeAgent) { s.promptErr = errors.New("boom") }},
+		{"bad reply", func(s *fakeAgent) { s.reply = `not json` }},
+	} {
+		h, s := newFakes()
+		c.setup(s)
+		o := newAgentOps(h, s, "resume-first")
+		sid, node, say, err := o.SpawnAlly(context.Background(), "ally-p1")
+		if err == nil || sid != "" || node != "" || say != "" {
+			t.Fatalf("%s: got %q %q %q %v", c.name, sid, node, say, err)
+		}
+		calls := s.calls()
+		if last := calls[len(calls)-1]; last != "delete s-sess-1" {
+			t.Fatalf("%s: session not deleted: %v", c.name, calls)
+		}
+		o.mu.Lock()
+		n := len(o.sessions)
+		o.mu.Unlock()
+		if n != 0 {
+			t.Fatalf("%s: adapter still remembers %d sessions", c.name, n)
+		}
+	}
+}
+
+func TestFailedPromptIsNotCheckpointHead(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	if _, err := o.Step(ctx, sid, 1, 4); err != nil {
+		t.Fatal(err)
+	}
+	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
+	if _, err := o.Step(ctx, sid, 2, 4); err == nil {
+		t.Fatal("want step error")
+	}
+	h.promptErr = nil
+	if _, err := o.Extract(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(h.calls(), "|"), "checkpoint "+sid+" task-1|") {
+		t.Fatalf("checkpoint head is not the last successful task: %v", h.calls())
+	}
+}

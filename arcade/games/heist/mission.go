@@ -238,7 +238,7 @@ func (m *Missions) OnResult(r Result, w *World) {
 		tr.spawned, tr.nextAt = true, w.Now // the heist starts on arrival
 		w.Targets[r.Target] = &Target{ID: r.Target, SessionID: r.Spawned, MissionID: ms.ID,
 			Name: targetNames[m.rnd.IntN(len(targetNames))], Node: r.Node, Squad: ms.Squad,
-			Pos: w.City.RandomStreet(w.City.DistrictOf(r.Node), m.rnd), State: Working,
+			Pos: w.City.Hideout(r.Node, m.rnd), State: Working,
 			Steps: ms.Level.Steps, New: true, HitBy: map[string]bool{}}
 		return
 	case "step":

@@ -3,6 +3,7 @@
 package heist
 
 import (
+	"maps"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -244,4 +245,43 @@ func (c *City) RandomStreet(r Rect, rnd *rand.Rand) Vec {
 		return Vec{c.Dispatch.X + c.Dispatch.W/2, c.Dispatch.Y + c.Dispatch.H/2}
 	}
 	return roads[rnd.IntN(len(roads))]
+}
+
+// hideoutMin is how far (tiles) from the Dispatch centre a target may spawn.
+const hideoutMin = 8
+
+// Hideout is a target's spawn point: a random street in the node's district, or in a
+// random district when the node is unknown (a new kagent session reports none), never
+// in the Dispatch block or within hideoutMin tiles of its centre, where players spawn.
+func (c *City) Hideout(node string, rnd *rand.Rand) Vec {
+	area, ok := c.Districts[node]
+	if !ok {
+		area = Rect{0, 0, float64(c.W), float64(c.H)}
+		if names := slices.Sorted(maps.Keys(c.Districts)); len(names) > 0 {
+			area = c.Districts[names[rnd.IntN(len(names))]]
+		}
+	}
+	centre := Vec{c.Dispatch.X + c.Dispatch.W/2, c.Dispatch.Y + c.Dispatch.H/2}
+	pick := func(r Rect) (Vec, bool) {
+		var roads []Vec
+		for y := max(int(r.Y), 0); y < int(r.Y+r.H) && y < c.H; y++ {
+			for x := max(int(r.X), 0); x < int(r.X+r.W) && x < c.W; x++ {
+				p := Vec{float64(x) + 0.5, float64(y) + 0.5}
+				if c.Tiles[y*c.W+x] == Road && !c.Dispatch.Contains(p) && math.Hypot(p.X-centre.X, p.Y-centre.Y) >= hideoutMin {
+					roads = append(roads, p)
+				}
+			}
+		}
+		if len(roads) == 0 {
+			return Vec{}, false
+		}
+		return roads[rnd.IntN(len(roads))], true
+	}
+	if p, ok := pick(area); ok {
+		return p
+	}
+	if p, ok := pick(Rect{0, 0, float64(c.W), float64(c.H)}); ok {
+		return p
+	}
+	return c.RandomStreet(c.Dispatch, rnd)
 }

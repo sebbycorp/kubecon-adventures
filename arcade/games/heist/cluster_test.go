@@ -168,8 +168,8 @@ func TestKagentOpsLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if say == "" {
-		t.Fatal("spring: empty say")
+	if say == "" || say == sprungFallback {
+		t.Fatalf("spring: no line from the agent (%q)", say)
 	}
 	t.Logf("spring: node %q, resume %d ms, say %q", node, ms, say)
 
@@ -223,8 +223,8 @@ func TestKagentOpsLifecycle(t *testing.T) {
 	_, say, _, err = o.Spring(c, aid)
 	cc()
 	done()
-	if err != nil || say == "" {
-		t.Fatalf("ally spring: %q %v", say, err)
+	if err != nil || say == "" || say == allyFallback {
+		t.Fatalf("ally spring: no line from the agent (%q) %v", say, err)
 	}
 	t.Logf("ally sprung: %q", say)
 	c, cc = opCtx()

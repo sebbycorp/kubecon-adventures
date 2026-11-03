@@ -2,6 +2,7 @@ package heist
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"regexp"
 	"testing"
@@ -495,5 +496,46 @@ func TestSquadJoin(t *testing.T) {
 	}
 	if err := q.Join("p5", code); err != nil { // p2 left, so there is room
 		t.Fatalf("join after a leave: %v", err)
+	}
+}
+
+// A target whose spawn reports no node (a new kagent session isn't placed until its first
+// turn) hides on a street away from Dispatch, where players spawn.
+func TestSpawnWithoutNodeAvoidsDispatch(t *testing.T) {
+	for _, nodes := range [][]string{nil, {"kagent-worker", "kagent-worker2"}} {
+		for seed := uint64(1); seed <= 30; seed++ {
+			w := NewWorld(NewCity(nodes))
+			for i, sq := range []string{"red", "red", "blue"} {
+				id := string(rune('a' + i))
+				w.Avatars[id] = NewAvatar(id, id, "", sq, Vec{1.5, 1.5})
+			}
+			f := newFakeOps()
+			s := NewScheduler(f, 24, 8)
+			m := NewMissions(rand.New(rand.NewPCG(seed, 2)))
+			ms, err := m.Start("red", 1, w, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := w.City
+			centre := Vec{c.Dispatch.X + c.Dispatch.W/2, c.Dispatch.Y + c.Dispatch.H/2}
+			for _, id := range ms.Targets {
+				m.OnResult(Result{Kind: "spawn", Target: id, OK: true, Spawned: "sess-" + id}, w)
+				tg := w.Targets[id]
+				if tg == nil {
+					t.Fatalf("seed %d: target %s not created", seed, id)
+				}
+				if c.Dispatch.Contains(tg.Pos) || math.Hypot(tg.Pos.X-centre.X, tg.Pos.Y-centre.Y) < 8 || !c.Walkable(tg.Pos) {
+					t.Fatalf("nodes %v seed %d: target at %v (Dispatch %v)", nodes, seed, tg.Pos, c.Dispatch)
+				}
+				// The first step's node is recorded for display without moving the target.
+				pos := tg.Pos
+				tg.Node = ""
+				m.OnResult(Result{Kind: "step", Target: id, OK: true, Node: "kagent-worker2", Step: StepResult{Say: "hi"}}, w)
+				if tg.Node != "kagent-worker2" || tg.Pos != pos {
+					t.Fatalf("step moved the target or dropped its node: %+v", tg)
+				}
+			}
+			s.Close()
+		}
 	}
 }
