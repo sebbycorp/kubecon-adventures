@@ -10,7 +10,6 @@ import (
 	"math/rand/v2"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
@@ -19,11 +18,13 @@ import (
 const (
 	maxPlayers    = 48
 	tickHz        = 15
-	stepSlots     = 24   // concurrent heist steps
-	resumeSlots   = 8    // concurrent springs and extracts
-	cleanupDelay  = 10.0 // seconds after a mission ends before its targets are deleted
-	offlineAllies = 60.0 // seconds an owner may be offline before their allies are deleted
-	zapTries      = 3    // attempts at a cleanup delete
+	stepSlots     = 24    // concurrent heist steps
+	resumeSlots   = 8     // concurrent springs and extracts
+	cleanupDelay  = 10.0  // seconds after a mission ends before its targets are deleted
+	offlineAllies = 60.0  // seconds an owner may be offline before their allies are deleted
+	evictAfter    = 300.0 // seconds offline before an avatar leaves the city
+	maxScreens    = 8     // concurrent ?screen=1 spectators
+	zapTries      = 3     // attempts at a cleanup delete
 )
 
 // opKey names a submitted op: its kind and target (or ally, or cleanup key).
@@ -55,6 +56,7 @@ type Game struct {
 	cleaned  map[*Mission]bool
 	offline  map[string]float64 // world time each player went offline
 	conns    map[string]int     // open connections per player
+	screens  int                // open spectator connections
 	clients  map[*client]bool
 	booked   map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
 	paused   bool
@@ -173,9 +175,11 @@ func (g *Game) route(r Result) {
 			g.p.Timings.Record("heist_"+r.Kind, r.Ms)
 		}
 	case "spawn":
-		if tr := g.m.targets[r.Target]; r.OK && tr != nil && tr.ms.Outcome != "" {
-			tr.spawning = false // the mission is over: nobody will play this one
-			g.zap(r.Spawned)
+		if tr := g.m.targets[r.Target]; r.OK && (tr == nil || tr.ms.Outcome != "") {
+			if tr != nil {
+				tr.spawning = false
+			}
+			g.zap(r.Spawned) // the mission is over (or pruned): nobody will play this one
 			return
 		}
 	}
@@ -228,10 +232,17 @@ func (g *Game) retire(allyID string) {
 	}
 }
 
-// housekeep submits cleanup deletes, clears out missions ended cleanupDelay ago, and
-// retires the allies of owners offline for offlineAllies. g.mu is held.
+// housekeep submits cleanup deletes, clears out missions ended cleanupDelay ago (and
+// forgets them missionShow later), retires the allies of owners offline for
+// offlineAllies, and evicts avatars offline for evictAfter. g.mu is held.
 func (g *Game) housekeep() {
+	keep := g.m.missions[:0]
 	for _, ms := range g.m.missions {
+		if g.cleaned[ms] && g.w.Now-g.ended[ms] > missionShow {
+			g.prune(ms)
+			continue
+		}
+		keep = append(keep, ms)
 		if ms.Outcome == "" || g.cleaned[ms] {
 			continue
 		}
@@ -260,6 +271,8 @@ func (g *Game) housekeep() {
 			delete(g.w.Targets, id)
 		}
 	}
+	clear(g.m.missions[len(keep):])
+	g.m.missions = keep
 	for pid, at := range g.offline {
 		if g.w.Now-at < offlineAllies-eps {
 			continue
@@ -269,6 +282,9 @@ func (g *Game) housekeep() {
 				g.retire(id)
 			}
 		}
+		if g.w.Now-at >= evictAfter-eps {
+			g.evict(pid)
+		}
 	}
 	for key, z := range g.zaps {
 		if g.s.Submit("delete", key, z.session, 0, 0) {
@@ -276,6 +292,27 @@ func (g *Game) housekeep() {
 			g.zapping[key] = z
 		}
 	}
+}
+
+// prune forgets an ended, cleaned-up mission. Scores live in Missions.players and
+// squadTD, so the leaderboard keeps it. g.mu is held.
+func (g *Game) prune(ms *Mission) {
+	delete(g.ended, ms)
+	delete(g.cleaned, ms)
+	for _, id := range ms.Targets {
+		delete(g.m.targets, id)
+	}
+}
+
+// evict removes a long-offline avatar from the city (its allies are already retiring).
+// Its stash and score stay; coming back gives a fresh avatar at Dispatch. g.mu is held.
+func (g *Game) evict(pid string) {
+	if a := g.w.Avatars[pid]; a != nil {
+		g.w.drop(a)
+	}
+	delete(g.w.Avatars, pid)
+	delete(g.w.ctl, pid)
+	delete(g.offline, pid)
 }
 
 // ensureAvatar returns pl's avatar, creating it at Dispatch in their squad (solo by
@@ -302,8 +339,16 @@ func (g *Game) join(pl platform.Player) bool {
 }
 
 func (g *Game) joinLocked(pl platform.Player) bool {
-	if g.w.Avatars[pl.ID] == nil && len(g.w.Avatars) >= maxPlayers {
-		return false
+	if a := g.w.Avatars[pl.ID]; a == nil || !a.Online {
+		online := 0
+		for _, o := range g.w.Avatars {
+			if o.Online {
+				online++
+			}
+		}
+		if online >= maxPlayers {
+			return false
+		}
 	}
 	g.ensureAvatar(pl).Online = true
 	g.conns[pl.ID]++
@@ -373,98 +418,6 @@ func (g *Game) squad(playerID, op, code string) (string, error) {
 		a.Squad = code
 	}
 	return code, nil
-}
-
-// Reset deletes every agent session the game created (targets and allies, and ones
-// still spawning when their results land), starts a fresh city, and sends every client
-// a new snapshot. Connected players keep an avatar. It returns the sessions deleted.
-func (g *Game) Reset(ctx context.Context) (int, error) {
-	g.mu.Lock()
-	seen := map[string]bool{}
-	for _, t := range g.w.Targets {
-		seen[t.SessionID] = t.State != Deleted
-	}
-	for _, al := range g.w.Allies {
-		seen[al.SessionID] = true
-	}
-	for sess := range g.booked {
-		seen[sess] = true
-	}
-	g.booked = map[string]bool{}
-	for _, z := range g.zaps {
-		seen[z.session] = true
-	}
-	for _, z := range g.zapping {
-		seen[z.session] = true
-	}
-	old, rec := g.s, g.inflight
-	g.fresh()
-	for c := range g.clients {
-		if !c.screen {
-			g.ensureAvatar(c.pl).Online = true
-		}
-	}
-	g.mu.Unlock()
-	go g.drainOld(old, rec)
-
-	var n atomic.Int64
-	var wg sync.WaitGroup
-	for sess, del := range seen {
-		if !del || sess == "" {
-			continue
-		}
-		wg.Go(func() {
-			c, cancel := context.WithTimeout(ctx, opTimeout)
-			defer cancel()
-			if err := g.ops.Delete(c, sess); err != nil {
-				slog.Warn("grand theft agent: reset delete", "session", sess, "err", err)
-				return
-			}
-			n.Add(1)
-		})
-	}
-	wg.Wait()
-	g.mu.Lock()
-	f := g.framesLocked(nil)
-	g.mu.Unlock()
-	f.send()
-	return int(n.Load()), ctx.Err()
-}
-
-// drainOld waits for the spawns and rigs a reset scheduler still has running, deletes
-// the sessions they create, then closes it.
-func (g *Game) drainOld(old *Scheduler, rec map[opKey]int) {
-	defer old.Close()
-	pending := 0
-	for k, n := range rec {
-		if k.kind == "spawn" || k.kind == "ally" {
-			pending += n
-		}
-	}
-	timeout := time.NewTimer(opTimeout + 5*time.Second)
-	defer timeout.Stop()
-	for pending > 0 {
-		select {
-		case r := <-old.Results():
-			k := opKey{r.Kind, r.Target}
-			if (r.Kind != "spawn" && r.Kind != "ally") || rec[k] == 0 {
-				continue
-			}
-			rec[k]--
-			pending--
-			if r.OK {
-				c, cancel := context.WithTimeout(context.Background(), opTimeout)
-				if err := g.ops.Delete(c, r.Spawned); err != nil {
-					slog.Warn("grand theft agent: reset delete", "session", r.Spawned, "err", err)
-				}
-				cancel()
-			}
-		case <-timeout.C:
-			return
-		case <-g.done:
-			return
-		}
-	}
 }
 
 // Pause stops (or allows again) new missions.

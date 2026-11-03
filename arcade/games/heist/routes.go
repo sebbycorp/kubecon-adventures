@@ -1,6 +1,7 @@
 package heist
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,9 @@ import (
 )
 
 const staticPrefix = "/grand-theft-agent/static/"
+
+// resetTimeout bounds a whole admin reset.
+const resetTimeout = 2 * opTimeout
 
 // versioned rewrites a page's /grand-theft-agent/static/<file> links to carry a hash of
 // each file, so Cloudflare (which caches .js for hours) serves every deploy at once.
@@ -51,7 +55,10 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	mux.HandleFunc("GET /grand-theft-agent/ws", g.serveWS)
 
 	mux.HandleFunc("POST /admin/grand-theft-agent/api/reset", func(w http.ResponseWriter, r *http.Request) {
-		n, err := g.Reset(r.Context())
+		// A dropped admin request must not cancel the deletes half way.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), resetTimeout)
+		defer cancel()
+		n, err := g.Reset(ctx)
 		platform.Result(w, map[string]int{"deletedSessions": n}, err)
 	})
 	mux.HandleFunc("GET /admin/grand-theft-agent/api/state", func(w http.ResponseWriter, r *http.Request) {

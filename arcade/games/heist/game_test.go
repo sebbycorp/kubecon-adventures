@@ -98,8 +98,8 @@ func eventually(t *testing.T, g *Game, what string, cond func() bool) {
 // pumpUntil runs manual ticks until cond holds (checked under g.mu), up to 3 s.
 func pumpUntil(t *testing.T, g *Game, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
+	deadline := time.Now().Add(5 * time.Second)
+	for i := 0; ; i++ {
 		g.tick()
 		g.mu.Lock()
 		ok := cond()
@@ -110,7 +110,9 @@ func pumpUntil(t *testing.T, g *Game, what string, cond func() bool) {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
-		time.Sleep(time.Millisecond)
+		if i%20 == 0 {
+			time.Sleep(time.Millisecond) // let op results land
+		}
 	}
 }
 
@@ -294,12 +296,8 @@ func TestReconnectKeepsAvatar(t *testing.T) {
 
 func TestPlayerCap(t *testing.T) {
 	s := newServer(t, &liveOps{})
-	old := s.g.p.Players.Join("Old")
-	c := s.mustDial(t, &old, "")
-	snap(t, c, time.Second, nil)
-	c.Close(websocket.StatusNormalClosure, "")
 	s.g.mu.Lock()
-	for i := range maxPlayers - 1 {
+	for i := range maxPlayers { // 48 online
 		id := fmt.Sprintf("p%02d", i)
 		s.g.w.Avatars[id] = NewAvatar(id, id, "", "", Vec{})
 	}
@@ -313,9 +311,131 @@ func TestPlayerCap(t *testing.T) {
 	if _, _, err := c49.Read(ctx); websocket.CloseStatus(err) == -1 && ctx.Err() != nil {
 		t.Fatalf("49th connection not closed: %v", err)
 	}
-	// A returning player still gets in.
-	c2 := s.mustDial(t, &old, "")
-	snap(t, c2, time.Second, func(sn Snap) bool { return sn.Me == old.ID })
+	// Once someone goes offline there is room again.
+	s.g.mu.Lock()
+	s.g.w.Avatars["p00"].Online = false
+	s.g.mu.Unlock()
+	c2 := s.mustDial(t, &pl, "")
+	snap(t, c2, time.Second, func(sn Snap) bool { return sn.Me == pl.ID })
+}
+
+func TestPlayerCapCountsOnlineOnly(t *testing.T) {
+	g, _ := newManual(t)
+	g.leave("a")
+	for i := range maxPlayers {
+		pl := platform.Player{ID: fmt.Sprintf("p%02d", i)}
+		if !g.join(pl) {
+			t.Fatalf("player %d refused", i)
+		}
+		g.leave(pl.ID)
+	}
+	if !g.join(platform.Player{ID: "new"}) {
+		t.Fatal("49th distinct player refused while nobody is online")
+	}
+}
+
+func TestOfflineAvatarEvicted(t *testing.T) {
+	g, f := newManual(t)
+	g.mu.Lock()
+	a := g.w.Avatars["a"]
+	a.Pos = Vec{10.5, 12.5}
+	addAlly(g.w, "al", "a", 1, Vec{}).SessionID = "s-al"
+	tg := addTarget(g.w, "t1", "", Dragged, a.Pos)
+	a.Dragging = "t1"
+	g.w.Stash["a"] = rig("p", 2)
+	g.m.player("a", g.w).Takedowns = 3
+	g.mu.Unlock()
+	g.leave("a")
+	g.mu.Lock()
+	off := g.w.Now
+	g.mu.Unlock()
+	go func() { // let the ally's retire delete finish
+		for c := range f.started {
+			close(c.release)
+		}
+	}()
+	pumpUntil(t, g, "evicted", func() bool { return g.w.Avatars["a"] == nil })
+	g.mu.Lock()
+	if g.w.Now-off < evictAfter-1 {
+		t.Errorf("evicted after %.0f s", g.w.Now-off)
+	}
+	if tg.State != Frozen {
+		t.Errorf("drag kept: target %s", tg.State)
+	}
+	if len(g.w.Stash["a"]) != 4 || g.m.Leaderboard()[0].Takedowns != 3 {
+		t.Errorf("stash or score lost: %v %v", g.w.Stash["a"], g.m.Leaderboard())
+	}
+	if g.w.Allies["al"] != nil {
+		t.Error("ally still in the city")
+	}
+	g.mu.Unlock()
+	if !g.join(platform.Player{ID: "a", Nick: "Ada"}) {
+		t.Fatal("returning player refused")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if b := g.w.Avatars["a"]; b == nil || b == a || b.Pos != dispatchCentre(g) || !b.Online {
+		t.Fatalf("returning avatar = %+v, want a fresh one at Dispatch", b)
+	}
+}
+
+func TestScreenCap(t *testing.T) {
+	s := newServer(t, &liveOps{})
+	for range maxScreens {
+		snap(t, s.mustDial(t, nil, "?screen=1"), time.Second, nil)
+	}
+	frame(t, s.mustDial(t, nil, "?screen=1"), "full", time.Second)
+	pl := s.g.p.Players.Join("Ada") // players are not affected
+	snap(t, s.mustDial(t, &pl, ""), time.Second, nil)
+}
+
+func TestCommandRateLimit(t *testing.T) {
+	s := newServer(t, &liveOps{})
+	pl := s.g.p.Players.Join("Ada")
+	c := s.mustDial(t, &pl, "")
+	for range 20 {
+		send(t, c, map[string]any{"t": "squad", "op": "solo"})
+	}
+	n := 0
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	for {
+		_, b, err := c.Read(ctx)
+		if err != nil {
+			break
+		}
+		if strings.Contains(string(b), `"t":"squad"`) {
+			n++
+		}
+	}
+	if n < 1 || n > int(cmdBurst)+2 {
+		t.Fatalf("%d of 20 squad frames answered; want 1..%d", n, int(cmdBurst)+2)
+	}
+}
+
+func TestEndedMissionsPruned(t *testing.T) {
+	g, _ := newManual(t)
+	g.mu.Lock()
+	for i := range 200 {
+		ms, err := g.m.Start(fmt.Sprintf("s%d", i), 1, g.w, g.s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g.m.finish(ms, "failed", g.w)
+	}
+	g.m.player("a", g.w).Takedowns = 7
+	g.m.squadTD["s1"] = 2
+	end := g.w.Now
+	g.mu.Unlock()
+	pumpUntil(t, g, "pruned", func() bool { return g.w.Now > end+cleanupDelay+missionShow+1 })
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.m.missions) != 0 || len(g.ended) != 0 || len(g.cleaned) != 0 || len(g.m.targets) != 0 {
+		t.Fatalf("left: %d missions, %d ended, %d cleaned, %d targets", len(g.m.missions), len(g.ended), len(g.cleaned), len(g.m.targets))
+	}
+	if g.m.Leaderboard()[0].Takedowns != 7 || g.m.SquadTotals()["s1"] != 2 {
+		t.Fatal("scores lost with the missions")
+	}
 }
 
 func TestResetCleansUp(t *testing.T) {

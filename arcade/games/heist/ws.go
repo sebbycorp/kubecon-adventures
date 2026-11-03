@@ -7,7 +7,8 @@
 // ignored.
 //
 // Server to client: {"t":"snap",...} at 15 Hz (see Snap), {"t":"squad","code"},
-// {"t":"err","msg"}, and {"t":"full"} before closing when 48 players are in the city.
+// {"t":"err","msg"}, and {"t":"full"} before closing when 48 players are online in the
+// city (or 8 screens are watching). start, build and squad frames are limited to 5/s.
 package heist
 
 import (
@@ -28,6 +29,8 @@ const (
 	writeTimeout = 5 * time.Second
 	inputRate    = 20.0 // input frames per second
 	inputBurst   = 2.0
+	cmdRate      = 5.0 // start, build and squad frames per second
+	cmdBurst     = 5.0
 	boardRows    = 10
 	missionShow  = 30.0 // an ended mission stays in snapshots this long
 )
@@ -275,8 +278,27 @@ type client struct {
 	ctrl   chan []byte // replies; a client that lets these back up is closed
 	cancel context.CancelFunc
 
-	tokens float64 // input rate limiter (reader goroutine only)
+	in, cmd bucket // rate limiters (reader goroutine only)
+}
+
+// bucket is a token bucket.
+type bucket struct {
+	tokens float64
 	last   time.Time
+}
+
+func (b *bucket) allow(now time.Time, rate, burst float64) bool {
+	if b.last.IsZero() {
+		b.tokens = burst
+	} else {
+		b.tokens = min(burst, b.tokens+now.Sub(b.last).Seconds()*rate)
+	}
+	b.last = now
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
 }
 
 // push queues a snapshot, dropping the oldest queued one if the client is behind.
@@ -303,20 +325,11 @@ func (c *client) reply(v any) {
 	}
 }
 
-// allowInput is a token bucket: inputRate frames a second with a burst of inputBurst.
-func (c *client) allowInput(now time.Time) bool {
-	if c.last.IsZero() {
-		c.tokens = inputBurst
-	} else {
-		c.tokens = min(inputBurst, c.tokens+now.Sub(c.last).Seconds()*inputRate)
-	}
-	c.last = now
-	if c.tokens < 1 {
-		return false
-	}
-	c.tokens--
-	return true
-}
+// allowInput limits in frames to inputRate a second (burst inputBurst).
+func (c *client) allowInput(now time.Time) bool { return c.in.allow(now, inputRate, inputBurst) }
+
+// allowCmd limits start, build and squad frames to cmdRate a second (burst cmdBurst).
+func (c *client) allowCmd(now time.Time) bool { return c.cmd.allow(now, cmdRate, cmdBurst) }
 
 func (c *client) writeLoop(ctx context.Context, conn *websocket.Conn) {
 	for {
@@ -390,7 +403,12 @@ func (g *Game) attach(c *client) bool {
 		return false
 	default:
 	}
-	if !c.screen && !g.joinLocked(c.pl) {
+	switch {
+	case c.screen && g.screens >= maxScreens:
+		return false
+	case c.screen:
+		g.screens++
+	case !g.joinLocked(c.pl):
 		return false
 	}
 	g.clients[c] = true
@@ -400,6 +418,9 @@ func (g *Game) attach(c *client) bool {
 func (g *Game) detach(c *client) {
 	g.mu.Lock()
 	delete(g.clients, c)
+	if c.screen {
+		g.screens--
+	}
 	g.mu.Unlock()
 	if !c.screen {
 		g.leave(c.player)
@@ -417,6 +438,12 @@ func (g *Game) handle(c *client, b []byte) {
 	}
 	if json.Unmarshal(b, &m) != nil {
 		return
+	}
+	switch m.T {
+	case "squad", "start", "build":
+		if !c.allowCmd(time.Now()) {
+			return
+		}
 	}
 	clamp := func(f float64) float64 { return max(-1, min(1, f)) }
 	var err error
