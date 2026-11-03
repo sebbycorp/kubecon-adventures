@@ -24,19 +24,15 @@
   .hdr .sub { display: flex; gap: 18px; align-items: center; margin-top: 6px; color: var(--mute); font-size: 16px; white-space: nowrap; }
   .hdr .sub b { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
   .hdr .sub .live { margin: 0; }
-  /* The big numbers sit on the factory, each tied by a line to the station it counts. */
-  .co { --c: var(--fg); position: absolute; z-index: 3; min-width: 196px; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); border-radius: 16px;
-    background: #0d100ef0; padding: 10px 16px 11px; box-shadow: 0 0 34px color-mix(in srgb, var(--c) 16%, transparent); }
-  .co b { display: block; font-size: 58px; line-height: 1; font-weight: 800; color: var(--c); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: text-shadow .3s; }
-  .co b.bump { text-shadow: 0 0 26px var(--c); }
-  .co span { display: block; margin-top: 5px; font-size: 16px; font-weight: 800; letter-spacing: .12em; }
-  .co small { display: block; font-size: 14px; color: var(--mute); margin-top: 1px; }
-  #leads { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: visible; }
-  #leads line { stroke-width: 2; stroke-dasharray: 5 6; opacity: .75; animation: march 1.2s linear infinite; }
-  #leads circle.dot { opacity: .95; }
-  #leads circle.ring { fill: none; stroke-width: 2; animation: ring 2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-  @keyframes march { to { stroke-dashoffset: -22; } }
-  @keyframes ring { from { transform: scale(.6); opacity: .9; } to { transform: scale(2.4); opacity: 0; } }
+  /* The big numbers: one quiet row along the bottom of the factory. White numbers on dark
+     cards; a small dot in each card's colour is the only accent. */
+  .cos { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 3; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .co { --c: var(--fg); border: 1px solid #2a2d30; border-radius: 14px; background: #0d0e0fe6; padding: 10px 14px 11px; min-width: 0; }
+  .co b { display: block; font-size: 46px; line-height: 1; font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: color .3s; white-space: nowrap; }
+  .co b.bump { color: #ffffff; }
+  .co span { display: flex; align-items: center; gap: 7px; margin-top: 6px; font-size: 14px; font-weight: 800; letter-spacing: .1em; color: #c9ccce; white-space: nowrap; }
+  .co span::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+  .co small { display: block; font-size: 13px; color: var(--mute); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .live { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-weight: 700; letter-spacing: .12em; font-size: 15px; margin-top: 10px; }
   .live i { width: 11px; height: 11px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); animation: beat 1.4s ease-in-out infinite; }
   @keyframes beat { 50% { transform: scale(.6); opacity: .5; } }
@@ -45,23 +41,23 @@
   .factory .vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, var(--bg) 100%); }
   .factory .cap { position: absolute; left: 16px; top: 14px; font-size: 17px; color: var(--mute); background: #0d0e0fd9; border: 1px solid #2a2d30; border-radius: 999px; padding: 6px 14px; }
   .factory .cap b { color: var(--fg); }
-  #feed { position: absolute; left: 22px; top: 384px; width: 430px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
+  #feed { position: absolute; left: 22px; top: 70px; width: 470px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
   #feed div { display: flex; gap: 10px; align-items: center; font-size: 17px; background: #0f1311ee; border: 1px solid #2a2d30; border-radius: 10px; padding: 6px 12px; animation: in .4s ease-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #feed i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   #feed b { font-weight: 600; }
   #feed span { color: var(--mute); overflow: hidden; text-overflow: ellipsis; }
   /* The big leaderboard: one game at a time, turning every 8 s, jumping to a game whose #1 just changed. */
-  #lb { --c: var(--green); position: absolute; right: 16px; top: 14px; width: 440px; z-index: 3; border: 1px solid color-mix(in srgb, var(--c) 60%, #2a2d30); border-radius: 16px;
-    background: #0d100ef2; padding: 12px 14px 12px; box-shadow: 0 0 40px color-mix(in srgb, var(--c) 18%, transparent); transition: border-color .4s, box-shadow .4s; }
+  #lb { --c: var(--green); position: absolute; right: 16px; top: 14px; width: 440px; z-index: 3; border: 1px solid #2a2d30; border-radius: 16px;
+    background: #0d0e0fe6; padding: 12px 14px 12px; }
   #lb .lh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
   #lb .lh small { font-size: 14px; font-weight: 800; letter-spacing: .14em; color: var(--mute); }
   #lb .lh b { font-size: 24px; font-weight: 800; color: var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #lb .rows { display: grid; gap: 6px; }
   #lb .r { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px; font-size: 21px; padding: 5px 10px; border-radius: 10px; background: #ffffff08; animation: in .35s ease-out both; }
-  #lb .r:first-child { background: color-mix(in srgb, var(--c) 18%, transparent); font-size: 24px; }
+  #lb .r:first-child { background: #ffffff12; font-size: 24px; }
   #lb .r .m { text-align: center; font-weight: 800; color: var(--mute); }
   #lb .r .n { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #lb .r .s { font-weight: 800; color: var(--c); font-variant-numeric: tabular-nums; }
+  #lb .r .s { font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; }
   #lb .empty { font-size: 19px; color: var(--mute); padding: 8px 4px 10px; }
   #lb .dots { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
   #lb .dots i { width: 8px; height: 8px; border-radius: 50%; background: #2a2d30; }
@@ -80,12 +76,12 @@
   /* The game's screenshot fills the tile; a fade at the bottom keeps the name and board
      readable, and the QR code sits in a white card on the right. */
   .tile { --c: var(--green); position: relative; display: grid; grid-template-columns: 1fr 172px; gap: 12px; padding: 12px; border-radius: 18px; min-height: 0; overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); background: #101311; box-shadow: 0 0 40px color-mix(in srgb, var(--c) 14%, transparent); }
+    border: 1px solid #2a2d30; background: #101311; }
   .tile .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
   .tile::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
     background: linear-gradient(180deg, transparent 52%, #0d0e0fb3 76%, #0d0e0ff0 100%); }
   .tile .info { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; min-width: 0; }
-  .tile h3 { margin: 0; font-size: 24px; font-weight: 800; color: var(--c); line-height: 1.1; text-shadow: 0 2px 8px #000, 0 0 2px #000; }
+  .tile h3 { margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.1; text-shadow: 0 2px 8px #000, 0 0 2px #000; }
   .tile .top { font-size: 15px; --ab-accent: var(--c); color: #e8e8e8; text-shadow: 0 1px 4px #000; }
   .tile .top .ab-row { padding: 2px 8px; background: #0d0e0fb3; border-radius: 8px; }
   .tile .qr { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: center; text-align: center; font-size: 14px; color: #e8e8e8; text-shadow: 0 1px 4px #000; }
@@ -109,13 +105,14 @@
       <div class="cap">Every cube is a real agent turn · <b id="density">–</b></div>
       <div id="feed" aria-live="polite"></div>
       <div id="lb" aria-live="polite"><div class="lh"><div><small>LEADERBOARD</small><br><b id="lbGame">–</b></div><span class="new">NEW #1</span></div><div class="rows" id="lbRows"></div><div class="dots" id="lbDots"></div></div>
-      <svg id="leads" aria-hidden="true"></svg>
-      <div class="co" data-at="7,9,1.2" style="left: 22px; top: 70px"><b id="nActors">–</b><span>AGENTS</span><small>actors on Agent Substrate</small></div>
-      <div class="co" data-at="13,0.6,1.6" style="--c: #c084fc; left: 22px; top: 222px"><b id="nTokMin">–</b><span>TOKENS / MIN</span><small id="nTokTotal">every game, via agentgateway</small></div>
-      <div class="co" data-at="13,9,0.9" style="--c: var(--green); left: 22px; bottom: 22px"><b id="nAwake">–</b><span>AWAKE</span><small>running in a gVisor sandbox</small></div>
-      <div class="co" data-at="16.9,10.9,0.9" style="--c: #60a5fa; left: 266px; bottom: 22px"><b id="nAsleep">–</b><span>SUSPENDED</span><small>snapshots · 0 CPU</small></div>
-      <div class="co" data-at="15.6,10.1,0.5" style="--c: #fbbf24; left: 510px; bottom: 22px"><b id="nKilled">–</b><span>KILLED</span><small>shot down &amp; suspended</small></div>
-      <div class="co" data-at="18.2,10.3,0.2" style="--c: #f87171; right: 22px; bottom: 22px"><b id="nDestroyed">–</b><span>DESTROYED</span><small>sessions deleted</small></div>
+      <div class="cos">
+        <div class="co"><b id="nActors">–</b><span>AGENTS</span><small>on Agent Substrate</small></div>
+        <div class="co" style="--c: var(--green)"><b id="nAwake">–</b><span>AWAKE</span><small>in a gVisor sandbox</small></div>
+        <div class="co" style="--c: #60a5fa"><b id="nAsleep">–</b><span>SUSPENDED</span><small>snapshots · 0 CPU</small></div>
+        <div class="co" style="--c: #fbbf24"><b id="nKilled">–</b><span>KILLED</span><small>shot &amp; suspended</small></div>
+        <div class="co" style="--c: #f87171"><b id="nDestroyed">–</b><span>DESTROYED</span><small>sessions deleted</small></div>
+        <div class="co" style="--c: #c084fc"><b id="nTokMin">–</b><span>TOKENS/MIN</span><small id="nTokTotal">via agentgateway</small></div>
+      </div>
     </div>
   </section>
 
@@ -144,29 +141,8 @@ function fit() {
   st.style.left = (innerWidth - 1920 * k) / 2 + "px";
   st.style.top = (innerHeight - 1080 * k) / 2 + "px";
 }
-addEventListener("resize", () => { fit(); leads(); });
+addEventListener("resize", fit);
 fit();
-
-// leads draws a line from each big number to the station it counts, using the scene's own
-// projection (P, from scene.js) so it follows the map at any screen size.
-function leads() {
-  const svg = $("scene"), lay = $("leads"), box = lay.getBoundingClientRect(), m = svg.getScreenCTM();
-  if (!m || !box.width || typeof P !== "function") return;
-  const k = box.width / lay.clientWidth; // the stage's scale
-  lay.setAttribute("viewBox", `0 0 ${lay.clientWidth} ${lay.clientHeight}`);
-  let out = "";
-  for (const co of document.querySelectorAll(".co")) {
-    const [x, y, z] = co.dataset.at.split(",").map(Number), [sx, sy] = P(x, y, z);
-    const pt = new DOMPoint(sx, sy).matrixTransform(m);
-    const ax = (pt.x - box.left) / k, ay = (pt.y - box.top) / k;
-    const r = co.getBoundingClientRect(), L = (r.left - box.left) / k, T = (r.top - box.top) / k, W = r.width / k, H = r.height / k;
-    // Leave the card from the side facing the station.
-    const cx = ax < L ? L : ax > L + W ? L + W : L + W / 2, cy = ay < T ? T : ay > T + H ? T + H : T + H / 2;
-    const c = getComputedStyle(co).getPropertyValue("--c").trim() || "#e8e8e8";
-    out += `<line x1="${cx}" y1="${cy}" x2="${ax}" y2="${ay}" stroke="${c}"/><circle class="dot" cx="${ax}" cy="${ay}" r="5" fill="${c}"/><circle class="ring" cx="${ax}" cy="${ay}" r="7" stroke="${c}"/>`;
-  }
-  lay.innerHTML = out;
-}
 
 // qr draws url's QR code into el (an SVG that fills it); if that fails, the address shows.
 function qr(el, url, cell) {
@@ -250,7 +226,7 @@ async function poll() {
   try {
     const s = await (await fetch("/api/stats")).json();
     $("nTokMin").textContent = short(s.tokensPerMin ?? 0);
-    $("nTokTotal").textContent = s.tokens ? `${short(s.tokens)} tokens · ~$${Number(s.tokensUsd || 0).toFixed(2)} spent` : "every game, via agentgateway";
+    $("nTokTotal").textContent = s.tokens ? `${short(s.tokens)} tokens · ~$${Number(s.tokensUsd || 0).toFixed(2)} spent` : "via agentgateway";
     $("nActors").textContent = fmt(s.actors); $("nAwake").textContent = fmt(s.running); $("nWorkers").textContent = fmt(s.workers);
     $("nAsleep").textContent = fmt(s.suspended); $("nRestore").textContent = ms(s.restoreP50Ms);
     const ops = s.agentFlow_ops || {};
@@ -281,9 +257,6 @@ const flow = startFlowScreen($("scene"), {
   },
 });
 setInterval(() => { $("nTurns").textContent = flow.turnsPerMin(); }, 1000);
-leads();
-document.fonts?.ready.then(leads);
-setTimeout(leads, 1500);
 </script>
 </body>
 </html>
