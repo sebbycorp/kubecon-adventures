@@ -1,7 +1,7 @@
-// Grand Theft Agent: the Three.js city, shared by the phone page and the big screen.
+// Substrate Siege: the Three.js city, shared by the phone page and the big screen.
 //
 // startCity(canvas, opts) builds the scene once from the city map (GET
-// /grand-theft-agent/api/city) and returns {apply(snap), draw(), resize(), stats()}.
+// /substrate-siege/api/city) and returns {apply(snap), draw(), resize(), stats()}.
 // apply takes each server snapshot; draw renders one frame. All state (frozen, booked,
 // HP, positions) comes from entity fields; events only add floaters and tracers, so a
 // dropped snapshot never leaves the picture wrong.
@@ -95,7 +95,7 @@ const feet = (geo, y) => geo.translate(0, y, 0);
 
 // startCity draws the city on canvas.
 // opts.mode: "phone" (follow-cam on opts.me) or "screen" (the whole city).
-// opts.city: the map from /grand-theft-agent/api/city.
+// opts.city: the map from /substrate-siege/api/city.
 // opts.pos(kind, id): interpolated {x, y} (net.js); falls back to snapshot positions.
 // opts.input(): the local controls {mx, my, fire}, for prediction and the player's tracer.
 // opts.logo: URL of the kagent logo for Dispatch. opts.onEvent(e): every snapshot event.

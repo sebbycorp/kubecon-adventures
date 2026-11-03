@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000300">
 <link rel="icon" href="data:,">
-<title>Grand Theft Agent</title>
+<title>Substrate Siege</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -144,21 +144,21 @@
 </div>
 
 <div id="squad" class="sheet panel hidden">
-  <h2>GRAND THEFT AGENT</h2>
+  <h2>SUBSTRATE SIEGE</h2>
   <p>Every hunter in this city is a real AI agent in its own sandbox. Freeze them before their heist finishes.</p>
   <button class="big" id="solo">GO SOLO<small>Play on your own.</small></button>
   <button class="big" id="create">CREATE A SQUAD<small>Get a code for up to 3 friends.</small></button>
   <div class="join"><input id="code" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Squad code"><button id="joinBtn">JOIN</button></div>
   <div class="err" id="squadErr"></div>
   <div id="made" class="hidden"><p>Your squad code. Friends type it on their phones:</p><div class="code" id="madeCode"></div><button class="big" id="toLevels">CHOOSE A MISSION</button></div>
-  <div class="row"><a href="/grand-theft-agent/screen" target="_blank">Watch the big screen ↗</a><a href="/">Arcade</a></div>
+  <div class="row"><a href="/substrate-siege/screen" target="_blank">Watch the big screen ↗</a><a href="/">Arcade</a></div>
 </div>
 
 <div id="menu" class="sheet panel hidden">
   <h2>MENU</h2>
   <button class="big" id="mMissions">MISSIONS<small id="mMissionsWhy">Pick a level, change squad.</small></button>
   <button class="big" id="mQuality">GRAPHICS: HIGH<small>Low: sharper frame rate, no shadows.</small></button>
-  <div class="row"><button class="ghost" id="mClose">Close</button><a href="/grand-theft-agent/screen" target="_blank">Big screen ↗</a></div>
+  <div class="row"><button class="ghost" id="mClose">Close</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
 
 <div id="levels" class="sheet panel hidden">
@@ -166,14 +166,14 @@
   <p>Squad: <b id="lvSquad" style="color:#fff">solo</b> · <a href="#" id="changeSquad">change</a></p>
   <div id="lvList"></div>
   <div class="err" id="lvErr"></div>
-  <div class="row"><button class="ghost" id="roam">Just look around</button><a href="/grand-theft-agent/screen" target="_blank">Big screen ↗</a></div>
+  <div class="row"><button class="ghost" id="roam">Just look around</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
 
 <div id="result" class="sheet panel hidden">
   <h2 id="resTitle"></h2>
   <p id="resText"></p>
   <button class="big" id="resNext"></button>
-  <div class="row"><button class="ghost" id="resClose">Close</button><a href="/grand-theft-agent/screen" target="_blank">Big screen ↗</a></div>
+  <div class="row"><button class="ghost" id="resClose">Close</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
 
 <div id="stash" class="sheet panel hidden">
@@ -189,12 +189,12 @@
 <div id="toast" class="panel hidden"></div>
 <div id="status" class="panel hidden"></div>
 <div id="debug" class="panel hidden"></div>
-<div id="nogl" class="hidden"><h1>This device can't run 3D.</h1><p>Watch the city on the big screen instead.</p><a href="/grand-theft-agent/screen">Open the big screen</a></div>
+<div id="nogl" class="hidden"><h1>This device can't run 3D.</h1><p>Watch the city on the big screen instead.</p><a href="/substrate-siege/screen">Open the big screen</a></div>
 
 <script type="module">
-import { startCity, webglOK, colorOf, partColor, esc } from "/grand-theft-agent/static/city.js";
-import { connect } from "/grand-theft-agent/static/net.js";
-import { partIcon, fmtClock, starsHtml, missionLine, minimap, LEVELS } from "/grand-theft-agent/static/hud.js";
+import { startCity, webglOK, colorOf, partColor, esc } from "/substrate-siege/static/city.js";
+import { connect } from "/substrate-siege/static/net.js";
+import { partIcon, fmtClock, starsHtml, missionLine, minimap, LEVELS } from "/substrate-siege/static/hud.js";
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
@@ -217,12 +217,12 @@ if (!webglOK()) {
 }
 const meR = await fetch("/api/me").catch(() => null);
 if (meR && meR.status === 401) {
-  location.replace("/?next=/grand-theft-agent");
+  location.replace("/?next=/substrate-siege");
   await halt();
 }
 if (!meR || !meR.ok) await failed("Can't reach the arcade right now.");
 const me = await meR.json();
-const cityR = await fetch("/grand-theft-agent/api/city").catch(() => null);
+const cityR = await fetch("/substrate-siege/api/city").catch(() => null);
 if (!cityR || !cityR.ok) await failed("Can't load the city map right now.");
 const city = await cityR.json();
 
@@ -230,11 +230,11 @@ const city = await cityR.json();
 const ctl = { mx: 0, my: 0, fire: false, act: false, stick: false, actAt: 0 };
 
 const view = startCity($("view"), {
-  mode: "phone", me: me.id, city, overlay: $("labels"), logo: "/grand-theft-agent/static/kagent-icon.svg",
+  mode: "phone", me: me.id, city, overlay: $("labels"), logo: "/substrate-siege/static/kagent-icon.svg",
   pos: (k, id) => net.pos(k, id), input: () => ctl, onEvent: feedEvent,
 });
 let snap = null, snapAt = 0, mySquad = "";
-const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/grand-theft-agent/ws`, (s) => {
+const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/substrate-siege/ws`, (s) => {
   const first = !snap;
   snap = s; snapAt = performance.now();
   view.apply(s);
@@ -249,7 +249,7 @@ const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${locati
     if (m.t === "err") onErr(m.msg);
   },
   onStatus(st) {
-    if (st === "unauthorized") return location.replace("/?next=/grand-theft-agent");
+    if (st === "unauthorized") return location.replace("/?next=/substrate-siege");
     $("status").textContent = st === "full" ? "The city is full right now. Retrying…" : st === "closed" ? "Reconnecting…" : "";
     show("status", st === "full" || st === "closed");
   },

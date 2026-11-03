@@ -1,5 +1,5 @@
 // This file is hunters, health and loot: Working targets shoot players, players go down
-// and lose their unbanked parts, takedowns drop computer parts, and the Vault banks them.
+// and drop the parts they carry, and takedowns drop computer parts that players pick up.
 package heist
 
 import (
@@ -20,7 +20,7 @@ const (
 	regenRate    = 5.0 // HP per second
 	regenQuiet   = 4.0 // seconds without a hit before regen starts
 	respawnDelay = 3.0
-	bagTTL       = 60.0  // a downed player's dropped inventory
+	bagTTL       = 60.0  // a downed player's dropped parts
 	lootTTL      = 120.0 // a part dropped by a takedown
 	pickupRange  = 0.8
 	invSlots     = 8
@@ -140,17 +140,6 @@ func (w *World) pickup(a *Avatar) {
 	}
 }
 
-// bank moves a's whole inventory into its stash while it stands in the Vault.
-func (w *World) bank(a *Avatar) {
-	if len(a.Inv) == 0 || !w.City.Vault.Contains(a.Pos) {
-		return
-	}
-	n := len(a.Inv)
-	w.Stash[a.PlayerID] = append(w.Stash[a.PlayerID], a.Inv...)
-	a.Inv = nil
-	w.Events = append(w.Events, Event{Kind: "banked", Player: a.PlayerID, Text: strconv.Itoa(n)})
-}
-
 // huntersFire lets every hunter (a Working target that is not Busy) shoot the nearest
 // online, standing avatar or Working, idle ally within hunterRange, once per hunterCD
 // (an avatar wins a tie). Target.ShotCD keeps each hunter's cooldown. A shot on a
@@ -194,7 +183,6 @@ func (w *World) hit(a *Avatar, t *Target) {
 		return
 	}
 	a.HP, a.Down, a.RespawnAt = 0, true, w.Now+respawnDelay
-	w.drop(a)
 	n := len(a.Inv)
 	for _, p := range a.Inv {
 		w.dropPart(p, a.Pos, bagTTL)

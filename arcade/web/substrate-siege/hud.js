@@ -1,4 +1,4 @@
-// Grand Theft Agent: HUD helpers shared by the phone page and the big screen (plain
+// Substrate Siege: HUD helpers shared by the phone page and the big screen (plain
 // HTML and 2D canvas, no WebGL): part icons, mission text, the clock, wanted stars and
 // the minimap.
 

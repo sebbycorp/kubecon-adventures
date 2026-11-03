@@ -37,10 +37,10 @@ const (
 	writeTimeout = 5 * time.Second
 	inputRate    = 20.0 // input frames per second
 	inputBurst   = 2.0
-	cmdRate      = 5.0 // start, build and squad frames per second
+	cmdRate      = 5.0 // start and squad frames per second
 	cmdBurst     = 5.0
 	boardRows    = 10
-	missionShow  = 30.0 // an ended mission stays in snapshots this long
+	missionShow  = 30.0 // an ended run stays in snapshots this long
 )
 
 // allowedOrigins are the browser origins (besides the request's own host, which
@@ -49,18 +49,17 @@ const (
 // cannot drive a player's avatar with their cookie.
 var allowedOrigins = []string{"kubecon.agentpwned.ai"}
 
-// SnapHead is the per-receiver part of a snapshot. Inv and Stash are only the
-// receiving player's, and absent for screens. Best is the highest level the player's
-// squad has won (0 or absent: none), so the phone can grey out locked levels;
-// Takedowns and Cash are the player's own score, which the top-10 board may not show.
+// SnapHead is the per-receiver part of a snapshot. Inv is only the receiving
+// player's, and absent for screens. Score is the player's points in their squad's
+// current (or last) run, Best their best run, and Rank their leaderboard place (0:
+// unranked), which the top-10 board may not show.
 type SnapHead struct {
-	T         string      `json:"t"`
-	Me        string      `json:"me"`
-	Inv       *[]PartView `json:"inv,omitempty"`
-	Stash     *[]PartView `json:"stash,omitempty"`
-	Best      int         `json:"best,omitempty"`
-	Takedowns int         `json:"takedowns,omitempty"`
-	Cash      int         `json:"cash,omitempty"`
+	T     string      `json:"t"`
+	Me    string      `json:"me"`
+	Inv   *[]PartView `json:"inv,omitempty"`
+	Score int         `json:"score"`
+	Best  int         `json:"best"`
+	Rank  int         `json:"rank,omitempty"`
 }
 
 // SnapCommon is the part every receiver gets. Events are the ones since the previous
@@ -105,7 +104,6 @@ type AvatarView struct {
 	HP       float64 `json:"hp"`
 	Down     bool    `json:"down"`
 	Online   bool    `json:"online"`
-	Dragging string  `json:"dragging,omitempty"`
 }
 
 type TargetView struct {
@@ -122,8 +120,8 @@ type TargetView struct {
 	Step     int     `json:"step"`
 	Steps    int     `json:"steps"`
 	Busy     bool    `json:"busy"`
+	Op       string  `json:"op,omitempty"` // the op in flight: "freeze", "extract" or "delete"
 	New      bool    `json:"new"`
-	Restored bool    `json:"restored"`
 }
 
 type AllyView struct {
@@ -151,18 +149,14 @@ type DropView struct {
 	Y float64 `json:"y"`
 }
 
+// MissionView is a run: Score is the squad's points, Outcome "" or "done".
 type MissionView struct {
-	ID      string   `json:"id"`
-	Squad   string   `json:"squad"`
-	Level   int      `json:"level"`
-	Name    string   `json:"name"`
-	Targets []string `json:"targets"`
-	Started float64  `json:"started"`
-	Ends    float64  `json:"ends"`
-	Stars   int      `json:"stars"`
-	Cash    int      `json:"cash"`
-	Outcome string   `json:"outcome"`
-	Queued  bool     `json:"queued"`
+	ID      string  `json:"id"`
+	Squad   string  `json:"squad"`
+	Started float64 `json:"started"`
+	Ends    float64 `json:"ends"`
+	Score   int     `json:"score"`
+	Outcome string  `json:"outcome"`
 }
 
 type EventView struct {
@@ -173,17 +167,18 @@ type EventView struct {
 	Ms     int64  `json:"ms,omitempty"`
 }
 
-// ScoreView is a leaderboard row. Rig is the best RAM tier (1-5) of any ally the
-// player deployed (0: none); Allies is how many of their allies are in the city now.
+// ScoreView is a leaderboard row. Best is the player's best run score; Freezes and
+// Books count every run. Rig is the best RAM tier (1-5) of any ally the player deployed
+// (0: none); Allies is how many of their allies are in the city now.
 type ScoreView struct {
-	ID        string `json:"id"`
-	Nick      string `json:"nick"`
-	Squad     string `json:"squad"`
-	Takedowns int    `json:"takedowns"`
-	Cash      int    `json:"cash"`
-	Level     int    `json:"level"`
-	Rig       int    `json:"rig"`
-	Allies    int    `json:"allies"`
+	ID      string `json:"id"`
+	Nick    string `json:"nick"`
+	Squad   string `json:"squad"`
+	Best    int    `json:"best"`
+	Freezes int    `json:"freezes"`
+	Books   int    `json:"books"`
+	Rig     int    `json:"rig"`
+	Allies  int    `json:"allies"`
 }
 
 // SubstrateView is the whole Substrate (actors, workers) plus this game's share: Pool
@@ -258,12 +253,12 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 	for _, id := range slices.Sorted(maps.Keys(w.Avatars)) {
 		a := w.Avatars[id]
 		c.Avatars = append(c.Avatars, AvatarView{a.PlayerID, a.Nick, a.Color, a.Squad, r2(a.Pos.X), r2(a.Pos.Y),
-			r2(a.Facing.X), r2(a.Facing.Y), r2(a.HP), a.Down, a.Online, a.Dragging})
+			r2(a.Facing.X), r2(a.Facing.Y), r2(a.HP), a.Down, a.Online})
 	}
 	for _, id := range slices.Sorted(maps.Keys(w.Targets)) {
 		t := w.Targets[id]
 		c.Targets = append(c.Targets, TargetView{t.ID, t.Name, t.MissionID, t.Squad, t.Node, t.Say, r2(t.Pos.X), r2(t.Pos.Y),
-			string(t.State), t.Hits, t.Step, t.Steps, t.Busy, t.New, t.Restored})
+			string(t.State), t.Hits, t.Step, t.Steps, t.Busy, t.opKind, t.New})
 		if t.State == Booked {
 			c.Vault++ // booked but still in the world (its mission has not been cleaned up)
 		}
@@ -280,8 +275,7 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		if at, ok := g.ended[ms]; ms.Outcome != "" && ok && w.Now-at > missionShow {
 			continue
 		}
-		c.Missions = append(c.Missions, MissionView{ms.ID, ms.Squad, ms.Level.N, ms.Level.Name, slices.Clone(ms.Targets),
-			r2(ms.Started), r2(ms.Ends), ms.Stars, ms.Cash, ms.Outcome, ms.Queued})
+		c.Missions = append(c.Missions, MissionView{ms.ID, ms.Squad, r2(ms.Started), r2(ms.Ends), ms.Score, ms.Outcome})
 	}
 	for _, e := range ev {
 		c.Events = append(c.Events, EventView{e.Kind, e.Target, e.Player, e.Text, e.Ms})
@@ -290,7 +284,7 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		if i == boardRows {
 			break
 		}
-		c.Board = append(c.Board, ScoreView{r.PlayerID, r.Nick, r.Squad, r.Takedowns, r.Cash, r.Level, r.Rig, allies[r.PlayerID]})
+		c.Board = append(c.Board, ScoreView{r.PlayerID, r.Nick, r.Squad, r.Best, r.Freezes, r.Books, r.Rig, allies[r.PlayerID]})
 	}
 	c.Substrate = substrateView(g.p.Substrate())
 	c.Cap.Steps, c.Cap.Resumes, c.Cap.Queued = g.s.InFlight()
@@ -306,17 +300,22 @@ type frames struct {
 // framesLocked snapshots the state for every client. g.mu is held.
 func (g *Game) framesLocked(ev []Event) frames {
 	f := frames{common: g.commonLocked(ev), heads: map[*client]SnapHead{}}
+	rank := map[string]int{}
+	for i, r := range g.m.Leaderboard() {
+		rank[r.PlayerID] = i + 1
+	}
 	for c := range g.clients {
 		h := SnapHead{T: "snap", Me: c.player}
 		if !c.screen {
 			if a := g.w.Avatars[c.player]; a != nil {
 				h.Inv = parts(a.Inv)
-				h.Best = g.m.best[a.Squad]
+				if ms := g.m.lastRun(a.Squad); ms != nil {
+					h.Score = ms.Scores[c.player]
+				}
 			}
 			if p := g.m.players[c.player]; p != nil {
-				h.Takedowns, h.Cash = p.Takedowns, p.Cash
+				h.Best, h.Rank = p.Best, rank[c.player]
 			}
-			h.Stash = parts(g.w.Stash[c.player])
 		}
 		f.heads[c] = h
 	}
@@ -444,7 +443,7 @@ func (c *client) writeLoop(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-// serveWS is GET /grand-theft-agent/ws.
+// serveWS is GET /substrate-siege/ws.
 func (g *Game) serveWS(w http.ResponseWriter, r *http.Request) {
 	screen := r.URL.Query().Get("screen") == "1"
 	var pl platform.Player
@@ -569,13 +568,12 @@ func (g *Game) handle(c *client, b []byte) {
 		MX, MY    float64
 		Fire, Act bool
 		Op, Code  string
-		Level     int
 	}
 	if json.Unmarshal(b, &m) != nil {
 		return
 	}
 	switch m.T {
-	case "squad", "start", "build", "ping":
+	case "squad", "start", "ping":
 		if !c.allowCmd(time.Now()) {
 			return
 		}
@@ -601,9 +599,7 @@ func (g *Game) handle(c *client, b []byte) {
 			c.reply(map[string]string{"t": "squad", "code": code})
 		}
 	case "start":
-		_, err = g.start(c.player, m.Level)
-	case "build":
-		err = g.build(c.player)
+		_, err = g.start(c.player)
 	}
 	g.mu.Unlock()
 	if err != nil {

@@ -1,4 +1,4 @@
-# Grand Theft Agent: every target is a "heister" agent. Each session is its own Substrate
+# Substrate Siege: every target is a "heister" agent. Each session is its own Substrate
 # actor on the "heist" WorkerPool; when stunned it is suspended to a snapshot.
 apiVersion: ate.dev/v1alpha1
 kind: WorkerPool

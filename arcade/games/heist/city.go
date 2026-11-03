@@ -1,4 +1,4 @@
-// Package heist is Grand Theft Agent: a multiplayer top-down city game. This file is the
+// Package heist is Substrate Siege: a multiplayer top-down city game. This file is the
 // pure-logic map: tiles, districts per cluster node, and collision-aware movement.
 package heist
 
@@ -284,4 +284,29 @@ func (c *City) Hideout(node string, rnd *rand.Rand) Vec {
 		return p
 	}
 	return c.RandomStreet(c.Dispatch, rnd)
+}
+
+// Spawn distances (tiles) from a player for Near.
+const (
+	nearMin = 6.0
+	nearMax = 14.0
+)
+
+// Near is a target's spawn point close to a player at from: a random street between
+// nearMin and nearMax tiles away, outside the Dispatch block. With no such street it
+// falls back to Hideout.
+func (c *City) Near(from Vec, node string, rnd *rand.Rand) Vec {
+	var roads []Vec
+	for y := max(int(from.Y-nearMax), 0); y <= int(from.Y+nearMax) && y < c.H; y++ {
+		for x := max(int(from.X-nearMax), 0); x <= int(from.X+nearMax) && x < c.W; x++ {
+			p := Vec{float64(x) + 0.5, float64(y) + 0.5}
+			if d := dist(p, from); c.Tiles[y*c.W+x] == Road && !c.Dispatch.Contains(p) && d >= nearMin && d <= nearMax {
+				roads = append(roads, p)
+			}
+		}
+	}
+	if len(roads) == 0 {
+		return c.Hideout(node, rnd)
+	}
+	return roads[rnd.IntN(len(roads))]
 }

@@ -1,6 +1,6 @@
-// Grand Theft Agent: the WebSocket client shared by the phone page and the big screen.
+// Substrate Siege: the WebSocket client shared by the phone page and the big screen.
 //
-// connect(url, onSnap, opts) opens /grand-theft-agent/ws, calls onSnap(snap) for every
+// connect(url, onSnap, opts) opens /substrate-siege/ws, calls onSnap(snap) for every
 // snapshot, and reconnects with a 1 s, 2 s, 4 s, 8 s backoff (reset once a snapshot
 // arrives). Positions are drawn a little in the past and interpolated between the two
 // snapshots around that moment, so the 15 Hz stream looks smooth.

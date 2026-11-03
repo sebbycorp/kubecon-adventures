@@ -62,7 +62,7 @@ func (g *Game) Reset(ctx context.Context) (sessions, checkpoints int, err error)
 	sessions = parallel(ctx, sess, func(ctx context.Context, s string) error {
 		err := g.ops.Delete(ctx, s)
 		if err != nil {
-			slog.Warn("grand theft agent: reset delete", "session", s, "err", err)
+			slog.Warn("substrate siege: reset delete", "session", s, "err", err)
 		}
 		return err
 	})
@@ -79,7 +79,7 @@ func (g *Game) deleteCheckpoints(ctx context.Context, cps []string) int {
 	return parallel(ctx, cps, func(ctx context.Context, cp string) error {
 		err := g.ops.DeleteCheckpoint(ctx, cp)
 		if err != nil {
-			slog.Warn("grand theft agent: delete checkpoint", "checkpoint", cp, "err", err)
+			slog.Warn("substrate siege: delete checkpoint", "checkpoint", cp, "err", err)
 		}
 		return err
 	})
@@ -140,11 +140,11 @@ func (g *Game) drainOld(old *Scheduler, rec map[opKey]int) {
 			if r.Kind == "extract" {
 				if r.Checkpoint != "" {
 					if err := g.ops.DeleteCheckpoint(c, r.Checkpoint); err != nil {
-						slog.Warn("grand theft agent: reset delete checkpoint", "checkpoint", r.Checkpoint, "err", err)
+						slog.Warn("substrate siege: reset delete checkpoint", "checkpoint", r.Checkpoint, "err", err)
 					}
 				}
 			} else if err := g.ops.Delete(c, r.Spawned); err != nil {
-				slog.Warn("grand theft agent: reset delete", "session", r.Spawned, "err", err)
+				slog.Warn("substrate siege: reset delete", "session", r.Spawned, "err", err)
 			}
 			cancel()
 		case <-timeout.C:

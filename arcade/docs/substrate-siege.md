@@ -1,8 +1,8 @@
-# Grand Theft Agent: design
+# Substrate Siege: design
 
 A multiplayer, top-down city shooter in the style of the original 1997 top-down GTA games. Players scan a QR code and drop into "Substrate City", where every wanted target is a real kagent agent running as an Agent Substrate actor in its own gVisor sandbox. Missions send players to hunt a target before a timer runs out. They then **suspend** it (stun shot), **extract** it to the snapshot vault, or **kill** it (delete). Rival crews can **resume** a stunned target before it's extracted. Every game action is the real Substrate operation, and the targets keep talking back the whole time.
 
-Working title, my call: "Grand Theft Agent". It's a parody name. The art, sprites, fonts and sounds are original, with no Rockstar names, logos or assets. That's the same rule as Duck Hunt.
+Working title, my call: "Substrate Siege". It's a parody name. The art, sprites, fonts and sounds are original, with no Rockstar names, logos or assets. That's the same rule as Duck Hunt.
 
 ## Decisions (agreed 2026-11-02)
 
@@ -12,7 +12,7 @@ Working title, my call: "Grand Theft Agent". It's a parody name. The art, sprite
 | Booth scope | **Levels 1–3 and the big screen** must be ready for the booth: Rookie, Booking, The Crew. Levels 4–6 and cars come after. |
 | Winner | **Whoever freezes the most agents.** The leaderboard ranks players by takedowns (freezes they landed). Cash from extractions and missions only breaks ties. Squads see each member's count and a squad total. |
 | Booth date | Not set yet |
-| Status | **Playable, levels 1–3** (2026-11-02), live at `https://kubecon.agentpwned.ai/grand-theft-agent`; booth load measured below |
+| Status | **Playable, levels 1–3** (2026-11-02), live at `https://kubecon.agentpwned.ai/substrate-siege`; booth load measured below |
 
 ## Why
 
@@ -113,7 +113,7 @@ Art direction (agreed 2026-11-02): a cute top-down 3D look in the spirit of esca
 - cash = score
 - a minimap
 
-The map (decided 2026-11-02): 3-tile-wide roads between 5×5 blocks on an 8-tile pitch, with roads on every edge, so 7 × 4 blocks on a 59 × 35 tile map. Dispatch takes the block nearest the centre (column 3, row 1) and the Impound Vault the bottom-right block. The server's `city.go` is the only copy of the layout; clients fetch it from `GET /grand-theft-agent/api/city` and draw whatever it says.
+The map (decided 2026-11-02): 3-tile-wide roads between 5×5 blocks on an 8-tile pitch, with roads on every edge, so 7 × 4 blocks on a 59 × 35 tile map. Dispatch takes the block nearest the centre (column 3, row 1) and the Impound Vault the bottom-right block. The server's `city.go` is the only copy of the layout; clients fetch it from `GET /substrate-siege/api/city` and draw whatever it says.
 
 Three.js 0.170.0 is vendored as one file, so there is still no build step, like the rest of the arcade. The palette and fonts are in keeping with the arcade; there are no GTA assets.
 
@@ -245,10 +245,10 @@ admin  ─┘                                                  │  world tick (
 ```
 
 - **Backend:** a new package `games/heist` in the existing arcade binary. It reuses `platform` (players, SSE hub, timings) and `internal/kagent`. The game world (positions, hits, timers) is authoritative on the server and in memory. kagent and Substrate are the source of truth for target state; the actor poller (as in Agent Flow) maps each target to its real node and state.
-- **Realtime transport (my call): WebSocket**, one per client, at `/grand-theft-agent/ws`. Joystick input goes up at up to 20 Hz while a control is held; world snapshots come down at 15 Hz, and clients interpolate. The other games use SSE plus POSTs, but per-frame POSTs would also hit the front-door limit of 300 requests per minute per IP. A single WebSocket is one request. This adds one Go dependency (`github.com/coder/websocket`, pinned). The Cloudflare Tunnel passes WebSockets through.
+- **Realtime transport (my call): WebSocket**, one per client, at `/substrate-siege/ws`. Joystick input goes up at up to 20 Hz while a control is held; world snapshots come down at 15 Hz, and clients interpolate. The other games use SSE plus POSTs, but per-frame POSTs would also hit the front-door limit of 300 requests per minute per IP. A single WebSocket is one request. This adds one Go dependency (`github.com/coder/websocket`, pinned). The Cloudflare Tunnel passes WebSockets through.
 - **Agent calls are asynchronous to the game loop.** The game never waits on an agent call inside a tick. A third hit marks the target busy (it stops shooting and can't be hit) and asks for the freeze. kagent refuses a suspend while a turn is in flight, so the freeze retries until that turn ends and then lands; the target shows Frozen only then. If the target's final step completes while its freeze is pending, the freeze wins and it doesn't escape. If the freeze fails, the target thaws with an "it slipped away" bubble.
 - **Extraction (booking).** A suspend writes a new snapshot, so the turn before the freeze can no longer be checkpointed ("snapshot changed"). Booking therefore resumes the target, asks it for one booked line, checkpoints that fresh turn and deletes the live session. If any part fails after the resume, the target is suspended again and the dragger can retry.
-- **Pages:** `/grand-theft-agent` (phone, `?debug=1` for the timing overlay), `/grand-theft-agent/screen` (big screen with QR), `GET /grand-theft-agent/api/city` (the map), plus admin under `/admin/grand-theft-agent/api/*` (reset, state, pause), hidden from the tunnel like the other admin routes.
+- **Pages:** `/substrate-siege` (phone, `?debug=1` for the timing overlay), `/substrate-siege/screen` (big screen with QR), `GET /substrate-siege/api/city` (the map), plus admin under `/admin/substrate-siege/api/*` (reset, state, pause), hidden from the tunnel like the other admin routes.
 - **Manifests:** `manifests/heist-agent.yaml` (WorkerPool `heist`, 40 replicas; Harness with `s3://ate-snapshots/heist/`; ModelConfig; Agent `heister` with `outputSchema`) and `manifests/heist-policies.yaml` (HTTPRoute `/heist/v1`, prompt guard, token and request limits, in-cluster-only authorization). An EgressPolicy `getaway` allows one harmless host for level 5's "allowed" contrast; every other host is blocked.
 
 ## Big-screen stats (subtle, as on Agent Flow)

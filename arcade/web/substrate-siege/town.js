@@ -1,5 +1,5 @@
-// Grand Theft Agent: the static city, built once from the map that GET
-// /grand-theft-agent/api/city serves. A stylised night city: towers, mid-rises and low
+// Substrate Siege: the static city, built once from the map that GET
+// /substrate-siege/api/city serves. A stylised night city: towers, mid-rises and low
 // shops in natural facade colours with warm and cool windows, rooftop clutter (AC units,
 // water tanks, antennas), a few neon signs, sidewalks with curbs and street lights, and
 // asphalt with yellow centre dashes, white edge lines and zebra crossings. Everything is

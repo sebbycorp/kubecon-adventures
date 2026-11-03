@@ -84,7 +84,7 @@ func main() {
 	esc.Routes(mux, web("sandbox-escape"))
 	frk.Routes(mux, web("fork-frenzy"))
 	flw.Routes(mux, web("agent-flow"))
-	gta.Routes(mux, web("grand-theft-agent"))
+	gta.Routes(mux, web("substrate-siege"))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	go func() {
@@ -98,7 +98,7 @@ func main() {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
-	// Grand Theft Agent deletes its booked checkpoints on the way out (bounded).
+	// Substrate Siege deletes its booked checkpoints on the way out (bounded).
 	select {
 	case <-gta.Stopped():
 	case <-time.After(20 * time.Second):

@@ -1,4 +1,4 @@
-# agentgateway policies for Grand Theft Agent. heister gets its own LLM route (/heist/v1) so these
+# agentgateway policies for Substrate Siege. heister gets its own LLM route (/heist/v1) so these
 # policies apply to it alone; the other games keep the plain /v1 route in llm.yaml.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

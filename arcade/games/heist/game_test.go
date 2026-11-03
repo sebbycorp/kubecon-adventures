@@ -130,7 +130,7 @@ func (o *liveOps) ListCheckpoints(ctx context.Context, sid string) ([]string, er
 }
 
 var testWeb = fstest.MapFS{
-	"phone.html":  {Data: []byte(`<script src="/grand-theft-agent/static/app.js"></script>`)},
+	"phone.html":  {Data: []byte(`<script src="/substrate-siege/static/app.js"></script>`)},
 	"screen.html": {Data: []byte(`screen`)},
 	"app.js":      {Data: []byte(`1`)},
 }
@@ -202,7 +202,7 @@ func (s *server) dial(t *testing.T, pl *platform.Player, query string, hdr http.
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(s.srv.URL, "http")+"/grand-theft-agent/ws"+query, &websocket.DialOptions{HTTPHeader: hdr})
+	c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(s.srv.URL, "http")+"/substrate-siege/ws"+query, &websocket.DialOptions{HTTPHeader: hdr})
 	if c != nil {
 		t.Cleanup(func() { c.CloseNow() })
 	}
@@ -298,11 +298,11 @@ func TestWSRejectsNoCookie(t *testing.T) {
 	}
 	c := s.mustDial(t, nil, "?screen=1")
 	got := snap(t, c, 500*time.Millisecond, nil)
-	if got.Me != "" || got.Inv != nil || got.Stash != nil {
+	if got.Me != "" || got.Inv != nil {
 		t.Fatalf("screen snap has player fields: %+v", got)
 	}
 	send(t, c, map[string]any{"t": "in", "mx": 1, "fire": true})
-	send(t, c, map[string]any{"t": "start", "level": 1})
+	send(t, c, map[string]any{"t": "start"})
 	send(t, c, map[string]any{"t": "squad", "op": "create"})
 	snap(t, c, 500*time.Millisecond, nil)
 	s.g.mu.Lock()
@@ -398,10 +398,8 @@ func TestOfflineAvatarEvicted(t *testing.T) {
 	a := g.w.Avatars["a"]
 	a.Pos = Vec{10.5, 9.5}
 	addAlly(g.w, "al", "a", 1, Vec{}).SessionID = "s-al"
-	tg := addTarget(g.w, "t1", "", Dragged, a.Pos)
-	a.Dragging = "t1"
-	g.w.Stash["a"] = rig("p", 2)
-	g.m.player("a", g.w).Takedowns = 3
+	a.Inv = rig("p", 2)
+	g.m.player("a", g.w).Best = 3
 	g.mu.Unlock()
 	g.leave("a")
 	g.mu.Lock()
@@ -417,11 +415,8 @@ func TestOfflineAvatarEvicted(t *testing.T) {
 	if g.w.Now-off < evictAfter-1 {
 		t.Errorf("evicted after %.0f s", g.w.Now-off)
 	}
-	if tg.State != Frozen {
-		t.Errorf("drag kept: target %s", tg.State)
-	}
-	if len(g.w.Stash["a"]) != 4 || g.m.Leaderboard()[0].Takedowns != 3 {
-		t.Errorf("stash or score lost: %v %v", g.w.Stash["a"], g.m.Leaderboard())
+	if g.m.Leaderboard()[0].Best != 3 {
+		t.Errorf("score lost: %v", g.m.Leaderboard())
 	}
 	if g.w.Allies["al"] != nil {
 		t.Error("ally still in the city")
@@ -591,13 +586,13 @@ func TestEndedMissionsPruned(t *testing.T) {
 	g, _ := newManual(t)
 	g.mu.Lock()
 	for i := range 200 {
-		ms, err := g.m.Start(fmt.Sprintf("s%d", i), 1, g.w, g.s)
+		ms, err := g.m.Start(fmt.Sprintf("s%d", i), g.w, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		g.m.finish(ms, "failed", g.w)
+		g.m.finish(ms, g.w)
 	}
-	g.m.player("a", g.w).Takedowns = 7
+	g.m.player("a", g.w).Best = 7
 	g.m.squadTD["s1"] = 2
 	end := g.w.Now
 	g.mu.Unlock()
@@ -607,7 +602,7 @@ func TestEndedMissionsPruned(t *testing.T) {
 	if len(g.m.missions) != 0 || len(g.ended) != 0 || len(g.cleaned) != 0 || len(g.m.targets) != 0 {
 		t.Fatalf("left: %d missions, %d ended, %d cleaned, %d targets", len(g.m.missions), len(g.ended), len(g.cleaned), len(g.m.targets))
 	}
-	if g.m.Leaderboard()[0].Takedowns != 7 || g.m.SquadTotals()["s1"] != 2 {
+	if g.m.Leaderboard()[0].Best != 7 || g.m.SquadTotals()["s1"] != 2 {
 		t.Fatal("scores lost with the missions")
 	}
 }
@@ -619,18 +614,15 @@ func TestResetCleansUp(t *testing.T) {
 	pl := s.g.p.Players.Join("Ada")
 	c := s.mustDial(t, &pl, "")
 	snap(t, c, time.Second, nil)
-	s.g.mu.Lock()
-	s.g.m.best["solo-"+pl.ID] = 2
-	s.g.mu.Unlock()
-	send(t, c, map[string]any{"t": "start", "level": 3})
-	eventually(t, s.g, "three targets", func() bool { return len(s.g.w.Targets) == 3 })
+	send(t, c, map[string]any{"t": "start"})
+	eventually(t, s.g, "two agents", func() bool { return len(s.g.w.Targets) == 2 })
 
 	n, _, err := s.g.Reset(context.Background())
-	if err != nil || n != 3 {
-		t.Fatalf("Reset = %d, %v; want 3", n, err)
+	if err != nil || n != 2 {
+		t.Fatalf("Reset = %d, %v; want 2", n, err)
 	}
 	dels := ops.called("delete")
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 2; i++ {
 		if want := fmt.Sprintf("sess-m1-%d", i); !slices.Contains(dels, want) {
 			t.Errorf("delete calls %v miss %s", dels, want)
 		}
@@ -715,7 +707,7 @@ func TestOversizeFrameCloses(t *testing.T) {
 	eventually(t, s.g, "offline", func() bool { return !s.g.w.Avatars[pl.ID].Online })
 }
 
-func TestSquadStartBuildMessages(t *testing.T) {
+func TestSquadStartMessages(t *testing.T) {
 	s := newServer(t, &liveOps{})
 	ada, bob := s.g.p.Players.Join("Ada"), s.g.p.Players.Join("Bob")
 	ca, cb := s.mustDial(t, &ada, ""), s.mustDial(t, &bob, "")
@@ -731,29 +723,24 @@ func TestSquadStartBuildMessages(t *testing.T) {
 	frame(t, cb, "err", time.Second)
 	eventually(t, s.g, "same squad", func() bool { return s.g.w.Avatars[bob.ID].Squad == code })
 
-	send(t, ca, map[string]any{"t": "start", "level": 3})
-	frame(t, ca, "err", time.Second)
-	send(t, ca, map[string]any{"t": "build"})
-	frame(t, ca, "err", time.Second)
-
 	pause := func(on bool) {
-		resp, err := http.Post(s.srv.URL+"/admin/grand-theft-agent/api/pause", "application/json", strings.NewReader(fmt.Sprintf(`{"paused":%v}`, on)))
+		resp, err := http.Post(s.srv.URL+"/admin/substrate-siege/api/pause", "application/json", strings.NewReader(fmt.Sprintf(`{"paused":%v}`, on)))
 		if err != nil || resp.StatusCode != 200 {
 			t.Fatalf("pause: %v %v", err, resp)
 		}
 		resp.Body.Close()
 	}
 	pause(true)
-	send(t, ca, map[string]any{"t": "start", "level": 1})
+	send(t, ca, map[string]any{"t": "start"})
 	var msg string
 	_ = json.Unmarshal(frame(t, ca, "err", time.Second)["msg"], &msg)
 	if msg != "paused" {
 		t.Fatalf("err = %q, want paused", msg)
 	}
 	pause(false)
-	send(t, ca, map[string]any{"t": "start", "level": 1})
+	send(t, ca, map[string]any{"t": "start"})
 	sn := snap(t, cb, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
-	if sn.Missions[0].Squad != code || sn.Missions[0].Level != 1 {
+	if sn.Missions[0].Squad != code || sn.Missions[0].Outcome != "" {
 		t.Fatalf("missions = %+v", sn.Missions)
 	}
 	// Garbage is ignored, not fatal.
@@ -785,8 +772,8 @@ func testClient(player string) *client {
 }
 
 // TestReleaseFrameNeverDropped: a burst of ACTION-down frames over the input limit ends
-// in the release. The release changes act, so it is applied, not dropped: the tap stays
-// a tap and no delete starts a second later as a "hold".
+// in the release. The release changes act, so it is applied, not dropped: ACTION is not
+// left held, and the tap books the agent once and does nothing else.
 func TestReleaseFrameNeverDropped(t *testing.T) {
 	g, f := newManual(t)
 	g.mu.Lock()
@@ -805,14 +792,14 @@ func TestReleaseFrameNeverDropped(t *testing.T) {
 	if held {
 		t.Fatal("release frame dropped: ACTION still held")
 	}
-	for range 2 * tickHz { // 2 s, past the 1 s hold
+	for range 2 * tickHz {
 		g.tick()
 	}
 	f.noStartOf(t, "delete")
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if tg.State == Deleted || tg.Busy {
-		t.Fatalf("target %s busy=%v: the tap became a delete", tg.State, tg.Busy)
+	if tg.State != Frozen || tg.opKind != "extract" {
+		t.Fatalf("target %s op %q: want one booking", tg.State, tg.opKind)
 	}
 	// The same for FIRE: a dropped release would keep shooting.
 	for range 10 {
@@ -854,23 +841,23 @@ func TestInputCoalesced(t *testing.T) {
 
 func TestRoutes(t *testing.T) {
 	s := newServer(t, &liveOps{})
-	for _, p := range []string{"/grand-theft-agent", "/grand-theft-agent/screen", "/grand-theft-agent/static/app.js", "/admin/grand-theft-agent/api/state"} {
+	for _, p := range []string{"/substrate-siege", "/substrate-siege/screen", "/substrate-siege/static/app.js", "/admin/substrate-siege/api/state"} {
 		resp, err := http.Get(s.srv.URL + p)
 		if err != nil || resp.StatusCode != 200 {
 			t.Fatalf("GET %s: %v %v", p, err, resp)
 		}
 		resp.Body.Close()
 	}
-	resp, _ := http.Get(s.srv.URL + "/grand-theft-agent")
+	resp, _ := http.Get(s.srv.URL + "/substrate-siege")
 	var b strings.Builder
 	buf := make([]byte, 512)
 	nr, _ := resp.Body.Read(buf)
 	b.Write(buf[:nr])
 	resp.Body.Close()
-	if !strings.Contains(b.String(), "/grand-theft-agent/static/app.js?v=") || resp.Header.Get("Cache-Control") != "no-cache" {
+	if !strings.Contains(b.String(), "/substrate-siege/static/app.js?v=") || resp.Header.Get("Cache-Control") != "no-cache" {
 		t.Fatalf("page not versioned: %s %v", b.String(), resp.Header)
 	}
-	resp, err := http.Post(s.srv.URL+"/admin/grand-theft-agent/api/reset", "", nil)
+	resp, err := http.Post(s.srv.URL+"/admin/substrate-siege/api/reset", "", nil)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("reset: %v %v", err, resp)
 	}
@@ -884,6 +871,7 @@ func newManual(t *testing.T) (*Game, *fakeOps) {
 	t.Helper()
 	f := newFakeOps()
 	g := New(platform.New(nil), f, nil)
+	g.m.perRun = 1 // one agent per run keeps the call order predictable
 	t.Cleanup(func() { g.s.Close() })
 	if !g.join(platform.Player{ID: "a", Nick: "Ada", Color: "red"}) {
 		t.Fatal("join refused")
@@ -920,7 +908,7 @@ func TestRefusedSubmitClearsBusy(t *testing.T) {
 	a := g.w.Avatars["a"]
 	tg := addTarget(g.w, "t1", "", Working, Vec{a.Pos.X + 1, a.Pos.Y})
 	tg.SessionID, tg.Hits = "s1", hitsToFreeze-1
-	g.w.Stash["a"] = rig("p", 3)
+	g.w.Avatars["a"].Inv = rig("p", 3)
 	g.s.Close() // every Submit now fails
 	g.w.Input("a", Input{Fire: true})
 	g.mu.Unlock()
@@ -933,22 +921,22 @@ func TestRefusedSubmitClearsBusy(t *testing.T) {
 	if err := g.build("a"); err == nil {
 		t.Fatal("build with a closed scheduler succeeded")
 	}
-	if len(g.w.Stash["a"]) != 4 || len(g.w.pending) != 0 {
-		t.Fatalf("rig not refunded: stash %v, pending %d", g.w.Stash["a"], len(g.w.pending))
+	if len(g.w.Avatars["a"].Inv) != 4 || len(g.w.pending) != 0 {
+		t.Fatalf("rig not refunded: inv %v, pending %d", g.w.Avatars["a"].Inv, len(g.w.pending))
 	}
 }
 
 func TestLateSpawnDeleted(t *testing.T) {
 	g, f := newManual(t)
 	g.mu.Lock()
-	ms, err := g.start("a", 1)
+	ms, err := g.start("a")
 	g.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
 	c := f.next(t) // the spawn
 	g.mu.Lock()
-	g.m.finish(ms, "failed", g.w)
+	g.m.finish(ms, g.w)
 	g.mu.Unlock()
 	close(c.release)
 	pumpUntil(t, g, "spawn routed", func() bool { return !g.m.targets["m1-1"].spawning })
@@ -966,12 +954,12 @@ func TestLateSpawnDeleted(t *testing.T) {
 func TestMissionEndCleanup(t *testing.T) {
 	g, f := newManual(t)
 	g.mu.Lock()
-	ms, _ := g.start("a", 1)
+	ms, _ := g.start("a")
 	g.mu.Unlock()
 	release(t, f, "spawn")
 	pumpUntil(t, g, "target", func() bool { return g.w.Targets["m1-1"] != nil })
 	g.mu.Lock()
-	g.m.finish(ms, "failed", g.w)
+	g.m.finish(ms, g.w)
 	end := g.w.Now
 	g.mu.Unlock()
 	pumpUntil(t, g, "10 s", func() bool { return g.w.Now >= end+cleanupDelay-0.5 })
@@ -993,8 +981,8 @@ func TestMissionEndCleanup(t *testing.T) {
 	}
 }
 
-// bookTarget freezes the mission's target m1-1 and books it through the scheduler, as a
-// drag into the Vault does.
+// bookTarget freezes the run's agent m1-1 and books it through the scheduler, as a tap
+// next to it does.
 func bookTarget(t *testing.T, g *Game) {
 	t.Helper()
 	pumpUntil(t, g, "target", func() bool { return g.w.Targets["m1-1"] != nil })
@@ -1016,33 +1004,31 @@ func TestResetDeletesBookedCheckpoints(t *testing.T) {
 	ops := &liveOps{}
 	g := New(platform.New(nil), ops, nil)
 	t.Cleanup(func() { g.s.Close() })
+	g.m.perRun = 1
 	g.join(platform.Player{ID: "a"})
 	g.mu.Lock()
-	g.m.best["solo-a"] = 1
-	ms, err := g.start("a", 2) // Booking: one target that must be booked
+	_, err := g.start("a")
 	g.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
 	bookTarget(t, g)
 	g.mu.Lock()
-	if ms.Outcome != "won" {
-		t.Fatalf("outcome %q", ms.Outcome)
-	}
 	end := g.w.Now
 	g.mu.Unlock()
-	pumpUntil(t, g, "removed", func() bool { return g.w.Now > end+cleanupDelay && g.w.Targets["m1-1"] == nil })
+	pumpUntil(t, g, "removed", func() bool { return g.w.Now > end+goneDelay && g.w.Targets["m1-1"] == nil })
+	pumpUntil(t, g, "replacement", func() bool { return g.w.Targets["m1-2"] != nil })
 	g.mu.Lock()
 	if g.booked["sess-m1-1"] != "cp-sess-m1-1" {
 		t.Fatalf("booked = %v, want the checkpoint kept", g.booked)
 	}
 	g.mu.Unlock()
 	if slices.Contains(ops.called("delete"), "sess-m1-1") || len(ops.called("delete-checkpoint")) != 0 {
-		t.Fatalf("deleted at mission end: %v %v", ops.called("delete"), ops.called("delete-checkpoint"))
+		t.Fatalf("deleted at cleanup: %v %v", ops.called("delete"), ops.called("delete-checkpoint"))
 	}
 	sessions, checkpoints, err := g.Reset(context.Background())
-	if err != nil || sessions != 0 || checkpoints != 1 {
-		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 0, 1", sessions, checkpoints, err)
+	if err != nil || sessions != 1 || checkpoints != 1 { // the replacement agent, the booking
+		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 1, 1", sessions, checkpoints, err)
 	}
 	if got := ops.called("delete-checkpoint"); !slices.Equal(got, []string{"cp-sess-m1-1"}) {
 		t.Fatalf("checkpoint deletes %v", got)
@@ -1060,13 +1046,12 @@ func TestResetBookedStillInWorld(t *testing.T) {
 	t.Cleanup(func() { g.s.Close() })
 	g.join(platform.Player{ID: "a"})
 	g.mu.Lock()
-	g.m.best["solo-a"] = 2
-	g.start("a", 3) // three targets: booking one doesn't end it
+	g.start("a") // two agents
 	g.mu.Unlock()
 	bookTarget(t, g)
 	sessions, checkpoints, err := g.Reset(context.Background())
-	if err != nil || sessions != 2 || checkpoints != 1 {
-		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 2, 1", sessions, checkpoints, err)
+	if err != nil || sessions < 1 || checkpoints != 1 {
+		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 1+, 1", sessions, checkpoints, err)
 	}
 	if slices.Contains(ops.called("delete"), "sess-m1-1") {
 		t.Fatal("Reset deleted the booked (gone) session")
@@ -1109,12 +1094,12 @@ func TestResetCheckpointParallelism(t *testing.T) {
 func TestLateAllyDeleted(t *testing.T) {
 	g, f := newManual(t)
 	g.mu.Lock()
-	ms, _ := g.start("a", 1)
-	g.w.Stash["a"] = rig("p", 2)
+	ms, _ := g.start("a")
+	g.w.Avatars["a"].Inv = rig("p", 2)
 	if err := g.build("a"); err != nil {
 		t.Fatal(err)
 	}
-	g.m.finish(ms, "won", g.w)
+	g.m.finish(ms, g.w)
 	g.mu.Unlock()
 	release(t, f, "ally")
 	pumpUntil(t, g, "ally landed", func() bool { return len(g.w.pending) == 0 })
@@ -1167,7 +1152,7 @@ func TestTimingsRecorded(t *testing.T) {
 
 func TestCityAPI(t *testing.T) {
 	s := newServer(t, &liveOps{})
-	resp, err := http.Get(s.srv.URL + "/grand-theft-agent/api/city")
+	resp, err := http.Get(s.srv.URL + "/substrate-siege/api/city")
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("GET city: %v %v", err, resp)
 	}
@@ -1191,15 +1176,18 @@ func TestSnapHeadScore(t *testing.T) {
 	s := newServer(t, &liveOps{})
 	ada := s.g.p.Players.Join("Ada")
 	c := s.mustDial(t, &ada, "")
-	if sn := snap(t, c, time.Second, nil); sn.Best != 0 {
-		t.Fatalf("best = %d, want 0", sn.Best)
+	if sn := snap(t, c, time.Second, nil); sn.Best != 0 || sn.Score != 0 || sn.Rank != 0 {
+		t.Fatalf("fresh head = %+v", sn.SnapHead)
 	}
 	s.g.mu.Lock()
-	s.g.m.best[s.g.w.Avatars[ada.ID].Squad] = 2
-	p := s.g.m.player(ada.ID, s.g.w)
-	p.Takedowns, p.Cash = 3, 450
+	ms, err := s.g.start(ada.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms.Scores[ada.ID] = 4
+	s.g.m.player(ada.ID, s.g.w).Best = 6
 	s.g.mu.Unlock()
-	snap(t, c, time.Second, func(sn Snap) bool { return sn.Best == 2 && sn.Takedowns == 3 && sn.Cash == 450 })
+	snap(t, c, time.Second, func(sn Snap) bool { return sn.Score == 4 && sn.Best == 6 && sn.Rank == 1 })
 }
 
 // TestModuleImportsVersioned: a module's relative imports carry the hash of what is
@@ -1207,7 +1195,7 @@ func TestSnapHeadScore(t *testing.T) {
 func TestModuleImportsVersioned(t *testing.T) {
 	web := func(dep string) fstest.MapFS {
 		return fstest.MapFS{
-			"phone.html":      {Data: []byte(`<script type="module" src="/grand-theft-agent/static/city.js"></script>`)},
+			"phone.html":      {Data: []byte(`<script type="module" src="/substrate-siege/static/city.js"></script>`)},
 			"screen.html":     {Data: []byte(`screen`)},
 			"city.js":         {Data: []byte(`import * as T from "./vendor/t.js";` + "\n" + `import { town } from "./town.js";`)},
 			"town.js":         {Data: []byte(dep)},
@@ -1227,17 +1215,17 @@ func TestModuleImportsVersioned(t *testing.T) {
 		return rec.Body.String()
 	}
 	a, b := web(`export const town = 1;`), web(`export const town = 2;`)
-	js := get(a, "/grand-theft-agent/static/city.js")
+	js := get(a, "/substrate-siege/static/city.js")
 	if !regexp.MustCompile(`from "\./vendor/t\.js\?v=[0-9a-f]{8}"`).MatchString(js) || !regexp.MustCompile(`from "\./town\.js\?v=[0-9a-f]{8}"`).MatchString(js) {
 		t.Fatalf("imports not versioned: %s", js)
 	}
-	if js == get(b, "/grand-theft-agent/static/city.js") {
+	if js == get(b, "/substrate-siege/static/city.js") {
 		t.Fatal("a changed dependency did not change the importing module")
 	}
-	if get(a, "/grand-theft-agent") == get(b, "/grand-theft-agent") {
+	if get(a, "/substrate-siege") == get(b, "/substrate-siege") {
 		t.Fatal("a changed dependency did not change the page's link to the module")
 	}
-	if get(a, "/grand-theft-agent/static/town.js") != `export const town = 1;` {
+	if get(a, "/substrate-siege/static/town.js") != `export const town = 1;` {
 		t.Fatal("a module without imports must be served as is")
 	}
 }
@@ -1276,7 +1264,7 @@ func TestStartupSweep(t *testing.T) {
 	// The game ticks on and plays as usual.
 	pl := s.g.p.Players.Join("Ada")
 	c := s.mustDial(t, &pl, "")
-	send(t, c, map[string]any{"t": "start", "level": 1})
+	send(t, c, map[string]any{"t": "start"})
 	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
 }
 
@@ -1286,7 +1274,7 @@ func TestStartupSweepListError(t *testing.T) {
 	s := newServer(t, ops)
 	pl := s.g.p.Players.Join("Ada")
 	c := s.mustDial(t, &pl, "")
-	send(t, c, map[string]any{"t": "start", "level": 1})
+	send(t, c, map[string]any{"t": "start"})
 	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
 	if got := ops.called("delete"); len(got) != 0 {
 		t.Fatalf("deleted %v after a failed list", got)
@@ -1302,21 +1290,21 @@ func TestStartupSweepGatesStarts(t *testing.T) {
 	s := newServer(t, ops)
 	pl := s.g.p.Players.Join("Ada")
 	c := s.mustDial(t, &pl, "")
-	send(t, c, map[string]any{"t": "start", "level": 1})
+	send(t, c, map[string]any{"t": "start"})
 	var msg string
 	_ = json.Unmarshal(frame(t, c, "err", time.Second)["msg"], &msg)
 	if msg != "starting up, try again" {
 		t.Fatalf("err = %q", msg)
 	}
 	time.Sleep(400 * time.Millisecond) // the list times out; play opens
-	send(t, c, map[string]any{"t": "start", "level": 1})
+	send(t, c, map[string]any{"t": "start"})
 	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
 }
 
 // ---- mission limits (squad hopping) ----
 
-// TestSquadChangeRefusedDuringMission: while the player's squad has a mission running
-// or queued, create, join and solo are refused; once it ends they work again.
+// TestSquadChangeRefusedDuringMission: while the player's squad has a run going,
+// create, join and solo are refused; once it ends they work again.
 func TestSquadChangeRefusedDuringMission(t *testing.T) {
 	g, _ := newManual(t)
 	g.join(platform.Player{ID: "b"})
@@ -1326,7 +1314,7 @@ func TestSquadChangeRefusedDuringMission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ms, err := g.start("a", 1)
+	ms, err := g.start("a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1338,81 +1326,74 @@ func TestSquadChangeRefusedDuringMission(t *testing.T) {
 	if a := g.w.Avatars["a"]; a.Squad != "solo-a" || g.q.Of("a") != "solo-a" {
 		t.Fatalf("squad changed to %q / %q", a.Squad, g.q.Of("a"))
 	}
-	// A queued mission counts too.
-	ms.Queued = true
-	if _, err := g.squad("a", "join", code); err == nil {
-		t.Error("join accepted while a's mission is queued")
-	}
-	ms.Queued = false
-	g.m.finish(ms, "failed", g.w)
+	g.m.finish(ms, g.w)
 	if got, err := g.squad("a", "join", code); err != nil || got != code {
 		t.Fatalf("join after the mission = %q, %v", got, err)
 	}
 }
 
-// TestOneMissionPerPlayer: a player has at most one mission running or queued, even if
-// they end up in another squad.
-func TestOneMissionPerPlayer(t *testing.T) {
+// TestOneRunPerSquad: a squad has at most one run going; once it ends, play again.
+func TestOneRunPerSquad(t *testing.T) {
 	g, _ := newManual(t)
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	ms, err := g.start("a", 1)
+	ms, err := g.start("a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := g.q.Create("a") // around the squad lock
-	g.w.Avatars["a"].Squad = code
-	if _, err := g.start("a", 1); err == nil {
-		t.Fatal("second mission started for the same player")
+	if _, err := g.start("a"); err == nil {
+		t.Fatal("second run started for the same squad")
 	}
-	ms.Queued = true // queued counts
-	if _, err := g.start("a", 1); err == nil {
-		t.Fatal("second mission started while the first is queued")
-	}
-	g.m.finish(ms, "failed", g.w)
-	if _, err := g.start("a", 1); err != nil {
+	g.m.finish(ms, g.w)
+	if _, err := g.start("a"); err != nil {
 		t.Fatalf("start after the first ended: %v", err)
 	}
 }
 
-// TestLiveTargetCap: at most maxLiveTargets targets live in the city; later missions
-// wait Queued ("waiting for a free safehouse") and launch, oldest first, as targets are
-// cleaned up.
+// TestLiveTargetCap: at most maxLiveTargets agents live in the city; a freed slot goes
+// to the run with the fewest agents.
 func TestLiveTargetCap(t *testing.T) {
 	ops := &liveOps{}
 	g := New(platform.New(nil), ops, nil)
 	t.Cleanup(func() { g.s.Close() })
 	var ms []*Mission
 	g.mu.Lock()
-	for i := range 15 { // 15 Level 3 missions, 3 targets each: 45 > 40
+	for i := range 20 { // 20 solo runs want 2 each: 40 > 32
 		id := fmt.Sprintf("p%02d", i)
 		g.joinLocked(platform.Player{ID: id})
-		g.m.best["solo-"+id] = 2
-		m, err := g.start(id, 3)
+		m, err := g.start(id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		ms = append(ms, m)
 	}
 	g.mu.Unlock()
-	pumpUntil(t, g, "39 targets", func() bool { return len(g.w.Targets) == 39 })
+	pumpUntil(t, g, "32 agents", func() bool { return len(g.w.Targets) == maxLiveTargets })
 	for range 30 {
 		g.tick()
 	}
 	g.mu.Lock()
-	if n := len(g.w.Targets); n != 39 || !ms[13].Queued || !ms[14].Queued || len(ops.called("spawn")) != 39 {
-		t.Fatalf("%d targets, %d spawns, queued 13=%v 14=%v; want 39 and both queued", n, len(ops.called("spawn")), ms[13].Queued, ms[14].Queued)
+	if n := len(g.w.Targets); n != maxLiveTargets || len(ops.called("spawn")) != maxLiveTargets {
+		t.Fatalf("%d agents, %d spawns; want %d", n, len(ops.called("spawn")), maxLiveTargets)
 	}
-	g.m.finish(ms[0], "failed", g.w)
+	empty := func() int {
+		n := 0
+		for _, m := range ms {
+			if len(m.Targets) == 0 {
+				n++
+			}
+		}
+		return n
+	}
+	before := empty()
+	// The first run's agent gets away: its free slot goes to a run with none.
+	g.w.Targets[ms[0].Targets[0]].State = Escaped
 	g.mu.Unlock()
-	pumpUntil(t, g, "mission 13 launched", func() bool { return !ms[13].Queued })
-	for range 30 {
-		g.tick()
-	}
+	pumpUntil(t, g, "refilled", func() bool { return len(ops.called("spawn")) > maxLiveTargets })
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if !ms[14].Queued || len(ops.called("spawn")) != 42 {
-		t.Fatalf("mission 14 queued=%v, %d spawns; want queued and 42", ms[14].Queued, len(ops.called("spawn")))
+	if before == 0 || empty() != before-1 || len(ms[0].Targets) != 2 {
+		t.Fatalf("empty runs %d → %d, first run has %d agents", before, empty(), len(ms[0].Targets))
 	}
 }
 
@@ -1433,5 +1414,51 @@ func TestShutdownDeletesBookedCheckpoints(t *testing.T) {
 	}
 	if got := slices.Sorted(slices.Values(ops.called("delete-checkpoint"))); !slices.Equal(got, []string{"cp-new", "cp-old"}) {
 		t.Fatalf("checkpoint deletes %v", got)
+	}
+}
+
+// TestEscapedAgentCleanedUp: an agent that got away stays on the map goneDelay, then its
+// session is deleted while the run goes on.
+func TestEscapedAgentCleanedUp(t *testing.T) {
+	g, f := newManual(t)
+	g.mu.Lock()
+	ms, _ := g.start("a")
+	g.mu.Unlock()
+	release(t, f, "spawn")
+	pumpUntil(t, g, "agent", func() bool { return g.w.Targets["m1-1"] != nil })
+	g.mu.Lock()
+	g.w.Targets["m1-1"].State = Escaped
+	at := g.w.Now
+	g.mu.Unlock()
+	pumpUntil(t, g, "removed", func() bool { return g.w.Targets["m1-1"] == nil })
+	g.mu.Lock()
+	if g.w.Now-at < goneDelay-0.2 || ms.Outcome != "" {
+		t.Fatalf("removed after %.1f s, outcome %q", g.w.Now-at, ms.Outcome)
+	}
+	g.mu.Unlock()
+	for {
+		if c := f.next(t); c.kind == "delete" {
+			if c.id != "sess-m1-1" {
+				t.Fatalf("deleted %s", c.id)
+			}
+			return
+		}
+	}
+}
+
+// TestFullRigAutoBuilds: carrying a board, a CPU, RAM and a drive deploys an ally
+// without a button.
+func TestFullRigAutoBuilds(t *testing.T) {
+	g, f := newManual(t)
+	g.mu.Lock()
+	g.w.Avatars["a"].Inv = append(rig("p", 3), Part{ID: "spare", Kind: "cpu"})
+	g.mu.Unlock()
+	g.tick()
+	release(t, f, "ally")
+	pumpUntil(t, g, "ally", func() bool { return len(g.w.Allies) == 1 })
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if inv := g.w.Avatars["a"].Inv; len(inv) != 1 || inv[0].ID != "spare" {
+		t.Fatalf("inventory after build = %v", inv)
 	}
 }

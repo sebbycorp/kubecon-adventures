@@ -8,7 +8,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
 | Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
-| Grand Theft Agent | Lifecycle: suspend, snapshot, resume, delete, as a multiplayer city shooter | Playable (levels 1–3) | [below](#grand-theft-agent), [docs/grand-theft-agent.md](docs/grand-theft-agent.md) |
+| Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a multiplayer city shooter | Playable (levels 1–3) | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
 | Agent Invaders | Scale and density | Next | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
@@ -27,7 +27,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Sandbox Escape phone / big screen | http://localhost:8090/sandbox-escape, http://localhost:8090/sandbox-escape/screen |
 | Fork Frenzy phone / big screen | http://localhost:8090/fork-frenzy, http://localhost:8090/fork-frenzy/screen |
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
-| Grand Theft Agent phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/grand-theft-agent, http://localhost:8090/grand-theft-agent/screen |
+| Substrate Siege phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/substrate-siege, http://localhost:8090/substrate-siege/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -136,9 +136,9 @@ The webhook works because agents already reach agentgateway's in-cluster host fo
 
 The QR code points at `https://kubecon.agentpwned.ai/agent-flow` when the screen is opened on localhost, otherwise at the screen's own origin. Open `/agent-flow/screen?join=http://<lan-ip>:8090/agent-flow` to point phones somewhere else. Reset the round with `curl -XPOST localhost:8090/admin/agent-flow/api/reset`.
 
-## Grand Theft Agent
+## Substrate Siege
 
-A multiplayer extraction shooter in a stylised night city (`games/heist`, design in [docs/grand-theft-agent.md](docs/grand-theft-agent.md)). Every wanted target is a real `heister` agent session on its own 40-worker `heist` pool (`manifests/heist-agent.yaml`). Players play solo or in squads of up to 4 (a 4-letter code), with an on-screen joystick, FIRE and ACTION; there is no keyboard. The server runs the world at 15 Hz over one WebSocket per phone (`/grand-theft-agent/ws`), and every game action is the real Substrate call:
+A multiplayer extraction shooter in a stylised night city (`games/heist`, design in [docs/substrate-siege.md](docs/substrate-siege.md)). Every wanted target is a real `heister` agent session on its own 40-worker `heist` pool (`manifests/heist-agent.yaml`). Players play solo or in squads of up to 4 (a 4-letter code), with an on-screen joystick, FIRE and ACTION; there is no keyboard. The server runs the world at 15 Hz over one WebSocket per phone (`/substrate-siege/ws`), and every game action is the real Substrate call:
 
 | In the game | Real call |
 |-------------|-----------|
@@ -155,6 +155,6 @@ Levels: 1 Rookie (freeze one target, 90 s), 2 Booking (freeze and book it, 120 s
 - Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process (with their checkpoints), and refuses new missions and rigs until that list is in. Booked targets' checkpoints are deleted by the admin reset and on shutdown.
 - `manifests/heist-policies.yaml` gives the heist agents their own LLM route (`/heist/v1`) with a prompt guard and a budget of 300k tokens and 400 requests a minute; a policy stop shows on the screen.
 - The phone switches to low quality (lower pixel ratio, no shadows) by itself on a slow first few seconds; MENU has a switch for it.
-- The big screen (`/grand-theft-agent/screen`) shows the whole city, a QR code, the leaderboard, the mission feed and live suspend, resume and checkpoint times.
+- The big screen (`/substrate-siege/screen`) shows the whole city, a QR code, the leaderboard, the mission feed and live suspend, resume and checkpoint times.
 
-Booth load (24 players for 5 minutes, `TestBoothLoad`): no op errors and no stuck missions, but three targets were missed under bot load: freeze p95 4.8 s (target 1 s, including the wait for the target's turn to end; the suspend call alone is 66 ms), spring p95 8.7 s (target 6 s) and LLM tokens at 331k in the busiest minute (budget 300k). The measured numbers and why are in the [design doc](docs/grand-theft-agent.md#booth-load-measured-2026-11-02). Reset the round with `curl -XPOST localhost:8090/admin/grand-theft-agent/api/reset`.
+Booth load (24 players for 5 minutes, `TestBoothLoad`): no op errors and no stuck missions, but three targets were missed under bot load: freeze p95 4.8 s (target 1 s, including the wait for the target's turn to end; the suspend call alone is 66 ms), spring p95 8.7 s (target 6 s) and LLM tokens at 331k in the busiest minute (budget 300k). The measured numbers and why are in the [design doc](docs/substrate-siege.md#booth-load-measured-2026-11-02). Reset the round with `curl -XPOST localhost:8090/admin/substrate-siege/api/reset`.

@@ -1,5 +1,4 @@
-// This file is the pure-logic world: avatars, targets, shots, freezing, dragging and
-// springing. It never talks to kagent; Tick returns Intents for the Game to run and the
+// This file is the pure-logic world: avatars, targets, shots, freezing and booking. It never talks to kagent; Tick returns Intents for the Game to run and the
 // Game reports results back through Resolve.
 package heist
 
@@ -17,26 +16,20 @@ type TargetState string
 const (
 	Working TargetState = "Working"
 	Frozen  TargetState = "Frozen"
-	Dragged TargetState = "Dragged"
 	Booked  TargetState = "Booked"
 	Deleted TargetState = "Deleted"
 	Escaped TargetState = "Escaped"
-	Thawing TargetState = "Thawing"
 )
 
 // Tuning, in tiles and seconds.
 const (
 	avatarSpeed  = 5.0
 	targetSpeed  = 3.5
-	dragFactor   = 0.75 // a dragging avatar and its catch move at 3/4 avatar speed
 	fireRange    = 6.0
-	actionRange  = 1.2
+	actionRange  = 1.6
 	fleeRange    = 5.0
 	fireCD       = 0.25
-	springCD     = 20.0
-	holdTime     = 1.0 // ACTION held this long deletes; shorter is a tap
-	dragGap      = 0.7 // a dragged target trails the avatar by this much
-	hitsToFreeze = 3
+	hitsToFreeze = 2
 	eps          = 1e-9
 )
 
@@ -44,13 +37,12 @@ const (
 type Avatar struct {
 	PlayerID, Nick, Color, Squad string
 	Pos, Facing                  Vec
-	Dragging                     string // target ID, or ""
-	FireCD, SpringCD             float64
+	FireCD                       float64
 	Online                       bool
 	HP                           float64 // 0..maxHP; NewAvatar starts it full
 	Down                         bool    // knocked out: no move, fire, act or being shot
 	RespawnAt, LastHit           float64 // world times
-	Inv                          []Part  // unextracted loot, lost when Down
+	Inv                          []Part  // parts carried, dropped when Down; a full set builds an ally
 }
 
 // NewAvatar is an online avatar at pos with full health.
@@ -70,7 +62,7 @@ type Target struct {
 	Step, Steps                               int
 	FrozenAt                                  float64
 	Busy                                      bool // an op is in flight; no further intents
-	New, Restored                             bool
+	New                                       bool
 	ShotCD                                    float64 // hunter fire cooldown, seconds until it may shoot again
 	Checkpoint                                string  // its booking's checkpoint ID (the session itself is gone)
 
@@ -93,16 +85,14 @@ type Input struct {
 	Fire, Action bool
 }
 
-// Intent asks the Game to run an op: freeze, extract, delete or spring.
+// Intent asks the Game to run an op: freeze, extract (book), delete or spring.
 type Intent struct{ Kind, Target, Player string }
 
 // control is the per-player input state, including ACTION press tracking.
 type control struct {
-	in        Input
-	pressAt   float64
-	held      bool // ACTION currently down
-	holdFired bool // this press already produced a delete
-	tap       bool // a short press is waiting for the next Tick
+	in   Input
+	held bool // ACTION currently down
+	tap  bool // a press is waiting for the next Tick
 }
 
 // World is the whole simulation.
@@ -113,7 +103,6 @@ type World struct {
 	Now     float64
 	Events  []Event
 	Drops   map[string]*Drop
-	Stash   map[string][]Part // banked parts per player ID
 	Rand    *rand.Rand        // loot rolls; NewWorld seeds it from the clock
 	Allies  map[string]*Ally  // deployed allies; ones still spawning are kept in pending
 
@@ -127,11 +116,11 @@ func NewWorld(c *City) *World {
 	seed := uint64(time.Now().UnixNano())
 	return &World{
 		City: c, Avatars: map[string]*Avatar{}, Targets: map[string]*Target{}, ctl: map[string]*control{}, pending: map[string]*pendingAlly{},
-		Allies: map[string]*Ally{}, Drops: map[string]*Drop{}, Stash: map[string][]Part{}, Rand: rand.New(rand.NewPCG(seed, seed>>1|1)),
+		Allies: map[string]*Ally{}, Drops: map[string]*Drop{}, Rand: rand.New(rand.NewPCG(seed, seed>>1|1)),
 	}
 }
 
-// Input records a player's controls. ACTION edges are tracked here so a press and
+// Input records a player's controls. ACTION presses are tracked here so a press and
 // release between two ticks still counts as a tap.
 func (w *World) Input(playerID string, in Input) {
 	k := w.ctl[playerID]
@@ -139,15 +128,10 @@ func (w *World) Input(playerID string, in Input) {
 		k = &control{}
 		w.ctl[playerID] = k
 	}
-	switch {
-	case in.Action && !k.held:
-		k.held, k.pressAt, k.holdFired = true, w.Now, false
-	case !in.Action && k.held:
-		k.held = false
-		if !k.holdFired && w.Now-k.pressAt < holdTime-eps {
-			k.tap = true
-		}
+	if in.Action && !k.held {
+		k.tap = true
 	}
+	k.held = in.Action
 	k.in = in
 }
 
@@ -158,16 +142,9 @@ func (w *World) DrainEvents() []Event {
 	return ev
 }
 
-// claim is one avatar's ACTION request for a tick.
-type claim struct {
-	a    *Avatar
-	kind string // drag, spring or delete
-	t    *Target
-}
-
 // Tick advances the world by dt seconds and returns the ops to run. Players are handled
-// in sorted ID order, and drags beat springs beat deletes on the same target, so the
-// winner of a same-tick contest is deterministic.
+// in sorted ID order, so the winner of a same-tick contest for a frozen target is
+// deterministic.
 func (w *World) Tick(dt float64) []Intent {
 	if !finite(dt) || dt < 0 {
 		dt = 0
@@ -175,7 +152,6 @@ func (w *World) Tick(dt float64) []Intent {
 	w.Now += dt
 	w.expireDrops()
 	var out []Intent
-	var claims []claim
 	for _, id := range slices.Sorted(maps.Keys(w.Avatars)) {
 		a := w.Avatars[id]
 		k := w.ctl[id]
@@ -184,63 +160,32 @@ func (w *World) Tick(dt float64) []Intent {
 			w.ctl[id] = k
 		}
 		a.FireCD = max(0, a.FireCD-dt)
-		a.SpringCD = max(0, a.SpringCD-dt)
 		if a.Down {
 			w.tickDown(a, k)
 			continue
 		}
 		w.regen(a, dt)
 		if !a.Online {
-			w.drop(a)
 			*k = control{}
 			continue
 		}
 		w.moveAvatar(a, k.in.Move, dt)
 		w.pickup(a)
-		w.bank(a)
 		if k.in.Fire && a.FireCD <= eps {
 			out = append(out, w.fire(a)...)
 		}
 		if k.tap {
 			k.tap = false
-			if a.Dragging != "" {
-				w.drop(a)
-			} else if t, al := w.adjacentFrozen(a), w.ownFrozenAlly(a); al != nil && (t == nil || dist(a.Pos, al.Pos) < dist(a.Pos, t.Pos)) {
-				out = append(out, w.startAlly(al, "spring", a.PlayerID)) // your own ally: no cooldown
+			if t, al := w.adjacentFrozen(a), w.ownFrozenAlly(a); al != nil && (t == nil || dist(a.Pos, al.Pos) < dist(a.Pos, t.Pos)) {
+				out = append(out, w.startAlly(al, "spring", a.PlayerID))
 			} else if t != nil {
-				kind := "drag"
-				if t.Squad != "" && t.Squad != a.Squad && a.SpringCD <= eps {
-					kind = "spring"
-				}
-				claims = append(claims, claim{a, kind, t})
-			}
-		}
-		if k.held && !k.holdFired && w.Now-k.pressAt >= holdTime-eps {
-			if t := w.adjacentFrozen(a); t != nil {
-				k.holdFired = true
-				claims = append(claims, claim{a, "delete", t})
-			}
-		}
-	}
-	for _, kind := range []string{"drag", "spring", "delete"} {
-		for _, c := range claims {
-			if c.kind != kind || c.t.State != Frozen || c.t.Busy {
-				continue
-			}
-			switch kind {
-			case "drag":
-				c.t.State, c.a.Dragging = Dragged, c.t.ID
-			case "spring":
-				c.a.SpringCD = springCD
-				out = append(out, w.start(c.t, "spring", c.a.PlayerID))
-			case "delete":
-				out = append(out, w.start(c.t, "delete", c.a.PlayerID))
+				out = append(out, w.start(t, "extract", a.PlayerID)) // book it where it stands
 			}
 		}
 	}
 	out = append(out, w.tickAllies(dt)...)
 	out = append(out, w.huntersFire(dt)...)
-	out = append(out, w.moveTargets(dt)...)
+	w.moveTargets(dt)
 	return out
 }
 
@@ -251,11 +196,7 @@ func (w *World) start(t *Target, kind, player string) Intent {
 }
 
 func (w *World) moveAvatar(a *Avatar, dir Vec, dt float64) {
-	speed := avatarSpeed
-	if a.Dragging != "" {
-		speed *= dragFactor
-	}
-	a.Pos = w.City.Move(a.Pos, dir, speed, dt)
+	a.Pos = w.City.Move(a.Pos, dir, avatarSpeed, dt)
 	if n := math.Hypot(dir.X, dir.Y); n > 0 && finite(n) {
 		a.Facing = Vec{dir.X / n, dir.Y / n}
 	}
@@ -271,7 +212,7 @@ func (w *World) fire(a *Avatar) []Intent {
 }
 
 // shoot hits the nearest Working, non-busy target within fireRange of from, crediting
-// player by (an ally's shots are its owner's). The third hit asks for a freeze.
+// player by (an ally's shots are its owner's). The hitsToFreeze-th hit asks for a freeze.
 func (w *World) shoot(from Vec, by string) (bool, []Intent) {
 	t := w.nearest(from, fireRange, func(t *Target) bool { return t.State == Working && !t.Busy })
 	if t == nil {
@@ -306,54 +247,22 @@ func (w *World) nearest(p Vec, r float64, ok func(*Target) bool) *Target {
 	return best
 }
 
-// drop releases whatever a is dragging; the target stays Frozen where it is.
-func (w *World) drop(a *Avatar) {
-	if t := w.Targets[a.Dragging]; t != nil && t.State == Dragged {
-		t.State = Frozen
-	}
-	a.Dragging = ""
-}
-
-// moveTargets moves dragged targets after their avatars (asking for an extract once in
-// the Vault) and makes Working targets flee nearby avatars.
-func (w *World) moveTargets(dt float64) []Intent {
-	draggers := map[string]*Avatar{}
-	for _, a := range w.Avatars {
-		if a.Online && a.Dragging != "" {
-			draggers[a.Dragging] = a
-		}
-	}
-	var out []Intent
+// moveTargets makes Working targets flee nearby avatars.
+func (w *World) moveTargets(dt float64) {
 	for _, id := range slices.Sorted(maps.Keys(w.Targets)) {
 		t := w.Targets[id]
-		switch {
-		case t.State == Dragged:
-			a := draggers[id]
-			if a == nil { // dragger removed: leave the catch where it lies
-				t.State = Frozen
-				continue
-			}
-			if t.Busy {
-				continue
-			}
-			if dist(t.Pos, a.Pos) > dragGap {
-				t.Pos = w.City.Move(t.Pos, Vec{a.Pos.X - t.Pos.X, a.Pos.Y - t.Pos.Y}, avatarSpeed*dragFactor, dt)
-			}
-			if w.City.Vault.Contains(t.Pos) {
-				out = append(out, w.start(t, "extract", a.PlayerID))
-			}
-		case t.State == Working && !t.Busy:
-			var away Vec
-			for _, a := range w.Avatars {
-				if d := dist(t.Pos, a.Pos); a.Online && d < fleeRange && d > eps {
-					away.X += (t.Pos.X - a.Pos.X) / (d * d)
-					away.Y += (t.Pos.Y - a.Pos.Y) / (d * d)
-				}
-			}
-			t.Pos = w.City.Move(t.Pos, away, targetSpeed, dt)
+		if t.State != Working || t.Busy {
+			continue
 		}
+		var away Vec
+		for _, a := range w.Avatars {
+			if d := dist(t.Pos, a.Pos); a.Online && d < fleeRange && d > eps {
+				away.X += (t.Pos.X - a.Pos.X) / (d * d)
+				away.Y += (t.Pos.Y - a.Pos.Y) / (d * d)
+			}
+		}
+		t.Pos = w.City.Move(t.Pos, away, targetSpeed, dt)
 	}
-	return out
 }
 
 // Resolve applies the result of an op the Game ran for target, a target or an ally
@@ -389,34 +298,17 @@ func (w *World) Resolve(target, kind string, ok bool, ms int64) {
 		if ok {
 			t.State = Booked
 			ev.Kind = "booked"
-		} else if t.State == Dragged {
-			t.State = Frozen // the dragger must grab it again to retry
 		}
-		w.release(t.ID)
 	case "delete":
 		if ok {
 			t.State = Deleted
 			ev.Kind = "deleted"
 			loot = true
 		}
-	case "spring":
-		if ok {
-			t.State, t.Hits, t.HitBy, t.FrozenBy, t.Restored = Working, 0, map[string]bool{}, "", true
-			ev.Kind = "sprung"
-		}
 	}
 	w.Events = append(w.Events, ev)
 	if loot {
 		w.lootDrop(t, by)
-	}
-}
-
-// release clears every avatar dragging target.
-func (w *World) release(target string) {
-	for _, a := range w.Avatars {
-		if a.Dragging == target {
-			a.Dragging = ""
-		}
 	}
 }
 

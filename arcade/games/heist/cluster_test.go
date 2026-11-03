@@ -462,7 +462,7 @@ func TestFreezeDuringStep(t *testing.T) {
 
 // ---- TestBoothLoad: 24 phones on the real protocol for 5 minutes ----
 
-// boothCity is GET /grand-theft-agent/api/city with BFS steering on its tiles.
+// boothCity is GET /substrate-siege/api/city with BFS steering on its tiles.
 type boothCity struct {
 	CityView
 }
@@ -520,7 +520,8 @@ func unit(x, y float64) (float64, float64) {
 // boothBot is one phone: a joined player on its own WebSocket.
 type boothBot struct {
 	nick, cookie string
-	leader       bool // starts the squad's missions
+	leader       bool // starts the squad's runs
+	books        bool // taps frozen agents to book them (the others leave them be)
 	conn         *websocket.Conn
 
 	mu      sync.Mutex
@@ -605,9 +606,9 @@ func (b *boothBot) read(ctx context.Context, onSnap func(*Snap)) {
 	}
 }
 
-// tick decides one input frame: start a mission (leader), build a rig, drag a catch to
-// the Vault, bank parts, pick up drops, grab a frozen target (Level 2+), or chase and
-// shoot the nearest hunter.
+// tick decides one input frame: start a run (leader), book a frozen agent next to it,
+// pick up drops, or chase and shoot the nearest agent (own run's first). Rigs build
+// themselves once a bot carries a full set.
 func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick string)) {
 	b.mu.Lock()
 	s, squad := b.snap, b.squad
@@ -624,11 +625,10 @@ func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick strin
 	}
 	if b.leader && cur == nil && now.Sub(b.startAt) > 3*time.Second {
 		b.startAt = now
-		b.send(ctx, map[string]any{"t": "start", "level": min(s.Best+1, 3)})
+		b.send(ctx, map[string]any{"t": "start"})
 	}
-	if s.Stash != nil && now.Sub(b.buildAt) > 5*time.Second && hasRig(*s.Stash) {
+	if s.Inv != nil && hasRig(*s.Inv) && now.Sub(b.buildAt) > 5*time.Second {
 		b.buildAt = now
-		b.send(ctx, map[string]any{"t": "build"})
 		built(b.nick)
 	}
 	var me *AvatarView
@@ -644,13 +644,8 @@ func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick strin
 	}
 	move := func(gx, gy float64) { in["mx"], in["my"] = c.steer(me.X, me.Y, gx, gy) }
 	d := func(x, y float64) float64 { return math.Hypot(x-me.X, y-me.Y) }
-	vx, vy := c.Vault.X+c.Vault.W/2, c.Vault.Y+c.Vault.H/2
-	if b.tapping { // release ACTION: a press shorter than holdTime is a tap
+	if b.tapping { // release ACTION
 		b.tapping = false
-		return
-	}
-	if me.Dragging != "" {
-		move(vx, vy)
 		return
 	}
 	mine := func(t TargetView) bool { return cur != nil && t.Mission == cur.ID }
@@ -658,12 +653,12 @@ func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick strin
 	for i := range s.Targets {
 		t := &s.Targets[i]
 		switch {
-		case t.State == "Frozen" && !t.Busy && mine(*t) && cur.Level >= 2:
+		case t.State == "Frozen" && !t.Busy && d(t.X, t.Y) < 6 && b.books:
 			if frozen == nil || d(t.X, t.Y) < d(frozen.X, frozen.Y) {
 				frozen = t
 			}
 		case t.State == "Working" && !t.Busy:
-			// Own mission's hunters first; anyone's within reach otherwise.
+			// Own run's agents first; anyone's within reach otherwise.
 			if !mine(*t) && d(t.X, t.Y) > 8 {
 				continue
 			}
@@ -679,19 +674,19 @@ func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick strin
 	var drop *DropView
 	if inv < invSlots {
 		for i := range s.Drops {
-			if dd := &s.Drops[i]; d(dd.X, dd.Y) < 10 && (drop == nil || d(dd.X, dd.Y) < d(drop.X, drop.Y)) {
+			if dd := &s.Drops[i]; d(dd.X, dd.Y) < 6 && (drop == nil || d(dd.X, dd.Y) < d(drop.X, drop.Y)) {
 				drop = dd
 			}
 		}
 	}
 	switch {
 	case frozen != nil:
-		if d(frozen.X, frozen.Y) > 0.9 {
+		if d(frozen.X, frozen.Y) > actionRange-0.4 {
 			move(frozen.X, frozen.Y)
 		} else if now.Sub(b.grabAt) > 1500*time.Millisecond {
 			b.grabAt, b.tapping, in["act"] = now, true, true
 		}
-	case working != nil && mine(*working):
+	case working != nil:
 		dist := d(working.X, working.Y)
 		in["fire"] = dist < fireRange-0.5
 		if dist > 3.5 {
@@ -699,17 +694,12 @@ func (b *boothBot) tick(ctx context.Context, c *boothCity, built func(nick strin
 		}
 	case drop != nil:
 		move(drop.X, drop.Y)
-	case inv > 0:
-		move(vx, vy) // standing in the Vault banks the whole inventory
-	case working != nil:
-		in["fire"] = d(working.X, working.Y) < fireRange-0.5
-		move(working.X, working.Y)
 	}
 }
 
-func hasRig(stash []PartView) bool {
+func hasRig(parts []PartView) bool {
 	have := map[string]bool{}
-	for _, p := range stash {
+	for _, p := range parts {
 		have[p.Kind] = true
 	}
 	return have["board"] && have["cpu"] && have["ram"] && have["drive"]
@@ -740,7 +730,6 @@ type boothObserver struct {
 	timings   map[string]*boothTiming
 	events    map[string]int
 	outcomes  map[string]int
-	levelsWon map[int]int
 	stuck     map[string]string
 	builtAt   map[string]time.Time // nick -> last build frame
 	nickOf    map[string]string    // player id -> nick
@@ -749,14 +738,13 @@ type boothObserver struct {
 	cap       CapView
 	allies    int
 	alliesMax int
-	queuedMax int
 	last      *Snap
 }
 
 func newBoothObserver() *boothObserver {
 	o := &boothObserver{busyAt: map[string]time.Time{}, events: map[string]int{}, outcomes: map[string]int{},
-		levelsWon: map[int]int{}, stuck: map[string]string{}, builtAt: map[string]time.Time{}, nickOf: map[string]string{}}
-	o.timings = map[string]*boothTiming{"freeze": {}, "spring": {}, "extract": {}}
+		stuck: map[string]string{}, builtAt: map[string]time.Time{}, nickOf: map[string]string{}}
+	o.timings = map[string]*boothTiming{"freeze": {}, "extract": {}}
 	return o
 }
 
@@ -776,14 +764,13 @@ func (o *boothObserver) onSnap(s *Snap) {
 	for _, a := range s.Avatars {
 		o.nickOf[a.ID] = a.Nick
 	}
-	// Which op a Busy target is waiting on follows from its state: Working -> freeze,
-	// Frozen -> spring (the bots never hold ACTION to delete), Dragged -> extract.
+	// A Busy target names the op it waits on: freeze, extract or delete.
 	busy := map[string]bool{}
 	for _, t := range s.Targets {
 		if !t.Busy {
 			continue
 		}
-		k := t.ID + "/" + t.State
+		k := t.ID + "/" + t.Op
 		busy[k] = true
 		if _, ok := o.busyAt[k]; !ok {
 			o.busyAt[k] = now
@@ -801,17 +788,12 @@ func (o *boothObserver) onSnap(s *Snap) {
 		o.events[e.Kind]++
 		switch e.Kind {
 		case "frozen":
-			if w, ok := take(e.Target, "Working"); ok {
+			if w, ok := take(e.Target, "freeze"); ok {
 				o.timings["freeze"].wall = append(o.timings["freeze"].wall, w)
 				o.timings["freeze"].call = append(o.timings["freeze"].call, float64(e.Ms))
 			}
-		case "sprung":
-			if w, ok := take(e.Target, "Frozen"); ok {
-				o.timings["spring"].wall = append(o.timings["spring"].wall, w)
-				o.timings["spring"].call = append(o.timings["spring"].call, float64(e.Ms))
-			}
 		case "booked":
-			if w, ok := take(e.Target, "Dragged"); ok {
+			if w, ok := take(e.Target, "extract"); ok {
 				o.timings["extract"].wall = append(o.timings["extract"].wall, w)
 				o.timings["extract"].call = append(o.timings["extract"].call, float64(e.Ms))
 			}
@@ -823,15 +805,10 @@ func (o *boothObserver) onSnap(s *Snap) {
 					o.allyMs = append(o.allyMs, float64(now.Sub(at).Milliseconds()))
 				}
 			}
-		case "mission-won", "mission-failed", "mission-escaped":
-			o.outcomes[strings.TrimPrefix(e.Kind, "mission-")]++
-			if e.Kind == "mission-won" {
-				for _, m := range s.Missions {
-					if m.ID == e.Text {
-						o.levelsWon[m.Level]++
-					}
-				}
-			}
+		case "run-done":
+			o.outcomes["done"]++
+		case "escaped":
+			o.outcomes["escaped"]++
 		}
 	}
 	for k := range o.busyAt { // a busy flag that cleared without its event (a failed op)
@@ -839,16 +816,11 @@ func (o *boothObserver) onSnap(s *Snap) {
 			delete(o.busyAt, k)
 		}
 	}
-	queued := 0
 	for _, m := range s.Missions {
-		if m.Queued {
-			queued++
-		}
-		if m.Outcome == "" && !m.Queued && s.Now > m.Ends+10 {
-			o.stuck[m.ID] = fmt.Sprintf("mission %s (squad %s, level %d) timer ran out at %.0f s, no outcome at %.0f s", m.ID, m.Squad, m.Level, m.Ends, s.Now)
+		if m.Outcome == "" && s.Now > m.Ends+10 {
+			o.stuck[m.ID] = fmt.Sprintf("run %s (squad %s) timer ran out at %.0f s, no end at %.0f s", m.ID, m.Squad, m.Ends, s.Now)
 		}
 	}
-	o.queuedMax = max(o.queuedMax, queued)
 	o.cap = s.Cap
 	o.capMax = CapView{max(o.capMax.Steps, s.Cap.Steps), max(o.capMax.Resumes, s.Cap.Resumes), max(o.capMax.Queued, s.Cap.Queued)}
 	o.allies = len(s.Allies)
@@ -909,7 +881,7 @@ func opFailures(ctx context.Context, t0 time.Time) (byKind map[string]int, bad [
 		if strings.Contains(line, "failed output validation") || strings.Contains(line, "unreadable, using fallback") {
 			fallbacks++
 		}
-		if !strings.Contains(line, "grand theft agent: op failed") {
+		if !strings.Contains(line, "substrate siege: op failed") {
 			continue
 		}
 		kind, msg := "?", ""
@@ -934,11 +906,11 @@ func opFailures(ctx context.Context, t0 time.Time) (byKind map[string]int, bad [
 
 // TestBoothLoad plays a busy booth for BOOTH_SECS (default 300) seconds through the real
 // phone protocol: 24 players (8 solo, 4 squads of 4) join with /api/join, open the
-// game's WebSocket with their cookie and play Levels 1-3 in unlock order. Bots chase
-// and shoot the nearest hunter, pick up parts, bank them in the Vault, build rigs, and
-// on Levels 2-3 drag frozen targets into the Vault. Every 30 s it logs freeze, spring
-// and booking times, the cap, errors by kind, allies and agentgateway tokens a minute.
-// It fails on a stuck mission or on any op error that is not an agentgateway policy
+// game's WebSocket with their cookie and play back-to-back 3-minute runs. Bots chase
+// and shoot the nearest agent and pick up parts (full rigs deploy allies on their own);
+// half of them also book the frozen agents they pass. Every 30 s it logs freeze and
+// booking times, the cap, errors by kind, allies and agentgateway tokens a minute.
+// It fails on a stuck run or on any op error that is not an agentgateway policy
 // stop. It resets the game first and last (BOOTH_RESET=0 skips that).
 func TestBoothLoad(t *testing.T) {
 	base := strings.TrimRight(os.Getenv("ARCADE_URL"), "/")
@@ -958,7 +930,7 @@ func TestBoothLoad(t *testing.T) {
 		}
 		rctx, rc := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer rc()
-		req, _ := http.NewRequestWithContext(rctx, http.MethodPost, base+"/admin/grand-theft-agent/api/reset", nil)
+		req, _ := http.NewRequestWithContext(rctx, http.MethodPost, base+"/admin/substrate-siege/api/reset", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Logf("reset: %v", err)
@@ -990,7 +962,7 @@ func TestBoothLoad(t *testing.T) {
 	}
 
 	var city boothCity
-	resp, err := http.Get(base + "/grand-theft-agent/api/city")
+	resp, err := http.Get(base + "/substrate-siege/api/city")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1001,7 +973,7 @@ func TestBoothLoad(t *testing.T) {
 	}
 
 	obs := newBoothObserver()
-	oconn, err := boothDial(ctx, base, "/grand-theft-agent/ws?screen=1", "")
+	oconn, err := boothDial(ctx, base, "/substrate-siege/ws?screen=1", "")
 	if err != nil {
 		t.Fatalf("observer: %v", err)
 	}
@@ -1017,12 +989,12 @@ func TestBoothLoad(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		conn, err := boothDial(ctx, base, "/grand-theft-agent/ws", cookie)
+		conn, err := boothDial(ctx, base, "/substrate-siege/ws", cookie)
 		if err != nil {
 			t.Fatalf("%s: %v", nick, err)
 		}
 		defer conn.CloseNow()
-		b := &boothBot{nick: nick, cookie: cookie, conn: conn, errs: map[string]int{}, leader: i < 8 || (i-8)%4 == 0}
+		b := &boothBot{nick: nick, cookie: cookie, conn: conn, errs: map[string]int{}, leader: i < 8 || (i-8)%4 == 0, books: i%2 == 0}
 		go b.read(ctx, nil)
 		bots = append(bots, b)
 	}
@@ -1138,16 +1110,16 @@ func TestBoothLoad(t *testing.T) {
 		if obs.last != nil {
 			subs = obs.last.Substrate
 		}
-		t.Logf("[+%3.0fs]%s online %d | missions %v levels won %v | freeze %s | spring %s | booking %s",
-			now.Sub(t0).Seconds(), map[bool]string{true: " FINAL", false: ""}[final], online, obs.outcomes, obs.levelsWon,
-			obs.timings["freeze"], obs.timings["spring"], obs.timings["extract"])
-		t.Logf("        cap now steps %d resumes %d queued %d (max %d/%d/%d), queued missions max %d | allies live %d (max %d), spawn %d p50/p95 %.0f/%.0f ms | heist actors %d awake %d asleep %d",
-			obs.cap.Steps, obs.cap.Resumes, obs.cap.Queued, obs.capMax.Steps, obs.capMax.Resumes, obs.capMax.Queued, obs.queuedMax,
+		t.Logf("[+%3.0fs]%s online %d | runs/escapes %v | freeze %s | booking %s",
+			now.Sub(t0).Seconds(), map[bool]string{true: " FINAL", false: ""}[final], online, obs.outcomes,
+			obs.timings["freeze"], obs.timings["extract"])
+		t.Logf("        cap now steps %d resumes %d queued %d (max %d/%d/%d) | allies live %d (max %d), spawn %d p50/p95 %.0f/%.0f ms | heist actors %d awake %d asleep %d",
+			obs.cap.Steps, obs.cap.Resumes, obs.cap.Queued, obs.capMax.Steps, obs.capMax.Resumes, obs.capMax.Queued,
 			obs.allies, obs.alliesMax, len(obs.allyMs), pct(obs.allyMs, .5), pct(obs.allyMs, .95), subs.Agents, subs.Awake, subs.Asleep)
 		t.Logf("        events %v | op errors (arcade log) %v, fallback lines %d%s | replies %v | %s",
 			evErr, byKind, fb, map[bool]string{true: " (log read failed: " + fmt.Sprint(lerr) + ")", false: ""}[lerr != nil], replies, tokLine)
-		t.Logf("        activity: hits-on-players %d downs %d drops %d pickups %d banked %d allies %d",
-			obs.events["hit"], obs.events["down"], obs.events["drop"], obs.events["pickup"], obs.events["banked"], obs.events["ally"])
+		t.Logf("        activity: hits-on-players %d downs %d drops %d pickups %d frozen %d booked %d deleted %d allies %d",
+			obs.events["hit"], obs.events["down"], obs.events["drop"], obs.events["pickup"], obs.events["frozen"], obs.events["booked"], obs.events["deleted"], obs.events["ally"])
 		obs.mu.Unlock()
 		if final {
 			for _, b := range bad {
@@ -1171,7 +1143,7 @@ loop:
 			t.Fatal("timed out")
 		}
 	}
-	// Let the last frozen-or-dragged ops land so their times count.
+	// Let the last freezes and bookings land so their times count.
 	time.Sleep(5 * time.Second)
 	sample(true)
 
@@ -1180,11 +1152,11 @@ loop:
 	for _, k := range slices.Sorted(maps.Keys(obs.stuck)) {
 		t.Errorf("stuck: %s", obs.stuck[k])
 	}
-	fr, sp := obs.timings["freeze"], obs.timings["spring"]
+	fr, bk := obs.timings["freeze"], obs.timings["extract"]
 	verdict := func(ok bool) string { return map[bool]string{true: "PASS", false: "MISS"}[ok] }
-	t.Logf("TARGETS tokens/min max %.0f < 300000: %s | p95 freeze wall %.0f ms (call alone %.0f ms) < 1000: %s | p95 spring wall %.0f ms (call %.0f ms) < 6000: %s",
+	t.Logf("TARGETS tokens/min max %.0f < 300000: %s | p95 freeze wall %.0f ms (call alone %.0f ms) < 1000: %s | p95 booking wall %.0f ms (call %.0f ms) < 8000: %s",
 		maxPerMin, verdict(maxPerMin < 300000), pct(fr.wall, .95), pct(fr.call, .95), verdict(pct(fr.wall, .95) < 1000),
-		pct(sp.wall, .95), pct(sp.call, .95), verdict(pct(sp.wall, .95) < 6000))
+		pct(bk.wall, .95), pct(bk.call, .95), verdict(pct(bk.wall, .95) < 8000))
 	if len(fr.wall) == 0 {
 		t.Errorf("no freeze landed in %d s", secs)
 	}

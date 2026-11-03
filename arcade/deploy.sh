@@ -37,7 +37,7 @@ echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
 k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
 
-echo "==> Grand Theft Agent: heist WorkerPool, heister and sidekick Agents"
+echo "==> Substrate Siege: heist WorkerPool, heister and sidekick Agents"
 k apply -f manifests/heist-agent.yaml -f manifests/heist-policies.yaml
 k -n kagent wait agent/heister agent/sidekick --for=condition=Ready --timeout 5m
 
@@ -73,5 +73,5 @@ echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen
 echo "Escape:     http://localhost:8090/sandbox-escape (big screen: /sandbox-escape/screen)"
 echo "Forks:      http://localhost:8090/fork-frenzy (big screen: /fork-frenzy/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
-echo "Heist:      http://localhost:8090/grand-theft-agent (big screen: /grand-theft-agent/screen)"
+echo "Heist:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
 echo "Admin:      http://localhost:8090/admin"

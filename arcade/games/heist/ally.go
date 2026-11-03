@@ -1,12 +1,11 @@
-// This file is rigs and allies: a player spends a board, a CPU, a RAM stick and a drive
-// from their stash to deploy an ally, a real agent session that follows them and shoots
+// This file is rigs and allies: a player carrying a board, a CPU, a RAM stick and a drive
+// builds a rig that deploys an ally, a real agent session that follows them and shoots
 // hunters. An ally's hits count as its owner's, so a freeze it lands is the owner's
 // takedown. Hunters shoot allies too; at 0 health an ally is frozen (a real suspend),
 // and its owner springs it with a short ACTION next to it.
 //
-// Allies are deleted when their owner's mission ends (won, failed or escaped). An ally
-// deployed while its owner has no active mission stays until the owner's next mission
-// ends; deleting allies when a player leaves is the Game's job.
+// Allies are deleted when their owner's run ends. An ally deployed while its owner has
+// no run going stays until the owner's next run ends; deleting allies when a player leaves is the Game's job.
 package heist
 
 import (
@@ -50,10 +49,23 @@ type pendingAlly struct {
 // allyFireRate is shots per second for a RAM tier: 1.0 at DDR1 up to 2.2 at DDR5.
 func allyFireRate(tier int) float64 { return 1.0 + 0.3*float64(tier-1) }
 
-// BuildRig spends a board, a CPU, the highest-tier RAM and a drive from playerID's stash
-// and returns the intent to spawn the ally. Nothing is spent on error.
+// HasRig reports whether parts hold a full rig: a board, a CPU, RAM and a drive.
+func HasRig(parts []Part) bool {
+	have := map[string]bool{}
+	for _, p := range parts {
+		have[p.Kind] = true
+	}
+	return have["board"] && have["cpu"] && have["ram"] && have["drive"]
+}
+
+// BuildRig spends a board, a CPU, the highest-tier RAM and a drive from playerID's
+// inventory and returns the intent to spawn the ally. Nothing is spent on error.
 func (w *World) BuildRig(playerID string) (Intent, error) {
-	stash := w.Stash[playerID]
+	a := w.Avatars[playerID]
+	if a == nil {
+		return Intent{}, errors.New("not in the city")
+	}
+	stash := a.Inv
 	pick := map[string]int{"board": -1, "cpu": -1, "ram": -1, "drive": -1}
 	for i, p := range stash {
 		j, ok := pick[p.Kind]
@@ -90,7 +102,7 @@ func (w *World) BuildRig(playerID string) (Intent, error) {
 			left = append(left, part)
 		}
 	}
-	w.Stash[playerID] = left
+	a.Inv = left
 	w.allySeq++
 	id := fmt.Sprintf("ally-%d", w.allySeq)
 	w.pending[id] = p
@@ -105,9 +117,9 @@ func (w *World) allySpawned(r Result) {
 	}
 	delete(w.pending, r.Target)
 	if !r.OK {
-		w.Stash[p.owner] = append(w.Stash[p.owner], p.parts...)
+		w.refund(p)
 		// The raw error stays in the log: events go to every screen and phone.
-		slog.Warn("grand theft agent: rig failed", "ally", r.Target, "owner", p.owner, "err", r.Err)
+		slog.Warn("substrate siege: rig failed", "ally", r.Target, "owner", p.owner, "err", r.Err)
 		w.Events = append(w.Events, Event{Kind: "rig-failed", Target: r.Target, Player: p.owner, Text: "rig failed to boot"})
 		return
 	}
@@ -128,7 +140,20 @@ func (w *World) cancelRig(id string) {
 		return
 	}
 	delete(w.pending, id)
-	w.Stash[p.owner] = append(w.Stash[p.owner], p.parts...)
+	w.refund(p)
+}
+
+// refund gives a rig's parts back to its owner, or drops them at Dispatch if the owner
+// left the city.
+func (w *World) refund(p *pendingAlly) {
+	if a := w.Avatars[p.owner]; a != nil {
+		a.Inv = append(a.Inv, p.parts...)
+		return
+	}
+	d := w.City.Dispatch
+	for _, part := range p.parts {
+		w.dropPart(part, Vec{d.X + d.W/2, d.Y + d.H/2}, lootTTL)
+	}
 }
 
 // startAlly marks al busy with an op by player and returns its intent.

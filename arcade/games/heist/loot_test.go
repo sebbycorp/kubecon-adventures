@@ -87,7 +87,7 @@ func TestHuntersShootNearest(t *testing.T) {
 		t.Fatalf("third shot at 2.5 s: a=%v b=%v", a.HP, b.HP)
 	}
 
-	for _, st := range []TargetState{Frozen, Dragged} {
+	for _, st := range []TargetState{Frozen, Booked} {
 		w2 := testWorld([]string{"red"}, Vec{14.5, 0.5})
 		addTarget(w2, "h", "red", st, Vec{10.5, 0.5})
 		for range 30 {
@@ -149,8 +149,6 @@ func TestDownDropsBagAndRespawns(t *testing.T) {
 	w := seeded(testWorld([]string{"red"}, Vec{14.5, 0.5}))
 	a := w.Avatars["a"]
 	h := addTarget(w, "h", "red", Working, Vec{10.5, 0.5})
-	c := addTarget(w, "c", "red", Dragged, Vec{15.2, 0.5})
-	a.Dragging = "c"
 	a.HP = 10
 	a.Inv = []Part{{ID: "p1", Kind: "cpu"}, {ID: "p2", Kind: "ram", Tier: 5}}
 	where := a.Pos
@@ -159,9 +157,6 @@ func TestDownDropsBagAndRespawns(t *testing.T) {
 	ev := w.DrainEvents()
 	if !a.Down || a.HP != 0 || countKind(ev, "down") != 1 {
 		t.Fatalf("not down: %+v events=%v", a, ev)
-	}
-	if a.Dragging != "" || c.State != Frozen {
-		t.Fatalf("drag not dropped: dragging=%q target=%v", a.Dragging, c.State)
 	}
 	if len(a.Inv) != 0 || len(w.Drops) != 2 {
 		t.Fatalf("bag: inv=%v drops=%v", a.Inv, w.Drops)
@@ -174,7 +169,6 @@ func TestDownDropsBagAndRespawns(t *testing.T) {
 	// Down: no hits taken, no movement, no fire, no action.
 	other := addTarget(w, "o", "red", Working, Vec{18.5, 0.5})
 	frozen := addTarget(w, "f", "red", Frozen, Vec{a.Pos.X, 1})
-	_ = frozen
 	w.Input("a", Input{Move: Vec{1, 0}, Fire: true})
 	pos := a.Pos
 	for range 5 {
@@ -184,9 +178,8 @@ func TestDownDropsBagAndRespawns(t *testing.T) {
 	if a.Pos != pos || other.Hits != 0 || h.Hits != 0 || a.HP != 0 {
 		t.Fatalf("down avatar acted: pos=%v→%v hits=%d/%d hp=%v", pos, a.Pos, other.Hits, h.Hits, a.HP)
 	}
-	tap(w, 0.1, "a")
-	if a.Dragging != "" {
-		t.Fatalf("down avatar grabbed %q", a.Dragging)
+	if got := tap(w, 0.1, "a"); len(got) != 0 || frozen.Busy {
+		t.Fatalf("down avatar booked: %v", got)
 	}
 	if countKind(w.DrainEvents(), "hit") != 0 {
 		t.Fatal("down avatar was shot")
@@ -271,34 +264,5 @@ func TestPickupAndFullInventory(t *testing.T) {
 	w.Tick(0.1)
 	if w.Drops["d2"] != nil {
 		t.Fatal("expired drop not removed")
-	}
-}
-
-func TestVaultBanks(t *testing.T) {
-	v := NewCity(nil).Vault
-	w := testWorld([]string{"red"}, Vec{v.X + 1.5, v.Y - 0.5})
-	a := w.Avatars["a"]
-	w.Tick(0.1)
-	if countKind(w.DrainEvents(), "banked") != 0 {
-		t.Fatal("banked an empty inventory")
-	}
-	a.Inv = []Part{{ID: "p1", Kind: "cpu"}, {ID: "p2", Kind: "board"}}
-	a.Pos = Vec{v.X + 1.5, v.Y + 1.5}
-	w.Tick(0.1)
-	ev := w.DrainEvents()
-	if len(a.Inv) != 0 || len(w.Stash["a"]) != 2 {
-		t.Fatalf("bank: inv=%v stash=%v", a.Inv, w.Stash)
-	}
-	if countKind(ev, "banked") != 1 || ev[0].Player != "a" || ev[0].Text != "2" {
-		t.Fatalf("banked events %v", ev)
-	}
-	w.Tick(0.1)
-	if countKind(w.DrainEvents(), "banked") != 0 {
-		t.Fatal("banked again with nothing")
-	}
-	a.Inv = []Part{{ID: "p3", Kind: "drive"}}
-	w.Tick(0.1)
-	if len(w.Stash["a"]) != 3 {
-		t.Fatalf("stash = %v", w.Stash["a"])
 	}
 }

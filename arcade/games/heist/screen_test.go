@@ -50,7 +50,7 @@ func TestBoardRigAndAllies(t *testing.T) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	build := func(tier int) {
-		g.w.Stash["a"] = rig("p", tier)
+		g.w.Avatars["a"].Inv = rig("p", tier)
 		in, err := g.w.BuildRig("a")
 		if err != nil {
 			t.Fatal(err)
@@ -64,7 +64,7 @@ func TestBoardRigAndAllies(t *testing.T) {
 		t.Fatalf("board = %+v, want rig 4 and 2 allies", c.Board)
 	}
 	// A failed rig does not count, and allies are counted live.
-	g.w.Stash["a"] = rig("q", 5)
+	g.w.Avatars["a"].Inv = rig("q", 5)
 	in, _ := g.w.BuildRig("a")
 	g.m.OnResult(Result{Kind: "ally", Target: in.Target, OK: false, Err: "boom"}, g.w)
 	delete(g.w.Allies, "ally-1")

@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,7 +24,8 @@ const (
 	tickHz        = 15
 	stepSlots     = 24    // concurrent heist steps
 	resumeSlots   = 8     // concurrent springs and extracts
-	cleanupDelay  = 10.0  // seconds after a mission ends before its targets are deleted
+	cleanupDelay  = 10.0  // seconds after a run ends before its remaining agents are deleted
+	goneDelay     = 3.0   // seconds an escaped, booked or deleted agent stays on the map
 	offlineAllies = 60.0  // seconds an owner may be offline before their allies are deleted
 	evictAfter    = 300.0 // seconds offline before an avatar leaves the city
 	maxScreens    = 8     // concurrent public ?screen=1 spectators (LAN screens are exempt)
@@ -39,7 +42,7 @@ type zap struct {
 	tries   int
 }
 
-// Game is Grand Theft Agent's server.
+// Game is Substrate Siege's server.
 type Game struct {
 	p     *platform.Platform
 	ops   Ops
@@ -57,6 +60,7 @@ type Game struct {
 	allyMs     map[string]*Mission // the owner's active mission when a rig was built
 	ended      map[*Mission]float64
 	cleaned    map[*Mission]bool
+	gone       map[string]float64 // world time each agent became escaped, booked or deleted
 	offline    map[string]float64 // world time each player went offline
 	lastIn     map[string]float64 // world time of each connected player's last frame
 	idle       map[string]bool    // connected players taken offline for idling
@@ -110,6 +114,7 @@ func (g *Game) fresh() {
 	g.s, g.inflight = s, rec
 	g.zaps, g.zapping, g.allyMs = map[string]zap{}, map[string]zap{}, map[string]*Mission{}
 	g.ended, g.cleaned, g.offline = map[*Mission]float64{}, map[*Mission]bool{}, map[string]float64{}
+	g.gone = map[string]float64{}
 	g.lastIn, g.idle = map[string]float64{}, map[string]bool{}
 }
 
@@ -169,7 +174,7 @@ func (g *Game) shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownCleanup)
 	defer cancel()
 	n := g.deleteCheckpoints(ctx, cps)
-	slog.Info("grand theft agent: shutdown deleted booked checkpoints", "deleted", n, "booked", len(cps))
+	slog.Info("substrate siege: shutdown deleted booked checkpoints", "deleted", n, "booked", len(cps))
 }
 
 // Stopped is closed once the game has shut down (Run's ctx ended) and cleaned up.
@@ -185,6 +190,7 @@ func (g *Game) tick() {
 		g.submit(in)
 	}
 	g.m.Tick(g.w, g.s)
+	g.autoBuild()
 	g.housekeep()
 	if g.ticks%tickHz == 0 {
 		for _, k := range []string{"freeze", "spring", "extract"} {
@@ -223,13 +229,13 @@ func (g *Game) route(r Result) {
 		if z.tries++; !r.OK && z.tries < zapTries {
 			g.zaps[r.Target] = z
 		} else if !r.OK {
-			slog.Warn("grand theft agent: cleanup delete failed", "session", z.session, "err", r.Err)
+			slog.Warn("substrate siege: cleanup delete failed", "session", z.session, "err", r.Err)
 		}
 		return
 	}
 	if !r.OK {
 		// Errors carry kagent's status reason, never the agent's reply text.
-		slog.Warn("grand theft agent: op failed", "kind", r.Kind, "target", r.Target, "ms", r.Ms, "err", r.Err)
+		slog.Warn("substrate siege: op failed", "kind", r.Kind, "target", r.Target, "ms", r.Ms, "err", r.Err)
 	}
 	switch r.Kind {
 	case "freeze", "spring", "extract":
@@ -302,11 +308,21 @@ func (g *Game) retire(allyID string) {
 	}
 }
 
-// housekeep submits cleanup deletes, clears out missions ended cleanupDelay ago (and
-// forgets them missionShow later), takes connected players who sent nothing for
-// idleAfter offline, retires the allies of owners offline for offlineAllies, and evicts
-// avatars offline for evictAfter. g.mu is held.
+// housekeep submits cleanup deletes, clears agents out goneDelay after they escaped or
+// were booked or deleted, clears out runs ended cleanupDelay ago (and forgets them
+// missionShow later), takes connected players who sent nothing for idleAfter offline,
+// retires the allies of owners offline for offlineAllies, and evicts avatars offline
+// for evictAfter. g.mu is held.
 func (g *Game) housekeep() {
+	for id, t := range g.w.Targets {
+		switch {
+		case t.Busy || t.State != Escaped && t.State != Booked && t.State != Deleted:
+		case g.gone[id] == 0:
+			g.gone[id] = g.w.Now + eps
+		case g.w.Now-g.gone[id] >= goneDelay-eps:
+			g.clearTarget(id)
+		}
+	}
 	keep := g.m.missions[:0]
 	for _, ms := range g.m.missions {
 		if g.cleaned[ms] && g.w.Now-g.ended[ms] > missionShow {
@@ -327,19 +343,7 @@ func (g *Game) housekeep() {
 		}
 		g.cleaned[ms] = true
 		for _, id := range ms.Targets {
-			t := g.w.Targets[id]
-			if t == nil {
-				continue
-			}
-			switch {
-			case t.State == Booked || t.Checkpoint != "": // Extract deleted the session
-				g.booked[t.SessionID] = t.Checkpoint
-			case t.State == Deleted:
-			default:
-				g.zap(t.SessionID)
-			}
-			g.w.release(id)
-			delete(g.w.Targets, id)
+			g.clearTarget(id)
 		}
 	}
 	clear(g.m.missions[len(keep):])
@@ -371,7 +375,25 @@ func (g *Game) housekeep() {
 	}
 }
 
-// prune forgets an ended, cleaned-up mission. Scores live in Missions.players and
+// clearTarget takes an agent off the map: a booked one's checkpoint is kept for Reset,
+// a deleted one is already gone, and any other session is deleted. g.mu is held.
+func (g *Game) clearTarget(id string) {
+	t := g.w.Targets[id]
+	if t == nil {
+		return
+	}
+	switch {
+	case t.State == Booked || t.Checkpoint != "": // Extract deleted the session
+		g.booked[t.SessionID] = t.Checkpoint
+	case t.State == Deleted:
+	default:
+		g.zap(t.SessionID)
+	}
+	delete(g.w.Targets, id)
+	delete(g.gone, id)
+}
+
+// prune forgets an ended, cleaned-up run. Scores live in Missions.players and
 // squadTD, so the leaderboard keeps it. g.mu is held.
 func (g *Game) prune(ms *Mission) {
 	delete(g.ended, ms)
@@ -382,11 +404,8 @@ func (g *Game) prune(ms *Mission) {
 }
 
 // evict removes a long-offline avatar from the city (its allies are already retiring).
-// Its stash and score stay; coming back gives a fresh avatar at Dispatch. g.mu is held.
+// Its score stays; coming back gives a fresh avatar at Dispatch. g.mu is held.
 func (g *Game) evict(pid string) {
-	if a := g.w.Avatars[pid]; a != nil {
-		g.w.drop(a)
-	}
 	delete(g.w.Avatars, pid)
 	delete(g.w.ctl, pid)
 	delete(g.offline, pid)
@@ -477,8 +496,8 @@ func (g *Game) leave(playerID string) {
 	g.w.Input(playerID, Input{})
 }
 
-// start begins a mission for the player's squad. g.mu is held.
-func (g *Game) start(playerID string, level int) (*Mission, error) {
+// start begins a run for the player's squad. g.mu is held.
+func (g *Game) start(playerID string) (*Mission, error) {
 	a := g.w.Avatars[playerID]
 	switch {
 	case g.paused:
@@ -488,19 +507,27 @@ func (g *Game) start(playerID string, level int) (*Mission, error) {
 	case a == nil:
 		return nil, errors.New("not in the city")
 	}
-	for _, ms := range g.m.missions {
-		if ms.Outcome == "" && ms.Starter == playerID {
-			return nil, errors.New("you already have a mission running")
-		}
-	}
-	ms, err := g.m.Start(a.Squad, level, g.w, g.s)
+	ms, err := g.m.Start(a.Squad, g.w, g.s)
 	if ms != nil {
 		ms.Starter = playerID
 	}
 	return ms, err
 }
 
-// build spends a rig from the player's stash and spawns the ally. g.mu is held.
+// autoBuild deploys an ally for every online player carrying a full rig, while they
+// have room for one. g.mu is held.
+func (g *Game) autoBuild() {
+	if g.listing || g.ticks%tickHz != 0 { // once a second is plenty
+		return
+	}
+	for _, id := range slices.Sorted(maps.Keys(g.w.Avatars)) {
+		if a := g.w.Avatars[id]; a.Online && !a.Down && HasRig(a.Inv) {
+			_ = g.build(id) // ally or city limit: the parts wait in the inventory
+		}
+	}
+}
+
+// build spends a rig from the player's inventory and spawns the ally. g.mu is held.
 func (g *Game) build(playerID string) error {
 	if g.listing {
 		return errStartingUp
@@ -520,15 +547,15 @@ func (g *Game) build(playerID string) error {
 }
 
 // squad changes the player's squad and returns its code. It is refused while the
-// player's squad has a mission running or queued, so hopping squads can't start one
-// mission per squad. g.mu is held.
+// player's squad has a run going, so hopping squads can't start one run per squad.
+// g.mu is held.
 func (g *Game) squad(playerID, op, code string) (string, error) {
 	cur := g.q.Of(playerID)
 	if a := g.w.Avatars[playerID]; a != nil {
 		cur = a.Squad
 	}
 	if g.m.active[cur] != nil {
-		return "", errors.New("finish your mission first")
+		return "", errors.New("finish your run first")
 	}
 	switch op {
 	case "solo":
@@ -549,7 +576,7 @@ func (g *Game) squad(playerID, op, code string) (string, error) {
 	return code, nil
 }
 
-// Pause stops (or allows again) new missions.
+// Pause stops (or allows again) new runs.
 func (g *Game) Pause(on bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -575,6 +602,6 @@ func (g *Game) Stats() map[string]any {
 		takedowns += n
 	}
 	return map[string]any{"players": len(g.w.Avatars), "online": online, "targets": len(g.w.Targets),
-		"allies": len(g.w.Allies), "missions": len(g.m.missions), "activeMissions": active,
-		"takedowns": takedowns, "paused": g.paused}
+		"allies": len(g.w.Allies), "runs": len(g.m.missions), "activeRuns": active,
+		"freezes": takedowns, "paused": g.paused}
 }

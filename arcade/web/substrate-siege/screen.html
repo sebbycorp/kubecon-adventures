@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>Grand Theft Agent</title>
+<title>Substrate Siege</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -108,7 +108,7 @@
 </head>
 <body class="idle">
 <div id="head">
-  <div><h1>Grand Theft Agent<small>Every hunter is a real kagent agent on Agent Substrate.</small></h1>
+  <div><h1>Substrate Siege<small>Every hunter is a real kagent agent on Agent Substrate.</small></h1>
     <div id="live" class="off"><i></i><b>LIVE</b><span id="since">connecting…</span></div></div>
   <div id="lines">
     <div id="line1"></div>
@@ -130,17 +130,17 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script type="module">
-import { startCity, webglOK, colorOf, esc } from "/grand-theft-agent/static/city.js";
-import { connect } from "/grand-theft-agent/static/net.js";
+import { startCity, webglOK, colorOf, esc } from "/substrate-siege/static/city.js";
+import { connect } from "/substrate-siege/static/net.js";
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 
-// ---- QR card: points phones at /grand-theft-agent. ?join=<url> overrides it; a screen
+// ---- QR card: points phones at /substrate-siege. ?join=<url> overrides it; a screen
 // opened on localhost points at the public domain instead (as on Agent Flow). ----
 const params = new URLSearchParams(location.search);
 const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-const joinUrl = params.get("join") || (local ? "https://kubecon.agentpwned.ai/grand-theft-agent" : location.origin + "/grand-theft-agent");
+const joinUrl = params.get("join") || (local ? "https://kubecon.agentpwned.ai/substrate-siege" : location.origin + "/substrate-siege");
 $("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
 try {
   const qr = qrcode(0, "M");
@@ -167,7 +167,7 @@ function message(html) { $("msg").innerHTML = html; show("msg", !!html); }
 if (!webglOK()) { show("nogl"); }
 let city = null;
 for (let wait = 1000; !city; wait = Math.min(wait * 2, 10000)) {
-  const r = await fetch("/grand-theft-agent/api/city").catch(() => null);
+  const r = await fetch("/substrate-siege/api/city").catch(() => null);
   if (r && r.ok) city = await r.json();
   else { message("Can't load the city map. Retrying…"); await new Promise((ok) => setTimeout(ok, wait)); }
 }
@@ -175,7 +175,7 @@ message("");
 let view = null;
 if (webglOK()) {
   view = startCity($("city"), {
-    mode: "screen", city, overlay: $("labels"), logo: "/grand-theft-agent/static/kagent-icon.svg",
+    mode: "screen", city, overlay: $("labels"), logo: "/substrate-siege/static/kagent-icon.svg",
     pos: (k, id) => (net ? net.pos(k, id) : null), onEvent,
   });
   const frame = () => { view.draw(); requestAnimationFrame(frame); };
@@ -184,7 +184,7 @@ if (webglOK()) {
 
 // ---- the socket: a spectator (?screen=1) needs no cookie and sends nothing ----
 let snap = null, lastSnapAt = 0, full = false, down = false;
-const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/grand-theft-agent/ws?screen=1`, onSnap, {
+const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/substrate-siege/ws?screen=1`, onSnap, {
   cookie: false,
   onStatus(st) {
     if (st === "full") {

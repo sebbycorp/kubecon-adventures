@@ -33,7 +33,7 @@ func addAlly(w *World, id, owner string, tier int, p Vec) *Ally {
 
 func TestBuildRigSpendsParts(t *testing.T) {
 	w := testWorld([]string{"red", "red"}, Vec{1.5, 0.5}, Vec{1.5, 0.5})
-	w.Stash["a"] = []Part{{ID: "b1", Kind: "board"}, {ID: "c1", Kind: "cpu"}, {ID: "r2", Kind: "ram", Tier: 2},
+	w.Avatars["a"].Inv = []Part{{ID: "b1", Kind: "board"}, {ID: "c1", Kind: "cpu"}, {ID: "r2", Kind: "ram", Tier: 2},
 		{ID: "r5", Kind: "ram", Tier: 5}, {ID: "d1", Kind: "drive"}}
 	in, err := w.BuildRig("a")
 	if err != nil {
@@ -42,7 +42,7 @@ func TestBuildRigSpendsParts(t *testing.T) {
 	if in.Kind != "ally" || in.Player != "a" || in.Target == "" {
 		t.Fatalf("intent = %+v", in)
 	}
-	if got := partIDs(w.Stash["a"]); !slices.Equal(got, []string{"r2"}) {
+	if got := partIDs(w.Avatars["a"].Inv); !slices.Equal(got, []string{"r2"}) {
 		t.Fatalf("stash left = %v, want [r2]", got)
 	}
 	if w.Allies[in.Target] != nil {
@@ -62,18 +62,18 @@ func TestBuildRigSpendsParts(t *testing.T) {
 				ps = append(ps, p)
 			}
 		}
-		w.Stash["a"] = slices.Clone(ps)
+		w.Avatars["a"].Inv = slices.Clone(ps)
 		if _, err := w.BuildRig("a"); err == nil || err.Error() != "missing parts" {
 			t.Fatalf("without %s: err = %v", kind, err)
 		}
-		if !slices.Equal(partIDs(w.Stash["a"]), partIDs(ps)) {
-			t.Fatalf("without %s: stash changed to %v", kind, w.Stash["a"])
+		if !slices.Equal(partIDs(w.Avatars["a"].Inv), partIDs(ps)) {
+			t.Fatalf("without %s: stash changed to %v", kind, w.Avatars["a"].Inv)
 		}
 	}
 
 	// Per-player limit: 2, counting allies still spawning.
 	w = testWorld([]string{"red", "red"}, Vec{1.5, 0.5}, Vec{1.5, 0.5})
-	w.Stash["a"] = slices.Concat(rig("x", 1), rig("y", 1), rig("z", 1))
+	w.Avatars["a"].Inv = slices.Concat(rig("x", 1), rig("y", 1), rig("z", 1))
 	first, err := w.BuildRig("a")
 	if err != nil {
 		t.Fatal(err)
@@ -84,8 +84,8 @@ func TestBuildRigSpendsParts(t *testing.T) {
 	if _, err := w.BuildRig("a"); err == nil || err.Error() != "ally limit" {
 		t.Fatalf("third rig err = %v", err)
 	}
-	if len(w.Stash["a"]) != 4 {
-		t.Fatalf("stash after refused rig = %v", w.Stash["a"])
+	if len(w.Avatars["a"].Inv) != 4 {
+		t.Fatalf("stash after refused rig = %v", w.Avatars["a"].Inv)
 	}
 	NewMissions(rand.New(rand.NewPCG(1, 2))).OnResult(Result{Kind: "ally", Target: first.Target, OK: true, Spawned: "s"}, w)
 	if _, err := w.BuildRig("a"); err == nil || err.Error() != "ally limit" {
@@ -97,16 +97,16 @@ func TestBuildRigSpendsParts(t *testing.T) {
 	for i := range 15 {
 		addAlly(w, fmt.Sprintf("x%d", i), fmt.Sprintf("p%d", i), 1, Vec{1.5, 0.5})
 	}
-	w.Stash["b"] = rig("b", 1)
+	w.Avatars["b"].Inv = rig("b", 1)
 	if _, err := w.BuildRig("b"); err != nil {
 		t.Fatal(err)
 	}
-	w.Stash["a"] = rig("a", 1)
+	w.Avatars["a"].Inv = rig("a", 1)
 	if _, err := w.BuildRig("a"); err == nil || err.Error() != "city full" {
 		t.Fatalf("17th ally err = %v", err)
 	}
-	if len(w.Stash["a"]) != 4 {
-		t.Fatalf("stash after city full = %v", w.Stash["a"])
+	if len(w.Avatars["a"].Inv) != 4 {
+		t.Fatalf("stash after city full = %v", w.Avatars["a"].Inv)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestAllySpawnPlacesAlly(t *testing.T) {
 	x := newMTest(t, 24)
 	a := x.w.Avatars["a"]
 	a.Pos = Vec{20.5, 1.5}
-	x.w.Stash["a"] = rig("p", 4)
+	x.w.Avatars["a"].Inv = rig("p", 4)
 	in, err := x.w.BuildRig("a")
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestAllySpawnPlacesAlly(t *testing.T) {
 	}
 
 	// A failed spawn refunds exactly the spent parts.
-	x.w.Stash["a"] = append(rig("q", 2), Part{ID: "extra", Kind: "cpu"})
+	x.w.Avatars["a"].Inv = append(rig("q", 2), Part{ID: "extra", Kind: "cpu"})
 	in, err = x.w.BuildRig("a")
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestAllySpawnPlacesAlly(t *testing.T) {
 	if x.w.Allies[in.Target] != nil {
 		t.Fatal("failed spawn placed an ally")
 	}
-	if got := partIDs(x.w.Stash["a"]); !slices.Equal(got, []string{"extra", "qb", "qc", "qd", "qr"}) {
+	if got := partIDs(x.w.Avatars["a"].Inv); !slices.Equal(got, []string{"extra", "qb", "qc", "qd", "qr"}) {
 		t.Fatalf("stash after refund = %v", got)
 	}
 	ev = x.w.DrainEvents()
@@ -242,7 +242,7 @@ func TestAllyFollowsAndFires(t *testing.T) {
 		}
 	}
 
-	// Hits go under the owner; the third hit's freeze is the owner's takedown.
+	// Hits go under the owner; the freezing hit's freeze is the owner's takedown.
 	w = testWorld([]string{"red"}, Vec{10.5, 0.5})
 	al = addAlly(w, "al", "a", 5, Vec{10.5, 0.5})
 	tg := addTarget(w, "h", "red", Working, Vec{14.5, 0.5})
@@ -254,7 +254,7 @@ func TestAllyFollowsAndFires(t *testing.T) {
 	if len(got) != 1 || got[0] != (Intent{Kind: "freeze", Target: "h", Player: "a"}) {
 		t.Fatalf("intents = %v", got)
 	}
-	if tg.Hits != 3 || !tg.HitBy["a"] || len(tg.HitBy) != 1 || !tg.Busy {
+	if tg.Hits != hitsToFreeze || !tg.HitBy["a"] || len(tg.HitBy) != 1 || !tg.Busy {
 		t.Fatalf("target %+v", tg)
 	}
 	w.Resolve("h", "freeze", true, 5)
@@ -263,7 +263,7 @@ func TestAllyFollowsAndFires(t *testing.T) {
 	}
 	m := NewMissions(rand.New(rand.NewPCG(1, 2)))
 	m.OnResult(Result{Kind: "freeze", Target: "h", OK: true}, w)
-	if lb := m.Leaderboard(); len(lb) != 1 || lb[0].PlayerID != "a" || lb[0].Takedowns != 1 {
+	if lb := m.Leaderboard(); len(lb) != 1 || lb[0].PlayerID != "a" || lb[0].Freezes != 1 {
 		t.Fatalf("leaderboard %+v", lb)
 	}
 }
@@ -322,7 +322,6 @@ func TestHuntersTargetAllies(t *testing.T) {
 
 func TestOwnerSpringsAlly(t *testing.T) {
 	w := testWorld([]string{"red", "blue"}, Vec{20.5, 9.5}, Vec{20.5, 9.5})
-	a := w.Avatars["a"]
 	al := addAlly(w, "al", "a", 2, Vec{21.5, 9.5})
 	al.State, al.HP = Frozen, 0
 	if got := tap(w, 0.1, "b"); len(got) != 0 || al.Busy {
@@ -340,13 +339,12 @@ func TestOwnerSpringsAlly(t *testing.T) {
 		t.Fatalf("ally touched by b: %+v", al)
 	}
 
-	a.SpringCD = 15 // your own ally ignores the spring cooldown
 	got := tap(w, 0.1, "a")
 	if len(got) != 1 || got[0] != (Intent{Kind: "spring", Target: "al", Player: "a"}) {
 		t.Fatalf("intents = %v", got)
 	}
-	if !al.Busy || a.SpringCD > 15 {
-		t.Fatalf("busy=%v SpringCD=%v", al.Busy, a.SpringCD)
+	if !al.Busy {
+		t.Fatalf("not busy: %+v", al)
 	}
 	w.Resolve("al", "spring", true, 30)
 	NewMissions(rand.New(rand.NewPCG(1, 2))).OnResult(Result{Kind: "spring", Target: "al", OK: true, Step: StepResult{Say: "back online"}}, w)
@@ -355,48 +353,29 @@ func TestOwnerSpringsAlly(t *testing.T) {
 	}
 }
 
-func TestMissionEndDeletesAllies(t *testing.T) {
-	end := map[string]func(x *mtest, ms *Mission){
-		"won": func(x *mtest, ms *Mission) { x.freeze(x.target(ms, 0), "a") },
-		"failed": func(x *mtest, ms *Mission) {
-			x.tickUntil(100, func() bool { return ms.Outcome != "" })
-		},
-		"escaped": func(x *mtest, ms *Mission) {
-			tg := x.target(ms, 0)
-			tg.Step = tg.Steps - 1
-			x.m.OnResult(Result{Kind: "step", Target: tg.ID, OK: true}, x.w)
-		},
+func TestRunEndDeletesAllies(t *testing.T) {
+	x := newMTest(t, 24)
+	addAlly(x.w, "al-a", "a", 1, Vec{1.5, 0.5})
+	addAlly(x.w, "al-b", "b", 1, Vec{1.5, 0.5}).State = Frozen
+	addAlly(x.w, "al-c", "c", 1, Vec{1.5, 0.5}) // blue: no run
+	ms := x.start("red")
+	x.tickUntil(runSeconds+1, func() bool { return ms.Outcome != "" })
+	if ms.Outcome != "done" {
+		t.Fatalf("outcome %q", ms.Outcome)
 	}
-	for outcome, fn := range end {
-		t.Run(outcome, func(t *testing.T) {
-			x := newMTest(t, 24)
-			addAlly(x.w, "al-a", "a", 1, Vec{1.5, 0.5})
-			addAlly(x.w, "al-b", "b", 1, Vec{1.5, 0.5}).State = Frozen
-			addAlly(x.w, "al-c", "c", 1, Vec{1.5, 0.5}) // blue: no mission
-			ms := x.start("red", 1)
-			fn(x, ms)
-			if ms.Outcome != outcome {
-				t.Fatalf("outcome %q", ms.Outcome)
-			}
-			x.m.Tick(x.w, x.s)
-			deleted := map[string]bool{}
-			for range 2 {
-				r := x.pump("delete")
-				if !r.OK {
-					t.Fatalf("delete %+v", r)
-				}
-				deleted[r.Target] = true
-			}
-			if !deleted["al-a"] || !deleted["al-b"] {
-				t.Fatalf("deleted %v", deleted)
-			}
-			if x.w.Allies["al-a"] != nil || x.w.Allies["al-b"] != nil || x.w.Allies["al-c"] == nil {
-				t.Fatalf("allies left %v", x.w.Allies)
-			}
-			x.m.Tick(x.w, x.s)
-			// Nothing more to delete. (The "failed" case leaves a step blocked; its
-			// goroutine may start after the deletes, so only deletes are checked.)
-			x.f.noStartOf(t, "delete")
-		})
+	x.m.Tick(x.w, x.s)
+	deleted := map[string]bool{}
+	for range 2 {
+		r := x.pump("delete")
+		if !r.OK {
+			t.Fatalf("delete %+v", r)
+		}
+		deleted[r.Target] = true
+	}
+	if !deleted["al-a"] || !deleted["al-b"] {
+		t.Fatalf("deleted %v", deleted)
+	}
+	if x.w.Allies["al-a"] != nil || x.w.Allies["al-b"] != nil || x.w.Allies["al-c"] == nil {
+		t.Fatalf("allies left %v", x.w.Allies)
 	}
 }

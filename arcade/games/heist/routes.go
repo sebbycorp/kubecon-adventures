@@ -16,12 +16,12 @@ import (
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
 )
 
-const staticPrefix = "/grand-theft-agent/static/"
+const staticPrefix = "/substrate-siege/static/"
 
 // resetTimeout bounds a whole admin reset.
 const resetTimeout = 2 * opTimeout
 
-// versioned rewrites a page's /grand-theft-agent/static/<file> links to carry a hash of
+// versioned rewrites a page's /substrate-siege/static/<file> links to carry a hash of
 // each file as served, so Cloudflare (which caches .js for hours) serves every deploy at
 // once.
 func versioned(web fs.FS, page string) []byte {
@@ -40,7 +40,7 @@ func versioned(web fs.FS, page string) []byte {
 }
 
 var (
-	staticRE = regexp.MustCompile(`/grand-theft-agent/static/[\w./-]+`)
+	staticRE = regexp.MustCompile(`/substrate-siege/static/[\w./-]+`)
 	importRE = regexp.MustCompile(`((?:from|import)\s*)"(\./[\w./-]+\.js)"`)
 )
 
@@ -64,7 +64,7 @@ func served(web fs.FS, name string, depth int) ([]byte, error) {
 	}), nil
 }
 
-// staticFiles serves /grand-theft-agent/static/: modules with relative imports from
+// staticFiles serves /substrate-siege/static/: modules with relative imports from
 // memory (rewritten once at start), everything else from web.
 func staticFiles(web fs.FS) http.Handler {
 	files := http.StripPrefix(staticPrefix, http.FileServerFS(web))
@@ -89,8 +89,8 @@ func staticFiles(web fs.FS) http.Handler {
 	})
 }
 
-// Routes mounts Grand Theft Agent under /grand-theft-agent and its admin under
-// /admin/grand-theft-agent.
+// Routes mounts Substrate Siege under /substrate-siege and its admin under
+// /admin/substrate-siege.
 func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	page := func(name string) http.HandlerFunc {
 		body := versioned(web, name)
@@ -100,26 +100,29 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 			_, _ = w.Write(body)
 		}
 	}
-	mux.HandleFunc("GET /grand-theft-agent", page("phone.html"))
-	mux.HandleFunc("GET /grand-theft-agent/screen", page("screen.html"))
+	mux.HandleFunc("GET /substrate-siege", page("phone.html"))
+	// The game's first name: old QR codes and links still land.
+	mux.Handle("GET /grand-theft-agent", http.RedirectHandler("/substrate-siege", http.StatusMovedPermanently))
+	mux.Handle("GET /grand-theft-agent/screen", http.RedirectHandler("/substrate-siege/screen", http.StatusMovedPermanently))
+	mux.HandleFunc("GET /substrate-siege/screen", page("screen.html"))
 	mux.Handle("GET "+staticPrefix, staticFiles(web))
-	mux.HandleFunc("GET /grand-theft-agent/ws", g.serveWS)
+	mux.HandleFunc("GET /substrate-siege/ws", g.serveWS)
 	city := g.city.View()
-	mux.HandleFunc("GET /grand-theft-agent/api/city", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /substrate-siege/api/city", func(w http.ResponseWriter, r *http.Request) {
 		platform.WriteJSON(w, city)
 	})
 
-	mux.HandleFunc("POST /admin/grand-theft-agent/api/reset", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /admin/substrate-siege/api/reset", func(w http.ResponseWriter, r *http.Request) {
 		// A dropped admin request must not cancel the deletes half way.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), resetTimeout)
 		defer cancel()
 		n, cps, err := g.Reset(ctx)
 		platform.Result(w, map[string]int{"deletedSessions": n, "deletedCheckpoints": cps}, err)
 	})
-	mux.HandleFunc("GET /admin/grand-theft-agent/api/state", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /admin/substrate-siege/api/state", func(w http.ResponseWriter, r *http.Request) {
 		platform.WriteJSON(w, g.State())
 	})
-	mux.HandleFunc("POST /admin/grand-theft-agent/api/pause", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /admin/substrate-siege/api/pause", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Paused *bool `json:"paused"`
 		}
@@ -132,23 +135,18 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	})
 }
 
-// AdminState is GET /admin/grand-theft-agent/api/state: what a screen sees, plus the
-// pause switch and the per-player stashes.
+// AdminState is GET /admin/substrate-siege/api/state: what a screen sees, plus the
+// pause switch.
 type AdminState struct {
 	SnapCommon
-	Paused bool                  `json:"paused"`
-	Stash  map[string][]PartView `json:"stash"`
+	Paused bool `json:"paused"`
 }
 
 // State is the admin view of the whole game.
 func (g *Game) State() AdminState {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	s := AdminState{SnapCommon: g.commonLocked(nil), Paused: g.paused, Stash: map[string][]PartView{}}
-	for id, ps := range g.w.Stash {
-		s.Stash[id] = *parts(ps)
-	}
-	return s
+	return AdminState{SnapCommon: g.commonLocked(nil), Paused: g.paused}
 }
 
 // RectView is a Rect on the wire.
@@ -159,7 +157,7 @@ type RectView struct {
 	H float64 `json:"h"`
 }
 
-// CityView is GET /grand-theft-agent/api/city: the map the clients draw. Tiles are rows
+// CityView is GET /substrate-siege/api/city: the map the clients draw. Tiles are rows
 // of tile bytes ('.' road, '#' building, 'V' Vault, 'D' Dispatch); districts are by node.
 type CityView struct {
 	W         int                 `json:"w"`
