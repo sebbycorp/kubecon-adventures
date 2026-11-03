@@ -625,6 +625,29 @@ func TestMissionEndCleanup(t *testing.T) {
 	}
 }
 
+func TestResetDeletesBookedSessions(t *testing.T) {
+	ops := &liveOps{}
+	g := New(platform.New(nil), ops, nil)
+	t.Cleanup(func() { g.s.Close() })
+	g.join(platform.Player{ID: "a"})
+	g.mu.Lock()
+	ms, _ := g.start("a", 1)
+	g.mu.Unlock()
+	pumpUntil(t, g, "target", func() bool { return g.w.Targets["m1-1"] != nil })
+	g.mu.Lock()
+	g.w.Targets["m1-1"].State = Booked
+	g.m.finish(ms, "won", g.w)
+	end := g.w.Now
+	g.mu.Unlock()
+	pumpUntil(t, g, "removed", func() bool { return g.w.Now > end+cleanupDelay && g.w.Targets["m1-1"] == nil })
+	if slices.Contains(ops.called("delete"), "sess-m1-1") {
+		t.Fatal("booked session deleted at mission end")
+	}
+	if n, _ := g.Reset(context.Background()); n != 1 || !slices.Contains(ops.called("delete"), "sess-m1-1") {
+		t.Fatalf("Reset deleted %d, calls %v", n, ops.called("delete"))
+	}
+}
+
 func TestLateAllyDeleted(t *testing.T) {
 	g, f := newManual(t)
 	g.mu.Lock()

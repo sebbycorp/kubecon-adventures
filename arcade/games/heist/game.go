@@ -56,6 +56,7 @@ type Game struct {
 	offline  map[string]float64 // world time each player went offline
 	conns    map[string]int     // open connections per player
 	clients  map[*client]bool
+	booked   map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
 	paused   bool
 	timings  map[string]int64 // p50 ms, refreshed once a second
 	ticks    int
@@ -65,7 +66,7 @@ type Game struct {
 // New builds the game on a city with a district per node. Run starts it.
 func New(p *platform.Platform, ops Ops, nodes []string) *Game {
 	g := &Game{p: p, ops: ops, city: NewCity(nodes), every: time.Second / tickHz,
-		conns: map[string]int{}, clients: map[*client]bool{}, timings: map[string]int64{}, done: make(chan struct{})}
+		conns: map[string]int{}, booked: map[string]bool{}, clients: map[*client]bool{}, timings: map[string]int64{}, done: make(chan struct{})}
 	g.fresh()
 	return g
 }
@@ -248,7 +249,11 @@ func (g *Game) housekeep() {
 			if t == nil {
 				continue
 			}
-			if t.State != Booked && t.State != Deleted {
+			switch t.State {
+			case Booked:
+				g.booked[t.SessionID] = true
+			case Deleted:
+			default:
 				g.zap(t.SessionID)
 			}
 			g.w.release(id)
@@ -382,6 +387,10 @@ func (g *Game) Reset(ctx context.Context) (int, error) {
 	for _, al := range g.w.Allies {
 		seen[al.SessionID] = true
 	}
+	for sess := range g.booked {
+		seen[sess] = true
+	}
+	g.booked = map[string]bool{}
 	for _, z := range g.zaps {
 		seen[z.session] = true
 	}
