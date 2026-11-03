@@ -120,10 +120,11 @@ const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${locati
 function onEvent(e, s) {
   const a = s.agents.find((x) => x.id === e.agent);
   const who = (id) => { const p = s.ships.find((x) => x.id === id); return p ? `<span style="color:${shipColor(p.color)}">${esc(p.nick)}</span>` : "someone"; };
+  const text = e.text || "";
   const line = {
     task: a ? `<span style="color:${roleOf(a.role).color}">${roleOf(a.role).icon} ${esc(a.name)}</span> “${esc(e.text)}”` : "",
     suspended: `<span style="color:#9ff4ff">❄</span> ${who(e.player)} suspended ${esc(a ? a.name : e.text)} · +${e.points}${e.combo > 1 ? " x" + e.combo : ""} · ${e.ms} ms`,
-    wave: `<span style="color:${e.text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff"}">≋ Wave ${e.points}: ${esc(e.text)} (${e.combo} agents)</span>`,
+    wave: `<span style="color:${text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff"}">≋ Wave ${e.points}: ${esc(text)} (${e.combo} agents)</span>`,
     squad: `<span style="color:#ffd23d">★ SQUAD SAVE: ${esc(e.text)} pilots at once</span>`,
     saved: `<span style="color:#3dff8f">✓ SAVED IT: the cluster is breathing again</span>`,
     alarm: `<span style="color:#ff4d5e">⚠ Cluster at 90%!</span>`,
@@ -135,7 +136,7 @@ function onEvent(e, s) {
     round: `<span style="color:#4da3ff">☸ Round ${esc(e.text)} started</span>`,
     over: `<span style="color:#ff4d5e">✖ ${e.text === "full" ? "CLUSTER FULL" : "Round over"}</span>`,
   }[e.kind];
-  if (e.kind === "wave") bigBanner(`WAVE ${e.points}`, e.text, e.text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff", 3000);
+  if (e.kind === "wave") bigBanner(`WAVE ${e.points}`, text, text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff", 3000);
   if (e.kind === "squad") bigBanner("CO-OP", "SQUAD SAVE!", "#ffd23d", 2200);
   if (e.kind === "saved") bigBanner("PHEW", "SAVED IT!", "#3dff8f", 2200);
   if (e.kind === "over" && e.text === "full") bigBanner("GAME OVER", "CLUSTER FULL", "#ff4d5e", 2500);
