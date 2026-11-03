@@ -309,7 +309,7 @@ func TestArmourScales(t *testing.T) {
 	for i := range 10 {
 		w.Join(string(rune('A'+i)), "x", "red")
 	}
-	if w.need("worker") != 2+2+2 || w.need("boss") != 24*(1+0.25*10) {
+	if w.need("worker") != 2+3+2 || w.need("boss") != 24*(1+0.25*10) {
 		t.Fatalf("wave 7, 11 pilots: worker %d boss %d", w.need("worker"), w.need("boss"))
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/exec"
@@ -131,8 +132,10 @@ func (b *loadBot) read(ctx context.Context, on func(*loadSnap)) {
 }
 
 // tick steers toward the nearest running agent, turning in place once close, and holds
-// FIRE in range. The first bot taps PLAY whenever it may.
-func (b *loadBot) tick(ctx context.Context, leader bool) {
+// FIRE in range about half the time, with some wobble, the way a person on a phone
+// plays. A lazy bot only circles the cluster and fires at what passes. The first bot
+// taps PLAY whenever it may.
+func (b *loadBot) tick(ctx context.Context, leader, lazy bool) {
 	b.mu.Lock()
 	s := b.snap
 	b.mu.Unlock()
@@ -159,17 +162,23 @@ func (b *loadBot) tick(ctx context.Context, leader bool) {
 			best, bd = a, d
 		}
 	}
+	fire := rand.Float64() < 0.55
+	if lazy {
+		a := float64(time.Now().UnixMilli()%20000) / 20000 * 2 * math.Pi
+		b.send(ctx, map[string]any{"t": "in", "mx": math.Cos(a), "my": math.Sin(a), "fire": fire && bd < 32})
+		return
+	}
 	if best == nil {
 		b.send(ctx, map[string]any{"t": "in", "mx": 0, "my": 0, "fire": false})
 		return
 	}
-	dx, dy := best.X-me.X, best.Y-me.Y
+	dx, dy := best.X-me.X+(rand.Float64()-0.5)*8, best.Y-me.Y+(rand.Float64()-0.5)*8
 	n := math.Hypot(dx, dy)
 	k := 1.0
 	if bd < 18 {
 		k = 0.2
 	}
-	b.send(ctx, map[string]any{"t": "in", "mx": dx / n * k, "my": dy / n * k, "fire": bd < 32})
+	b.send(ctx, map[string]any{"t": "in", "mx": dx / n * k, "my": dy / n * k, "fire": fire && bd < 32})
 }
 
 func join(ctx context.Context, base, nick string) (string, error) {
@@ -367,7 +376,7 @@ loop:
 		select {
 		case <-play.C:
 			for i, b := range bots {
-				b.tick(ctx, i == 0)
+				b.tick(ctx, i == 0, i%4 == 3)
 			}
 		case <-report.C:
 			now, _ := agwTokens(ctx, metrics)
