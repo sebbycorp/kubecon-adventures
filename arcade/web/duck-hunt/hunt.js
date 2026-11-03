@@ -1,6 +1,6 @@
 // Duck Hunt's phone game: a landscape canvas in an 8-bit style. Each flying duck is a real
-// kagent session the server woke for this run (a Substrate Resume); tapping one sends the
-// hit, and the server suspends it (a real snapshot) and scores it. Everything is drawn here
+// kagent session the server woke for this run (a Substrate Resume). A gun pad aims: the
+// joystick moves a crosshair, FIRE shoots at it, and a hit is sent to the server, and the server suspends it (a real snapshot) and scores it. Everything is drawn here
 // as original pixel art, generated from simple shapes at a low resolution and scaled up by a
 // whole number so the pixels stay crisp; the score, the combo and the timings come from the
 // server.
@@ -227,6 +227,8 @@ export function startHunt(canvas, api, hooks) {
   const g = { playing: false, t0: 0, ends: 0, wave: 1, shownWave: 0, score: 0, combo: 0, lastHit: 0, hits: 0, shots: 0, escapes: 0, golden: 0, bestCombo: 0,
     binCount: 0, pending: false, nextLaunch: 0, waking: null, ammo: 3, reloadAt: 0, row: [], pinkUntil: 0, banner: null };
   const agents = [], parts = [], texts = [], marks = [];
+  // The crosshair, in game pixels, moved by the pad's joystick (stick: -1..1 each way).
+  const aim = { x: 0, y: 0, on: false }, stick = { x: 0, y: 0 };
   let shake = 0, flash = 0, mascot = null;
 
   function start(seconds) {
@@ -234,9 +236,10 @@ export function startHunt(canvas, api, hooks) {
     Object.assign(g, { playing: true, t0: performance.now(), ends: performance.now() + seconds * 1000, wave: 1, shownWave: 0, score: 0, combo: 0, lastHit: 0,
       hits: 0, shots: 0, escapes: 0, golden: 0, bestCombo: 0, binCount: 0, pending: false, nextLaunch: performance.now() + 1500, waking: null,
       ammo: 3, reloadAt: 0, row: [], pinkUntil: 0, banner: null });
+    Object.assign(aim, { x: st.GW / 2, y: (top() + low()) / 2, on: true });
     hooks.onScore(g);
   }
-  function stop() { g.playing = false; }
+  function stop() { g.playing = false; aim.on = false; }
   function banner(text, ms, color = "#ffffff") { g.banner = { text, until: performance.now() + ms, color }; }
 
   // ---- launching: one request at a time, as many in the air as the wave allows ----
@@ -318,6 +321,36 @@ export function startHunt(canvas, api, hooks) {
     }).catch(() => {});
   }
 
+  // ---- aiming: the joystick's tilt squared sets the speed, so small moves are precise and
+  // full tilt crosses the sky in about 0.8 s; near a duck the crosshair is drawn gently
+  // toward it (aim assist), never snapped onto it ----
+  const ASSIST = 18;
+  function target() {
+    let best = null, bd = ASSIST;
+    for (const a of agents) {
+      if (a.state !== "flying") continue;
+      const d = Math.hypot(a.x - aim.x, a.y - aim.y);
+      if (d < bd) { best = a; bd = d; }
+    }
+    return best;
+  }
+  function moveAim(dt) {
+    const n = Math.min(1, Math.hypot(stick.x, stick.y));
+    if (n > 0.08) {
+      const speed = (st.GW / 0.8) * n * n;
+      aim.x += (stick.x / n) * speed * dt;
+      aim.y += (stick.y / n) * speed * dt;
+    }
+    const t = target();
+    if (t) {
+      const pull = Math.min(1, dt * (n > 0.6 ? 2 : 5));
+      aim.x += (t.x - aim.x) * pull;
+      aim.y += (t.y - aim.y) * pull;
+    }
+    aim.x = clamp(aim.x, 4, st.GW - 4);
+    aim.y = clamp(aim.y, 4, sc.grassTop - 2);
+  }
+
   // ---- results row: ten ducks a round, red when hit; all ten is PERFECT ----
   function record(hit) {
     g.row.push(hit);
@@ -359,6 +392,7 @@ export function startHunt(canvas, api, hooks) {
       if (now - g.lastHit > 2200 && g.combo) { g.combo = 0; hooks.onScore(g); }
       if (g.ammo <= 0 && now >= g.reloadAt) { g.ammo = 3; hooks.onScore(g); }
       launchTick(now);
+      moveAim(dt);
     }
     for (let i = agents.length - 1; i >= 0; i--) {
       const a = agents[i];
@@ -453,6 +487,7 @@ export function startHunt(canvas, api, hooks) {
       o.fillStyle = "#ffffff"; const x = Math.round(m.x), y = Math.round(m.y);
       o.fillRect(x - 4, y, 3, 1); o.fillRect(x + 2, y, 3, 1); o.fillRect(x, y - 4, 1, 3); o.fillRect(x, y + 2, 1, 3);
     }
+    if (aim.on && g.playing) drawAim(o, now);
     const sx = shake ? Math.round(rnd(-shake, shake)) : 0, sy = shake ? Math.round(rnd(-shake, shake)) : 0;
     st.blit(sx, sy);
     // Text over the pixels.
@@ -470,6 +505,22 @@ export function startHunt(canvas, api, hooks) {
       st.text(g.banner.text, GW / 2, GH * 0.32 + 12, 8, g.banner.color, "center", false);
     }
     if (flash) { st.cx.setTransform(1, 0, 0, 1, 0, 0); st.cx.fillStyle = `rgba(255,255,255,${0.75 * flash})`; st.cx.fillRect(0, 0, canvas.width, canvas.height); }
+  }
+  // drawAim: an 8-bit gun sight, red with a pulsing ring when a duck is in it.
+  function drawAim(o, now) {
+    const x = Math.round(aim.x), y = Math.round(aim.y);
+    const on = agents.some((a) => a.state === "flying" && Math.hypot(a.x - aim.x, a.y - aim.y) < 15 * a.size);
+    const col = on ? "#e83a3a" : "#ffffff", r = on ? 7 + (Math.floor(now / 120) % 2) : 8;
+    for (const [dx, dy] of [[1, 1], [1, 0], [0, 1]]) { // a black outline under the sight
+      o.fillStyle = "#000"; o.fillRect(x - r - 1 + dx, y - 1 + dy, 2 * r + 2, 1); o.fillRect(x - 1 + dx, y - r - 1 + dy, 1, 2 * r + 2);
+    }
+    o.fillStyle = col;
+    o.fillRect(x - r, y, r - 2, 1); o.fillRect(x + 3, y, r - 2, 1); o.fillRect(x, y - r, 1, r - 2); o.fillRect(x, y + 3, 1, r - 2);
+    for (let a = 0; a < 16; a++) { // the ring
+      const an = (a / 16) * Math.PI * 2;
+      o.fillRect(Math.round(x + Math.cos(an) * (r - 1)), Math.round(y + Math.sin(an) * (r - 1)), 1, 1);
+    }
+    o.fillRect(x, y, 1, 1);
   }
   function bubble(x, y, text) {
     const s = text.length > 34 ? text.slice(0, 33) + "…" : text;
@@ -489,11 +540,8 @@ export function startHunt(canvas, api, hooks) {
   }
   requestAnimationFrame(frame);
 
-  canvas.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    const r = canvas.getBoundingClientRect();
-    const [gx, gy] = st.toGame(e.clientX - r.left, e.clientY - r.top);
-    shoot(gx, gy);
-  });
-  return { start, stop, say, state: g, agents, toScreen: st.toScreen, mascot: () => !!mascot, timeLeft: () => Math.max(0, (g.ends - performance.now()) / 1000) };
+  // The gun pad drives these: setStick from the joystick, fire from the FIRE button.
+  const setStick = (x, y) => { stick.x = clamp(x, -1, 1); stick.y = clamp(y, -1, 1); };
+  const fire = () => { if (aim.on) shoot(aim.x, aim.y); };
+  return { start, stop, say, setStick, fire, aim, state: g, agents, toScreen: st.toScreen, mascot: () => !!mascot, timeLeft: () => Math.max(0, (g.ends - performance.now()) / 1000) };
 }

@@ -17,7 +17,24 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font: 10px/1.6 "Press Start 2P", ui-monospace, monospace;
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-  canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; image-rendering: pixelated; }
+  canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+  /* The gun pad: a D-pad joystick under the left thumb moves the sight, a big A button
+     under the right thumb fires. Both sit just above the HUD. */
+  #pad { position: fixed; left: 0; right: 0; bottom: calc(var(--hud) + 8px); height: 0; z-index: 3; }
+  #stick { position: absolute; left: calc(16px + var(--sl)); bottom: 0; width: 128px; height: 128px; touch-action: none; }
+  #stick .dpad { position: absolute; inset: 0; opacity: .9; }
+  #stick .dpad::before, #stick .dpad::after { content: ""; position: absolute; background: #2a2a2a; border: 4px solid #000; box-shadow: inset 0 0 0 3px #555; }
+  #stick .dpad::before { left: 38%; right: 38%; top: 4%; bottom: 4%; }
+  #stick .dpad::after { top: 38%; bottom: 38%; left: 4%; right: 4%; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; background: #bcbcbc; border: 4px solid #000;
+    box-shadow: inset -4px -4px 0 #7c7c7c, inset 4px 4px 0 #fff; z-index: 1; }
+  #stick.on #knob { background: #e8e8e8; }
+  #fireBtn { position: absolute; right: calc(20px + var(--sr)); bottom: 6px; width: 104px; height: 104px; border-radius: 50%; background: #e83a3a; color: #fff;
+    border: 5px solid #000; box-shadow: inset -6px -6px 0 #9c1a1a, inset 6px 6px 0 #ff8080, 0 0 0 4px #bcbcbc; font-size: 20px; line-height: 1.1; touch-action: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-shadow: 2px 2px 0 #000; }
+  #fireBtn small { font-size: 8px; margin-top: 4px; }
+  #fireBtn.on { transform: translateY(3px); box-shadow: inset 6px 6px 0 #9c1a1a, inset -2px -2px 0 #ff8080, 0 0 0 4px #bcbcbc; background: #c82a2a; }
   .hidden { display: none !important; }
   button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
   a { color: inherit; }
@@ -92,6 +109,10 @@
   <div class="cell nes" id="hitC"><span class="lbl">HIT</span><div class="ducks" id="ducks"></div></div>
   <div class="cell nes" id="scoreC"><span id="scoreV">000000</span><span id="timeV">1:15</span></div>
 </div>
+<div id="pad" class="hidden">
+  <div id="stick" aria-label="Aim"><div class="dpad"></div><div id="knob"></div></div>
+  <button id="fireBtn" aria-label="Fire">A<small>FIRE</small></button>
+</div>
 <div id="combo"></div>
 <div id="ticker"></div>
 <button id="menuBtn" class="nes hidden">MENU</button>
@@ -100,7 +121,7 @@
   <div class="card">
     <div>
       <canvas class="title" id="title1" width="1" height="1" aria-label="Duck Hunt"></canvas>
-      <p class="lede">EVERY DUCK IS A <b>REAL AI AGENT</b>.<br>SHOOT ONE: IT IS <b>SNAPSHOTTED</b> FOR REAL.</p>
+      <p class="lede">EVERY DUCK IS A <b>REAL AI AGENT</b>.<br>SHOOT ONE: IT IS <b>SNAPSHOTTED</b> FOR REAL.<br>LEFT PAD AIMS · RIGHT <b>A</b> FIRES.</p>
       <div class="opts">
         <button class="opt sel" id="playBtn">GAME A &nbsp;75 SEC HUNT</button>
         <button class="opt" id="soundBtn">SOUND ON</button>
@@ -145,7 +166,7 @@
   </div>
 </div>
 
-<div id="rotate"><div class="phone"></div><h2>TURN YOUR PHONE</h2><p>DUCK HUNT PLAYS<br>IN LANDSCAPE.</p></div>
+<div id="rotate"><div class="phone"></div><h2>TURN YOUR PHONE</h2><p>DUCK HUNT PLAYS IN LANDSCAPE:<br>LEFT THUMB AIMS, RIGHT THUMB FIRES.</p></div>
 
 <script src="/static/arcade.js?v=2"></script>
 <script type="module">
@@ -258,6 +279,51 @@ const api = {
 const hunt = startHunt($("sky"), api, { onScore: hud, onEnd: () => finish(), sfx, buzz });
 window.__hunt = hunt; // for scripted test runs
 
+// ---- the gun pad: each control owns one pointer (captured), so aiming and firing work at
+// the same time; everything lets go on blur or when the page is hidden ----
+const R = 52; // the knob's travel, in CSS px
+let stickId = null, stickC = null;
+function setKnob(dx, dy) { $("knob").style.transform = `translate(${dx}px, ${dy}px)`; }
+function moveStick(e) {
+  const dx = e.clientX - stickC.x, dy = e.clientY - stickC.y, n = Math.hypot(dx, dy), k = n > R ? R / n : 1;
+  setKnob(dx * k, dy * k);
+  hunt.setStick((dx * k) / R, (dy * k) / R);
+}
+function releaseStick() {
+  if (stickId !== null) { try { $("stick").releasePointerCapture(stickId); } catch {} }
+  stickId = null; setKnob(0, 0); hunt.setStick(0, 0); $("stick").classList.remove("on");
+}
+$("stick").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (stickId !== null) return;
+  stickId = e.pointerId;
+  try { $("stick").setPointerCapture(e.pointerId); } catch {}
+  const r = $("stick").getBoundingClientRect();
+  stickC = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  $("stick").classList.add("on");
+  moveStick(e);
+});
+$("stick").addEventListener("pointermove", (e) => { if (e.pointerId === stickId) moveStick(e); });
+for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) $("stick").addEventListener(ev, (e) => { if (e.pointerId === stickId) releaseStick(); });
+let fireId = null;
+$("fireBtn").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (fireId !== null) return;
+  fireId = e.pointerId;
+  try { $("fireBtn").setPointerCapture(e.pointerId); } catch {}
+  $("fireBtn").classList.add("on");
+  hunt.fire();
+});
+function releaseFire() {
+  if (fireId !== null) { try { $("fireBtn").releasePointerCapture(fireId); } catch {} }
+  fireId = null; $("fireBtn").classList.remove("on");
+}
+for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) $("fireBtn").addEventListener(ev, (e) => { if (e.pointerId === fireId) releaseFire(); });
+for (const el of [$("stick"), $("fireBtn")]) el.addEventListener("contextmenu", (e) => e.preventDefault());
+function releasePad() { releaseStick(); releaseFire(); }
+addEventListener("blur", releasePad);
+document.addEventListener("visibilitychange", () => { if (document.hidden) releasePad(); });
+
 async function play() {
   audio();
   try { await document.documentElement.requestFullscreen?.({ navigationUI: "hide" }); } catch {}
@@ -265,7 +331,7 @@ async function play() {
   try {
     const r = await post("/duck-hunt/api/start");
     runId = r.run; finishing = false;
-    show("startSheet", false); show("endSheet", false); show("menuSheet", false); show("hud"); show("menuBtn");
+    show("startSheet", false); show("endSheet", false); show("menuSheet", false); show("hud"); show("pad"); show("menuBtn");
     hunt.start(r.seconds || 75);
   } catch (e) { alert(e.message); }
 }
@@ -280,7 +346,7 @@ async function finish() {
   finishing = true;
   hunt.stop();
   sfx("end");
-  show("hud", false); show("menuBtn", false); $("combo").textContent = "";
+  show("hud", false); show("pad", false); releasePad(); show("menuBtn", false); $("combo").textContent = "";
   const g = hunt.state;
   let res = null;
   try { res = await post("/duck-hunt/api/finish", { run: runId }); } catch {}
