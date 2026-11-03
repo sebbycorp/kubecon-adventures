@@ -178,7 +178,7 @@ func (m *Missions) tickTarget(ms *Mission, id string, w *World, s *Scheduler) {
 	case t == nil:
 	case t.State == Working:
 		if !t.Busy && !tr.stepping && w.Now >= tr.nextAt && s.Submit("step", id, t.SessionID, t.Step+1, t.Steps) {
-			tr.stepping = true
+			tr.stepping, tr.nextAt = true, m.pace(w.Now) // start-to-start cadence
 		}
 	case t.State == Frozen:
 		since := max(t.FrozenAt, tr.crewAt)
@@ -230,7 +230,7 @@ func (m *Missions) OnResult(r Result, w *World) {
 			tr.nextAt = w.Now + spawnRetry
 			return
 		}
-		tr.spawned, tr.nextAt = true, m.pace(w.Now)
+		tr.spawned, tr.nextAt = true, w.Now // the heist starts on arrival
 		w.Targets[r.Target] = &Target{ID: r.Target, SessionID: r.Spawned, MissionID: ms.ID,
 			Name: targetNames[m.rnd.IntN(len(targetNames))], Node: r.Node, Squad: ms.Squad,
 			Pos: w.City.RandomStreet(w.City.DistrictOf(r.Node), m.rnd), State: Working,
@@ -264,13 +264,13 @@ func (m *Missions) OnResult(r Result, w *World) {
 	m.check(ms, w)
 }
 
-// onStep advances a Working target. A step only counts when its turn completes; the
-// last step must also report Done, and then the target escapes.
+// onStep advances a Working target. A step only counts when its turn completes; an OK
+// last step means the target escapes (step_done is not required, so it can't loop).
+// The next step was already scheduled when this one was submitted.
 func (m *Missions) onStep(ms *Mission, tr *track, t *Target, r Result, w *World) {
 	if t == nil || t.State != Working || ms.Outcome != "" {
 		return
 	}
-	tr.nextAt = m.pace(w.Now)
 	if !r.OK {
 		return
 	}
@@ -283,12 +283,10 @@ func (m *Missions) onStep(ms *Mission, tr *track, t *Target, r Result, w *World)
 		ms.Stars = min(maxStars, ms.Stars+1)
 		return
 	}
-	if r.Step.Done {
-		t.Step, t.State = t.Steps, Escaped
-		ms.Stars = min(maxStars, ms.Stars+1)
-		w.Events = append(w.Events, Event{Kind: "escaped", Target: t.ID, Text: t.Name})
-		m.finish(ms, "escaped", w)
-	}
+	t.Step, t.State = t.Steps, Escaped
+	ms.Stars = min(maxStars, ms.Stars+1)
+	w.Events = append(w.Events, Event{Kind: "escaped", Target: t.ID, Text: t.Name})
+	m.finish(ms, "escaped", w)
 }
 
 // onTakedown adds mission cash for a freeze, booking or delete and records which

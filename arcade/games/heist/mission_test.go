@@ -128,24 +128,18 @@ func TestStepPacing(t *testing.T) {
 	if !x.w.City.Walkable(tg.Pos) {
 		t.Fatalf("spawned off the street at %v", tg.Pos)
 	}
-	for i := 1; i <= 2; i++ {
-		d := x.tickUntil(40, func() bool { return x.stepsInFlight() > 0 })
-		if d < 15 || d > 25 {
-			t.Fatalf("step %d submitted after %.1f s, want 15-25", i, d)
-		}
-		x.tickUntil(30, func() bool { return false }) // in flight: no second step
-		if n := x.stepsInFlight(); n != 1 {
-			t.Fatalf("steps in flight = %d", n)
-		}
-		x.pump("step")
-		if tg.Step != i || tg.Say != "hi" {
-			t.Fatalf("after step %d: Step=%d Say=%q", i, tg.Step, tg.Say)
-		}
-		if ms.Stars != 1+i {
-			t.Fatalf("stars = %d, want %d", ms.Stars, 1+i)
-		}
-		ms.Ends = x.w.Now + 1000 // keep the mission alive for the pacing check
+	if x.tickUntil(1, func() bool { return x.stepsInFlight() > 0 }) < 0 {
+		t.Fatal("first step not submitted")
 	}
+	x.tickUntil(30, func() bool { return false }) // in flight: no second step
+	if n := x.stepsInFlight(); n != 1 {
+		t.Fatalf("steps in flight = %d", n)
+	}
+	x.pump("step")
+	if tg.Step != 1 || tg.Say != "hi" || ms.Stars != 2 {
+		t.Fatalf("after step 1: Step=%d Say=%q stars=%d", tg.Step, tg.Say, ms.Stars)
+	}
+	ms.Ends = x.w.Now + 1000 // keep the mission alive for the pacing checks
 	for _, st := range []TargetState{Frozen, Dragged} {
 		tg.State = st
 		if x.tickUntil(40, func() bool { return x.stepsInFlight() > 0 }) >= 0 {
@@ -159,6 +153,83 @@ func TestStepPacing(t *testing.T) {
 	tg.Busy = false
 	if x.tickUntil(1, func() bool { return x.stepsInFlight() > 0 }) < 0 {
 		t.Fatal("no step once Working and idle again")
+	}
+}
+
+// stepWatch ticks until a step is submitted, returning the submit time (or -1).
+func (x *mtest) stepWatch(limit float64) float64 {
+	if x.tickUntil(limit, func() bool { return x.stepsInFlight() > 0 }) < 0 {
+		return -1
+	}
+	return x.w.Now
+}
+
+func TestFirstStepImmediately(t *testing.T) {
+	x := newMTest(t, 24)
+	x.start("red", 1)
+	if x.stepsInFlight() != 0 {
+		t.Fatal("step submitted before any tick")
+	}
+	x.w.Now += 0.5
+	x.m.Tick(x.w, x.s)
+	if x.stepsInFlight() != 1 {
+		t.Fatal("first step not submitted on the tick after the spawn result")
+	}
+}
+
+func TestStepCadenceStartToStart(t *testing.T) {
+	x := newMTest(t, 24)
+	ms := x.start("red", 1)
+	ms.Ends = 1e9
+	t1 := x.stepWatch(1)
+	x.tickUntil(12, func() bool { return false }) // a 12 s turn
+	x.pump("step")
+	t2 := x.stepWatch(40)
+	if d := t2 - t1; d < 15 || d > 25 {
+		t.Fatalf("step 2 started %.1f s after step 1 started, want 15-25", d)
+	}
+	// A step slower than the cadence: the next one goes on the tick after its result.
+	x.tickUntil(30, func() bool { return false })
+	x.pump("step")
+	x.w.Now += 0.5
+	x.m.Tick(x.w, x.s)
+	if x.stepsInFlight() != 1 {
+		t.Fatal("overdue step not submitted right after the slow result")
+	}
+}
+
+func TestLevel1CanEscape(t *testing.T) {
+	x := newMTest(t, 24)
+	ms := x.start("red", 1)
+	tg := x.target(ms, 0)
+	since := -1.0
+	for ms.Outcome == "" && x.w.Now < 200 {
+		x.w.Now += 0.5
+		x.m.Tick(x.w, x.s)
+		switch {
+		case x.stepsInFlight() == 0:
+		case since < 0:
+			since = x.w.Now
+		case x.w.Now-since >= 8: // every turn takes 8 s
+			x.pump("step")
+			since = -1
+		}
+	}
+	if ms.Outcome != "escaped" || tg.State != Escaped || x.w.Now >= ms.Ends {
+		t.Fatalf("outcome %q state %s at %.1f (ends %.1f)", ms.Outcome, tg.State, x.w.Now, ms.Ends)
+	}
+}
+
+func TestLastStepCountsWithoutDone(t *testing.T) {
+	x := newMTest(t, 24)
+	ms := x.start("red", 1)
+	tg := x.target(ms, 0)
+	tg.Step = 3
+	x.stepWatch(1)
+	x.m.targets[tg.ID].stepping = false
+	x.m.OnResult(Result{Kind: "step", Target: tg.ID, OK: true, Step: StepResult{Say: "almost"}}, x.w)
+	if tg.State != Escaped || ms.Outcome != "escaped" {
+		t.Fatalf("state %s outcome %q", tg.State, ms.Outcome)
 	}
 }
 
