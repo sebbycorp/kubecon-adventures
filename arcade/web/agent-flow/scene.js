@@ -718,6 +718,9 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor
       from = i >= 0 ? i + 1 : ops.findIndex((o) => o.at > lastOp.at) >>> 0;
     }
     const fresh = opsSeen ? ops.slice(from) : [];
+    // On the first state, count the last minute's turns the server already has, so the
+    // turns-a-minute stat is right from the start rather than climbing from zero.
+    if (!opsSeen) for (const o of ops) if (o.kind === "turn" && o.phase === "start" && Date.now() - o.at < 60000) turnTimes.push(o.at);
     if (ops.length) { lastOp = ops[ops.length - 1]; opsSeen = true; }
     if (!opsSeen && st.ops) opsSeen = true;
     for (const o of fresh) {

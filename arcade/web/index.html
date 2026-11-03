@@ -3,87 +3,247 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0d0e0f">
 <title>Agent Arcade</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/nes.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  body { max-width: 520px; margin: 0 auto; padding: 8px 16px 32px; font-size: 11px; }
+  /* The Agent Flow screen's look: kagent dark, Inter, one green accent. */
+  :root { --bg: #0d0e0f; --grid: #17191b; --fg: #e8e8e8; --mute: #8a8f94; --green: #5fd068; --greenDim: #3d7a45; --line: #24272a;
+    --duck: #facc15; --flow: #5fd068; --siege: #38bdf8; --defense: #fb923c; --gateway: #22d3ee; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 Inter, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  body { min-height: 100vh; background:
+    linear-gradient(transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 100% 36px,
+    linear-gradient(90deg, transparent 0 calc(100% - 1px), #ffffff05 0) 0 0 / 36px 100%, var(--bg); }
+  a { color: inherit; }
   .hidden { display: none !important; }
-  .game { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; text-decoration: none; color: inherit; }
-  .game .name { color: var(--orange); font-size: 13px; }
-  .game .what { grid-column: 1 / -1; font-size: 8px; color: var(--gray); line-height: 1.8; }
-  .game .tag { font-size: 8px; color: var(--sky); }
-  .game.soon { opacity: 0.5; pointer-events: none; }
-  a.game:hover .name, a.game:focus-visible .name { color: var(--white); }
-  #err { color: var(--red); text-align: center; min-height: 1.6em; }
-  footer { text-align: center; font-size: 8px; color: var(--gray); margin-top: 24px; line-height: 2; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: max(18px, env(safe-area-inset-top)) 16px 40px; }
+
+  /* Top: logo, title, LIVE pill, stat pills (as on the Agent Flow screen). */
+  .top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .title img { height: 30px; display: block; margin-bottom: 8px; }
+  .title h1 { margin: 0; font-size: clamp(20px, 5vw, 24px); font-weight: 600; letter-spacing: -0.01em; }
+  .title p { margin: 4px 0 0; color: var(--mute); font-size: 13px; max-width: 560px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--mute); border: 1px solid #2a2d30; background: #121314ee; border-radius: 999px; padding: 5px 12px 5px 10px; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: beat 1.4s ease-in-out infinite; }
+  .pill b { color: var(--fg); font-weight: 600; letter-spacing: .06em; }
+  @keyframes beat { 50% { transform: scale(.6); opacity: .5; } }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; max-width: 560px; }
+  .stat { border: 1px solid #2a2d30; background: #121314ee; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; color: var(--mute); white-space: nowrap; }
+  .stat b { color: var(--fg); font-weight: 600; margin-right: 4px; font-variant-numeric: tabular-nums; }
+  .stat.green b { color: var(--green); }
+  @media (max-width: 640px) { .stats { justify-content: flex-start; } }
+
+  /* The live factory, a smaller Agent Flow screen. */
+  .factory { position: relative; margin-top: 16px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 45%, #131614, #0d0e0f 75%); }
+  .factory svg { display: block; width: 100%; aspect-ratio: 1360 / 640; }
+  .factory .vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, var(--bg) 100%); }
+  .factory .cap { position: absolute; left: 14px; bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+  .factory .cap span { font-size: 12px; color: var(--mute); background: #0d0e0fd9; border: 1px solid #2a2d30; border-radius: 999px; padding: 4px 10px; }
+  .factory .cap b { color: var(--fg); font-weight: 600; }
+  .factory a.full { position: absolute; right: 12px; top: 12px; font-size: 12.5px; text-decoration: none; color: var(--green); border: 1px solid var(--greenDim);
+    background: #111412e6; border-radius: 999px; padding: 6px 12px; box-shadow: 0 0 24px #5fd06818; }
+  @media (max-width: 640px) { .factory svg { aspect-ratio: 1360 / 900; } .factory .cap { display: none; } }
+
+  /* Player */
+  .player { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 4px; }
+  .player .p1 { font-weight: 600; } .player .p1 b { color: var(--green); }
+  .player button.link { background: none; border: 0; color: var(--mute); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 0; }
+  form.join { display: flex; gap: 8px; width: 100%; max-width: 520px; }
+  form.join input { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 12px; border: 1px solid #2a2d30; background: #111412; color: #fff;
+    font: 600 15px Inter, sans-serif; letter-spacing: .04em; text-transform: uppercase; outline: none; }
+  form.join input:focus { border-color: var(--green); box-shadow: 0 0 0 3px #5fd06826; }
+  form.join button { border: 1px solid #2a2d30; border-radius: 12px; padding: 0 16px; font: 600 14px Inter, sans-serif; cursor: pointer; }
+  #dice { background: #121314; color: #fff; font-size: 18px; }
+  #go { background: var(--green); border-color: var(--green); color: #06140a; }
+  #err { color: #ff8c8c; min-height: 1.4em; font-size: 13px; width: 100%; }
+
+  /* Games: panels like the screen's story and QR cards. */
+  .label { margin: 16px 0 10px; color: var(--mute); font: 11.5px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+  .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  @media (min-width: 680px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1040px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .card { --c: var(--green); position: relative; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 16px; border-radius: 14px; text-decoration: none;
+    border: 1px solid #2a2d30; background: #101311f2; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .card:hover, .card:focus-visible { border-color: var(--c); box-shadow: 0 0 40px color-mix(in srgb, var(--c) 18%, transparent); transform: translateY(-1px); outline: none; }
+  .card .head { display: flex; align-items: center; gap: 12px; padding-right: 90px; }
+  .card .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 21px; flex: none;
+    background: #0d0e0f; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 22%, transparent); }
+  .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .card .tag { font-size: 12.5px; color: var(--mute); }
+  .card p { margin: 0; color: #c9ccce; font-size: 13.5px; line-height: 1.5; }
+  .card .real { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .card .real span { font: 11.5px ui-monospace, monospace; padding: 2px 8px; border-radius: 6px; border: 1px solid #2a2d30; color: var(--c); background: #0d0e0f; }
+  .card .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card .play { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--c); color: var(--c); font-weight: 600; font-size: 13px; }
+  .card:hover .play { background: var(--c); color: #0d0e0f; }
+  .card .now { font-size: 12.5px; color: var(--mute); display: inline-flex; align-items: center; gap: 7px; }
+  .card .now i { width: 7px; height: 7px; border-radius: 50%; background: #3a3d40; }
+  .card .now.on { color: var(--fg); }
+  .card .now.on i { background: var(--c); box-shadow: 0 0 10px var(--c); }
+  .card .screen { position: absolute; top: 16px; right: 16px; font-size: 12px; color: var(--mute); text-decoration: none; padding: 4px 9px; border-radius: 999px; border: 1px solid #2a2d30; background: #121314; }
+  .card .screen:hover { color: var(--fg); border-color: var(--mute); }
+
+  footer { margin-top: 24px; font-size: 12.5px; color: var(--mute); text-align: center; }
+  footer a { color: var(--green); }
 </style>
 </head>
 <body>
-<div class="title">AGENT<br>ARCADE</div>
-<div class="sub" style="font-size:9px">POWERED BY KAGENT · AGENT SUBSTRATE · AGENTGATEWAY</div>
-
-<section id="join" class="box hidden" style="margin-top:24px">
-  <form id="joinForm">
-    <label for="nick">ENTER YOUR NAME</label>
-    <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" required style="margin:12px 0">
-    <button type="submit" style="width:100%">START</button>
-  </form>
-</section>
-
-<section id="games" class="hidden">
-  <div class="muted" style="margin:16px 8px 8px">P1 <span id="who"></span> · SELECT A GAME</div>
-  <a class="box game" href="/duck-hunt">
-    <span class="name">▶ DUCK HUNT</span><span class="tag">SNAPSHOTS</span>
-    <span class="what">HATCH AI DUCKS. IDLE DUCKS SLEEP AS SNAPSHOTS; THE HUNTER SUSPENDS THEM AND YOU REVIVE THEM.</span>
-  </a>
-  <a class="box game" href="/agent-flow">
-    <span class="name">▶ AGENT FLOW</span><span class="tag">THE WHOLE STACK</span>
-    <span class="what">GIVE YOUR OWN AGENT A TASK AND WATCH IT TRAVEL THROUGH AGENTGATEWAY, KAGENT, SUBSTRATE AND ITS GVISOR SANDBOX ON THE BIG SCREEN.</span>
-  </a>
-  <a class="box game" href="/substrate-siege">
-    <span class="name">▶ SUBSTRATE SIEGE</span><span class="tag">LIFECYCLE</span>
-    <span class="what">3 MINUTES IN A NIGHT CITY FULL OF REAL AGENTS. FREEZE THEM, SNAPSHOT THEM, BEAT THE BIG SCREEN.</span>
-  </a>
-  <a class="box game" href="/cluster-defense">
-    <span class="name">▶ CLUSTER DEFENSE</span><span class="tag">SCALE</span>
-    <span class="what">FLY A SHIP. SUBAGENTS SPIN UP AND FILL THE CLUSTER'S WORKERS. SUSPEND THEM BEFORE IT'S FULL. EVERYONE PLAYS TOGETHER.</span>
-  </a>
-  <a class="box game" href="/gateway-defense">
-    <span class="name">▶ GATEWAY DEFENSE</span><span class="tag">CONTROLS</span>
-    <span class="what">TOWER DEFENSE: ROGUE AGENTS MARCH ON YOUR CLUSTER. BUILD THE REAL PROMPT GUARD, RATE LIMIT, EGRESS AND SUSPEND. EVERY BLOCK IS A REAL CALL.</span>
-  </a>
-  <div class="box game soon">
-    <span class="name">WHACK-A-MOLE</span><span class="tag">COLD START</span>
-    <span class="what">WHACK SLEEPING AGENTS AWAKE. HOW FAST DOES A SNAPSHOT RESTORE? COMING SOON.</span>
+<div class="wrap">
+  <div class="top">
+    <div class="title">
+      <img src="/agent-flow/static/kagent-logo.svg" alt="kagent">
+      <h1>Agent Arcade on Agent Substrate</h1>
+      <p>Every character is a real AI agent in its own gVisor sandbox. Play a game, then watch your agents move through the platform below.</p>
+      <div class="pill"><i></i><b>LIVE</b><span id="since">kagent · Agent Substrate · agentgateway</span></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="nActors">–</b>agents</div>
+      <div class="stat green"><b id="nAwake">–</b>awake now</div>
+      <div class="stat"><b id="nWorkers">–</b>sandboxes</div>
+      <div class="stat"><b id="nAsleep">–</b>asleep · 0 CPU</div>
+      <div class="stat"><b id="nRestore">–</b>wake-up p50</div>
+      <div class="stat"><b id="nTurns">0</b>turns/min</div>
+    </div>
   </div>
-</section>
 
-<div id="err" role="alert"></div>
-<footer>EVERY CHARACTER IN THIS ARCADE IS A REAL AI AGENT<br>RUNNING IN ITS OWN GVISOR SANDBOX ON KUBERNETES.</footer>
+  <section class="factory" aria-label="Live map of every agent on Agent Substrate">
+    <svg id="scene" viewBox="20 59 1360 640" preserveAspectRatio="xMidYMid slice"></svg>
+    <div class="vig"></div>
+    <a class="full" href="/agent-flow/screen">Full screen ↗</a>
+    <div class="cap"><span>Every cube is a real agent turn, from every game</span><span><b id="capDensity">–</b></span></div>
+  </section>
+
+  <section class="player">
+    <div id="joined" class="hidden"><span class="p1">P1 <span id="who"></span></span> · <button class="link" id="rename">change name</button></div>
+    <form class="join hidden" id="joinForm">
+      <input id="nick" maxlength="16" autocomplete="nickname" autocapitalize="characters" placeholder="YOUR NAME" aria-label="Player name" required>
+      <button type="button" id="dice" title="Random name" aria-label="Random name">🎲</button>
+      <button type="submit" id="go">PLAY</button>
+    </form>
+    <div id="err" role="alert"></div>
+  </section>
+
+  <div class="label">Pick a game</div>
+  <section class="grid" id="games">
+    <a class="card" href="/substrate-siege" style="--c: var(--siege)">
+      <div class="head"><div class="ico">🌃</div><div><h2>SUBSTRATE SIEGE</h2><div class="tag">3-minute run · night city</div></div></div>
+      <div><p>Agents roam a night city doing jobs. Two hits freezes one, tap BOOK to snapshot it. Beat the big screen in three minutes.</p>
+        <div class="real"><span>Suspend</span><span>Checkpoint</span><span>Delete</span></div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="siege"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/substrate-siege/screen" target="_blank">big screen ↗</a></object>
+    </a>
+    <a class="card" href="/cluster-defense" style="--c: var(--defense)">
+      <div class="head"><div class="ico">🚀</div><div><h2>CLUSTER DEFENSE</h2><div class="tag">co-op space shooter</div></div></div>
+      <div><p>Subagents spin up and fill the cluster's workers. Fly your ship and shoot them down before it's full. Everyone defends one cluster.</p>
+        <div class="real"><span>Suspend</span><span>Worker pool</span><span>Subagents</span></div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="defense"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/cluster-defense/screen" target="_blank">big screen ↗</a></object>
+    </a>
+    <a class="card" href="/gateway-defense" style="--c: var(--gateway)">
+      <div class="head"><div class="ico">🛡️</div><div><h2>GATEWAY DEFENSE</h2><div class="tag">tower defense · solo</div></div></div>
+      <div><p>Rogue agent traffic marches on your cluster. Build the real defenses. Every block is a real call through agentgateway.</p>
+        <div class="real"><span>Prompt guard</span><span>Rate limit</span><span>Egress</span><span>Suspend</span></div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="gateway"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/gateway-defense/screen" target="_blank">big screen ↗</a></object>
+    </a>
+    <a class="card" href="/agent-flow" style="--c: var(--flow)">
+      <div class="head"><div class="ico">🧭</div><div><h2>AGENT FLOW</h2><div class="tag">your own agent</div></div></div>
+      <div><p>Give your own agent a task and watch it travel through agentgateway, kagent, Substrate and its sandbox, live on the big screen.</p>
+        <div class="real"><span>Sandbox</span><span>Egress policy</span><span>Snapshot</span></div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="flow"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/agent-flow/screen" target="_blank">big screen ↗</a></object>
+    </a>
+    <a class="card" href="/duck-hunt" style="--c: var(--duck)">
+      <div class="head"><div class="ico">🦆</div><div><h2>DUCK HUNT</h2><div class="tag">classic · snapshots</div></div></div>
+      <div><p>Hatch AI ducks. Idle ducks sleep as snapshots, the hunter suspends them, and you bring them back.</p>
+        <div class="real"><span>Snapshot</span><span>Resume</span></div></div>
+      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="duck"><i></i><span>–</span></span></div>
+      <object><a class="screen" href="/duck-hunt/screen" target="_blank">big screen ↗</a></object>
+    </a>
+  </section>
+
+  <footer>Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a></footer>
+</div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 // ?next=/some-game sends a player back to the game that asked them to join first.
 const next = new URLSearchParams(location.search).get("next");
-function showGames(p) {
-  if (next && /^\/[\w\-\/]*$/.test(next) && !next.startsWith("//")) { location.replace(next); return; }
-  $("join").classList.add("hidden");
-  $("games").classList.remove("hidden");
+const safeNext = next && /^\/[\w\-\/]*$/.test(next) && !next.startsWith("//") ? next : null;
+
+function showJoined(p) {
+  if (safeNext) { location.replace(safeNext); return; }
+  $("joinForm").classList.add("hidden");
+  $("joined").classList.remove("hidden");
   $("who").textContent = p.nick.toUpperCase();
+  document.body.classList.remove("locked");
 }
+function showJoin() {
+  $("joined").classList.add("hidden");
+  $("joinForm").classList.remove("hidden");
+  document.body.classList.add("locked");
+  if (!$("nick").value) $("nick").value = randomName();
+}
+const A = ["NEON", "TURBO", "PIXEL", "COSMIC", "HYPER", "MEGA", "ROGUE", "LASER", "QUANTUM", "SNEAKY", "ATOMIC", "GLITCH"];
+const B = ["DUCK", "POD", "AGENT", "KUBE", "SANDBOX", "GATEWAY", "SNAPSHOT", "NODE", "SHARD", "BYTE", "ACTOR", "SIDECAR"];
+const randomName = () => (A[Math.random() * A.length | 0] + B[Math.random() * B.length | 0]).slice(0, 16);
+$("dice").onclick = () => { $("nick").value = randomName(); $("nick").focus(); };
+$("rename").onclick = () => { $("nick").value = $("who").textContent; showJoin(); $("nick").select(); };
 $("joinForm").onsubmit = async (ev) => {
   ev.preventDefault();
+  $("err").textContent = "";
   const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: $("nick").value }) });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) { $("err").textContent = (data.error || r.statusText).toUpperCase(); return; }
-  showGames(data);
+  if (!r.ok) { $("err").textContent = data.error || r.statusText; return; }
+  showJoined(data);
 };
-fetch("/api/me").then((r) => r.ok ? r.json() : Promise.reject()).then(showGames)
-  .catch(() => { $("join").classList.remove("hidden"); $("nick").focus(); });
+// A game card clicked before joining joins with the name in the box first.
+document.querySelectorAll(".card").forEach((c) => c.addEventListener("click", async (ev) => {
+  if (ev.target.closest(".screen") || !document.body.classList.contains("locked")) return;
+  ev.preventDefault();
+  const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nick: $("nick").value || randomName() }) });
+  if (r.ok) location.href = c.getAttribute("href"); else $("err").textContent = ((await r.json().catch(() => ({}))).error) || r.statusText;
+}));
+fetch("/api/me").then((r) => (r.ok ? r.json() : Promise.reject())).then(showJoined).catch(showJoin);
+
+// ---- live Substrate numbers ----
+const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
+const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
+function players(s) {
+  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players };
+}
+async function poll() {
+  try {
+    const s = await (await fetch("/api/stats")).json();
+    $("nActors").textContent = fmt(s.actors);
+    $("nAwake").textContent = fmt(s.running);
+    $("nWorkers").textContent = fmt(s.workers);
+    $("nAsleep").textContent = fmt(s.suspended);
+    $("nRestore").textContent = ms(s.restoreP50Ms);
+    $("capDensity").textContent = s.actors && s.workers ? `${(s.actors / s.workers).toFixed(1)} agents per sandbox` : "–";
+    const p = players(s);
+    document.querySelectorAll(".now").forEach((el) => {
+      const n = p[el.dataset.k] || 0;
+      el.classList.toggle("on", n > 0);
+      el.lastElementChild.textContent = n > 0 ? `${n} playing now` : "be the first to play";
+    });
+  } catch {}
+}
+poll();
+setInterval(poll, 4000);
+</script>
+<script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>
+<script src="/agent-flow/static/scene.js"></script>
+<script>
+"use strict";
+// The live factory: the Agent Flow screen's scene, with every game's agent turns and
+// lifecycle calls moving through it (its own event stream).
+const flow = startFlowScreen(document.getElementById("scene"), { camera: false });
+setInterval(() => { document.getElementById("nTurns").textContent = flow.turnsPerMin(); }, 1000);
 </script>
 </body>
 </html>
