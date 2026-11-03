@@ -51,7 +51,6 @@ func (k *Kagent) track(kind, session string) func(err error, r *Reply) {
 	}
 }
 
-
 // The calls games make, each reported to the Observe hook (observe.go).
 
 // CreateSession starts a new actor for the agent and waits until it is ready.

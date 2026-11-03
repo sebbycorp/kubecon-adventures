@@ -9,7 +9,9 @@ import (
 
 func TestFleetDiff(t *testing.T) {
 	g := &Game{}
-	a := func(agent, state string) kagent.ActorInfo { return kagent.ActorInfo{Agent: agent, State: state, Node: "n1"} }
+	a := func(agent, state string) kagent.ActorInfo {
+		return kagent.ActorInfo{Agent: agent, State: state, Node: "n1"}
+	}
 	same := func(poll string, got, want []ActorMove) {
 		t.Helper()
 		if len(got) != len(want) {

@@ -269,8 +269,8 @@ type Game struct {
 	moves   []Move
 	actors  map[string]kagent.ActorInfo // every Substrate actor at the last poll (nil before the first)
 	amoves  []ActorMove
-	ops     []kagent.Op       // other games' kagent calls (OnOp), newest last
-	opCount map[string]int64  // every game's successful kagent calls by kind, since opSince
+	ops     []kagent.Op      // other games' kagent calls (OnOp), newest last
+	opCount map[string]int64 // every game's successful kagent calls by kind, since opSince
 	opSince time.Time
 	scores  map[string]*score // by player ID: the leaderboard
 	blocked int               // runs stopped by agentgateway's prompt guard
