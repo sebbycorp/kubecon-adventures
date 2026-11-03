@@ -104,6 +104,14 @@ type AvatarView struct {
 	HP       float64 `json:"hp"`
 	Down     bool    `json:"down"`
 	Online   bool    `json:"online"`
+	// PvP: frozen by another player (and by whom), spawn-protected, PvP hits taken, and
+	// the player's own Substrate agent (its state and last suspend or resume in ms).
+	Frozen    bool   `json:"frozen,omitempty"`
+	FrozenBy  string `json:"frozenBy,omitempty"`
+	Protected bool   `json:"protected,omitempty"`
+	PvPHits   int    `json:"pvpHits,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	AgentMs   int64  `json:"agentMs,omitempty"`
 }
 
 type TargetView struct {
@@ -177,6 +185,7 @@ type ScoreView struct {
 	Best    int    `json:"best"`
 	Freezes int    `json:"freezes"`
 	Books   int    `json:"books"`
+	Players int    `json:"players"` // other players frozen
 	Rig     int    `json:"rig"`
 	Allies  int    `json:"allies"`
 }
@@ -252,8 +261,13 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 	}
 	for _, id := range slices.Sorted(maps.Keys(w.Avatars)) {
 		a := w.Avatars[id]
+		hits := a.PvPHits
+		if w.Now-a.LastPvP > pvpHitDecay {
+			hits = 0
+		}
 		c.Avatars = append(c.Avatars, AvatarView{a.PlayerID, a.Nick, a.Color, a.Squad, r2(a.Pos.X), r2(a.Pos.Y),
-			r2(a.Facing.X), r2(a.Facing.Y), r2(a.HP), a.Down, a.Online})
+			r2(a.Facing.X), r2(a.Facing.Y), r2(a.HP), a.Down, a.Online,
+			a.Frozen, a.FrozenBy, w.Now < a.ProtectUntil, hits, a.Agent.State, a.Agent.Ms})
 	}
 	for _, id := range slices.Sorted(maps.Keys(w.Targets)) {
 		t := w.Targets[id]
@@ -284,7 +298,7 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 		if i == boardRows {
 			break
 		}
-		c.Board = append(c.Board, ScoreView{r.PlayerID, r.Nick, r.Squad, r.Best, r.Freezes, r.Books, r.Rig, allies[r.PlayerID]})
+		c.Board = append(c.Board, ScoreView{r.PlayerID, r.Nick, r.Squad, r.Best, r.Freezes, r.Books, r.Players, r.Rig, allies[r.PlayerID]})
 	}
 	c.Substrate = substrateView(g.p.Substrate())
 	c.Cap.Steps, c.Cap.Resumes, c.Cap.Queued = g.s.InFlight()

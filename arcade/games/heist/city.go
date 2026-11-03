@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"sync"
 )
 
 // Vec is a position or direction in tile units.
@@ -20,52 +21,226 @@ func (r Rect) Contains(p Vec) bool {
 	return p.X >= r.X && p.X < r.X+r.W && p.Y >= r.Y && p.Y < r.Y+r.H
 }
 
-// Tile bytes.
+// Tile bytes. Buildings, water, trees, containers, fountains and planters, and overpass
+// pillars block walking; all of those except water also block shots (see blocksShot).
 const (
 	Road         = '.'
 	Building     = '#'
 	VaultTile    = 'V'
 	DispatchTile = 'D'
+	Water        = '~'
+	Bridge       = '='
+	Plaza        = 'p' // paving: the central plaza and the river promenades
+	Grass        = 'g'
+	Tree         = 't'
+	Container    = 'c' // a shipping container on the docks
+	Feature      = 'f' // a fountain or a planter on the plaza
+	Alley        = 'a' // a one-tile lane between the alley quarter's buildings
+	Under        = 'h' // ground under the elevated highway
+	Pillar       = 'o' // an overpass pillar
 )
+
+// blocksWalk and blocksShot classify tiles. Water stops feet, not bullets.
+func blocksWalk(t byte) bool {
+	switch t {
+	case Building, Water, Tree, Container, Feature, Pillar:
+		return true
+	}
+	return false
+}
+
+func blocksShot(t byte) bool { return t != Water && blocksWalk(t) }
+
+// open reports ground where an agent or a respawning player may be placed.
+func open(t byte) bool {
+	switch t {
+	case Road, Plaza, Grass, Alley, Under:
+		return true
+	}
+	return false
+}
 
 // playerRadius is the collision radius in tiles.
 const playerRadius = 0.3
 
-// Map geometry: 3-tile roads between 5x5 blocks on an 8-tile pitch, roads on every
-// edge, 7 block columns by 4 block rows.
+// The map is 88x60 tiles: a 3-tile ring road around six districts, with a river across
+// the middle. North of it are downtown (3-tile roads between 5x5 blocks on an 8-tile
+// pitch, as the first city was), the central plaza around Dispatch, and the alley
+// quarter; the elevated highway crosses the plaza and the alleys. South of it are the
+// riverside park (grass, trees and a pond) and the docks (shipping containers,
+// warehouses and the Vault). Three bridges and the ring road cross the river.
 const (
-	roadWidth = 3
-	blockSize = 5
-	pitch     = roadWidth + blockSize
-	blockCols = 7
-	blockRows = 4
+	mapW, mapH = 88, 60
+	pitch      = 8 // downtown's road pitch
+	riverY0    = 28
+	riverY1    = 31 // inclusive
+	overY0     = 20 // the highway's band (inclusive)
+	overY1     = 22
 )
 
-// layout is the fixed 59x35 map. Dispatch takes the block nearest the centre (column 3,
-// row 1; rows 1 and 2 tie and the upper one wins) and the Vault the bottom-right block.
+// Region is a named district of the map, for landmarks and the minimap.
+type Region struct {
+	Name, Kind string
+	R          Rect
+}
+
+var regions = []Region{
+	{"DOWNTOWN", "downtown", Rect{3, 3, 32, 25}},
+	{"CENTRAL PLAZA", "plaza", Rect{35, 3, 21, 25}},
+	{"THE ALLEYS", "alleys", Rect{56, 3, 29, 25}},
+	{"HIGHWAY 8", "overpass", Rect{35, overY0, 50, overY1 - overY0 + 1}},
+	{"THE RIVER", "river", Rect{3, riverY0, 82, riverY1 - riverY0 + 1}},
+	{"RIVERSIDE PARK", "park", Rect{3, 33, 37, 24}},
+	{"THE DOCKS", "docks", Rect{40, 33, 45, 24}},
+}
+
+// bridges are the columns (inclusive) that cross the river inside the ring road: in
+// line with a downtown road, the plaza's north-south axis and the alleys' main road.
+var bridges = [][2]int{{16, 18}, {43, 45}, {68, 70}}
+
+// layout is the fixed map.
 var layout = buildLayout()
 
 func buildLayout() []string {
-	w, h := roadWidth+blockCols*pitch, roadWidth+blockRows*pitch
-	rows := make([]string, h)
-	for y := range h {
-		row := make([]byte, w)
-		for x := range w {
-			bx, by := x/pitch, y/pitch
-			switch {
-			case x%pitch < roadWidth || y%pitch < roadWidth:
-				row[x] = Road
-			case bx == 3 && by == 1:
-				row[x] = DispatchTile
-			case bx == blockCols-1 && by == blockRows-1:
-				row[x] = VaultTile
-			default:
-				row[x] = Building
+	g := make([][]byte, mapH)
+	for y := range mapH {
+		g[y] = make([]byte, mapW)
+		for x := range mapW {
+			g[y][x] = baseTile(x, y)
+		}
+	}
+	// Plaza: Dispatch in the middle, fountains (2x2) and planters (3x1) as cover.
+	fill(g, 43, 11, 5, 5, DispatchTile)
+	for _, f := range [][2]int{{38, 6}, {51, 6}, {38, 16}, {51, 16}} {
+		fill(g, f[0], f[1], 2, 2, Feature)
+	}
+	for _, f := range [][2]int{{40, 9}, {48, 9}, {40, 18}, {48, 18}} {
+		fill(g, f[0], f[1], 3, 1, Feature)
+	}
+	// The park's pond.
+	for y := 33; y < 57; y++ {
+		for x := 3; x < 40; x++ {
+			if dx, dy := float64(x)+0.5-28, float64(y)+0.5-38; dx*dx/30+dy*dy/10 <= 1 {
+				g[y][x] = Water
 			}
 		}
-		rows[y] = string(row)
+	}
+	// Docks: five rows of five containers (5x2), two warehouses, and the Vault.
+	for _, y0 := range []int{36, 40, 47} {
+		for _, x0 := range []int{43, 50, 57, 64, 71} {
+			fill(g, x0, y0, 5, 2, Container)
+		}
+	}
+	fill(g, 43, 52, 8, 4, Building)
+	fill(g, 54, 52, 8, 4, Building)
+	fill(g, 78, 50, 5, 5, VaultTile)
+	// The highway: open ground underneath, with pillars along both edges.
+	for y := overY0; y <= overY1; y++ {
+		for x := 35; x < mapW-3; x++ {
+			g[y][x] = Under
+			if (y == overY0 || y == overY1) && (x-35)%6 == 3 {
+				g[y][x] = Pillar
+			}
+		}
+	}
+	enclose(g)
+	rows := make([]string, mapH)
+	for y := range g {
+		rows[y] = string(g[y])
 	}
 	return rows
+}
+
+// baseTile is a tile before the landmarks are placed.
+func baseTile(x, y int) byte {
+	ring := x < 3 || y < 3 || x >= mapW-3 || y >= mapH-3
+	river := y >= riverY0 && y <= riverY1
+	switch {
+	case river && (ring || slices.ContainsFunc(bridges, func(b [2]int) bool { return x >= b[0] && x <= b[1] })):
+		return Bridge
+	case ring:
+		return Road
+	case river:
+		return Water
+	case y == riverY0-1 || y == riverY1+1:
+		return Plaza // the promenades along both banks
+	case y < riverY0 && x < 35: // downtown
+		if x%pitch < 3 || y%pitch < 3 {
+			return Road
+		}
+		return Building
+	case y < riverY0 && x < 56: // the plaza
+		return Plaza
+	case y < riverY0: // the alleys: 2x2 buildings, one-tile lanes, a main road each way
+		if (y >= 12 && y <= 14) || (x >= 68 && x <= 70) {
+			return Road
+		}
+		if (x-56)%3 == 2 || (y-3)%3 == 2 {
+			return Alley
+		}
+		return Building
+	case x < 40: // the park: grass, two paths, trees kept off the paths and the edges
+		if y == 44 || x == 17 {
+			return Plaza
+		}
+		if x > 4 && x < 38 && y > 34 && y < 55 && abs(y-44) > 1 && abs(x-17) > 1 && hash(x, y)%100 < 12 {
+			return Tree
+		}
+		return Grass
+	default: // the docks' yard
+		return Road
+	}
+}
+
+// enclose turns walkable ground that can't be reached from Dispatch into trees, so
+// nothing ever spawns in a pocket nobody can walk to.
+func enclose(g [][]byte) {
+	var start [2]int
+	for y := range g {
+		for x := range g[y] {
+			if g[y][x] == DispatchTile {
+				start = [2]int{x, y}
+			}
+		}
+	}
+	seen := map[[2]int]bool{start: true}
+	q := [][2]int{start}
+	for len(q) > 0 {
+		p := q[0]
+		q = q[1:]
+		for _, d := range [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			n := [2]int{p[0] + d[0], p[1] + d[1]}
+			if n[0] >= 0 && n[1] >= 0 && n[0] < mapW && n[1] < mapH && !seen[n] && !blocksWalk(g[n[1]][n[0]]) {
+				seen[n] = true
+				q = append(q, n)
+			}
+		}
+	}
+	for y := range g {
+		for x := range g[y] {
+			if !blocksWalk(g[y][x]) && !seen[[2]int{x, y}] {
+				g[y][x] = Tree
+			}
+		}
+	}
+}
+
+func fill(g [][]byte, x0, y0, w, h int, t byte) {
+	for y := y0; y < y0+h; y++ {
+		for x := x0; x < x0+w; x++ {
+			g[y][x] = t
+		}
+	}
+}
+
+func abs(v int) int { return max(v, -v) }
+
+// hash is a fixed per-tile pseudo-random number (the park's trees).
+func hash(x, y int) uint32 {
+	h := uint32(x)*73856093 ^ uint32(y)*19349663
+	h ^= h >> 13
+	h *= 0x5bd1e995
+	return h ^ h>>15
 }
 
 // City is the tile map plus the named regions on it.
@@ -73,14 +248,18 @@ type City struct {
 	W, H      int
 	Tiles     []byte // row-major, W*H
 	Districts map[string]Rect
+	Regions   []Region
 	Vault     Rect
 	Dispatch  Rect
+
+	openOnce sync.Once
+	spots    []Vec // centres of every open tile (openTiles)
 }
 
 // NewCity builds the map and splits its width evenly into one district per node,
 // ordered by node name.
 func NewCity(nodes []string) *City {
-	c := &City{W: len(layout[0]), H: len(layout), Districts: map[string]Rect{}}
+	c := &City{W: len(layout[0]), H: len(layout), Districts: map[string]Rect{}, Regions: regions}
 	for _, row := range layout {
 		c.Tiles = append(c.Tiles, row...)
 	}
@@ -115,7 +294,39 @@ func (c *City) Walkable(p Vec) bool {
 	if p.X < 0 || p.Y < 0 || x >= c.W || y >= c.H {
 		return false
 	}
-	return c.Tiles[y*c.W+x] != Building
+	return !blocksWalk(c.Tiles[y*c.W+x])
+}
+
+// tile is the tile under p, or a building off the map.
+func (c *City) tile(p Vec) byte {
+	x, y := int(math.Floor(p.X)), int(math.Floor(p.Y))
+	if p.X < 0 || p.Y < 0 || x >= c.W || y >= c.H {
+		return Building
+	}
+	return c.Tiles[y*c.W+x]
+}
+
+// LineOfSight reports whether a shot from a to b clears every building, tree,
+// container, fountain, planter and pillar (water doesn't stop it). The tiles a and b
+// stand on don't count, so a shooter in a doorway can still fire out.
+func (c *City) LineOfSight(a, b Vec) bool {
+	d := dist(a, b)
+	if d < eps {
+		return true
+	}
+	at, bt := [2]int{int(math.Floor(a.X)), int(math.Floor(a.Y))}, [2]int{int(math.Floor(b.X)), int(math.Floor(b.Y))}
+	n := int(math.Ceil(d / 0.2))
+	for i := 1; i < n; i++ {
+		f := float64(i) / float64(n)
+		p := Vec{a.X + (b.X-a.X)*f, a.Y + (b.Y-a.Y)*f}
+		if t := ([2]int{int(math.Floor(p.X)), int(math.Floor(p.Y))}); t == at || t == bt {
+			continue
+		}
+		if blocksShot(c.tile(p)) {
+			return false
+		}
+	}
+	return true
 }
 
 // free reports whether a player-sized box centred on p touches no wall.
@@ -236,7 +447,7 @@ func (c *City) RandomStreet(r Rect, rnd *rand.Rand) Vec {
 	var roads []Vec
 	for y := int(r.Y); y < int(r.Y+r.H) && y < c.H; y++ {
 		for x := int(r.X); x < int(r.X+r.W) && x < c.W; x++ {
-			if c.Tiles[y*c.W+x] == Road {
+			if open(c.Tiles[y*c.W+x]) {
 				roads = append(roads, Vec{float64(x) + 0.5, float64(y) + 0.5})
 			}
 		}
@@ -267,7 +478,7 @@ func (c *City) Hideout(node string, rnd *rand.Rand) Vec {
 		for y := max(int(r.Y), 0); y < int(r.Y+r.H) && y < c.H; y++ {
 			for x := max(int(r.X), 0); x < int(r.X+r.W) && x < c.W; x++ {
 				p := Vec{float64(x) + 0.5, float64(y) + 0.5}
-				if c.Tiles[y*c.W+x] == Road && !c.Dispatch.Contains(p) && math.Hypot(p.X-centre.X, p.Y-centre.Y) >= hideoutMin {
+				if open(c.Tiles[y*c.W+x]) && !c.Dispatch.Contains(p) && math.Hypot(p.X-centre.X, p.Y-centre.Y) >= hideoutMin {
 					roads = append(roads, p)
 				}
 			}
@@ -300,7 +511,7 @@ func (c *City) Near(from Vec, node string, rnd *rand.Rand) Vec {
 	for y := max(int(from.Y-nearMax), 0); y <= int(from.Y+nearMax) && y < c.H; y++ {
 		for x := max(int(from.X-nearMax), 0); x <= int(from.X+nearMax) && x < c.W; x++ {
 			p := Vec{float64(x) + 0.5, float64(y) + 0.5}
-			if d := dist(p, from); c.Tiles[y*c.W+x] == Road && !c.Dispatch.Contains(p) && d >= nearMin && d <= nearMax {
+			if d := dist(p, from); open(c.Tiles[y*c.W+x]) && !c.Dispatch.Contains(p) && d >= nearMin && d <= nearMax {
 				roads = append(roads, p)
 			}
 		}

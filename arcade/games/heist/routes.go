@@ -158,7 +158,10 @@ type RectView struct {
 }
 
 // CityView is GET /substrate-siege/api/city: the map the clients draw. Tiles are rows
-// of tile bytes ('.' road, '#' building, 'V' Vault, 'D' Dispatch); districts are by node.
+// of tile bytes (see the constants in city.go: '.' road, '#' building, 'V' Vault,
+// 'D' Dispatch, '~' water, '=' bridge, 'p' plaza, 'g' grass, 't' tree, 'c' container,
+// 'f' fountain or planter, 'a' alley, 'h' under the highway, 'o' pillar); districts are
+// by node and regions are the named parts of the map.
 type CityView struct {
 	W         int                 `json:"w"`
 	H         int                 `json:"h"`
@@ -166,6 +169,15 @@ type CityView struct {
 	Districts map[string]RectView `json:"districts"`
 	Vault     RectView            `json:"vault"`
 	Dispatch  RectView            `json:"dispatch"`
+	Regions   []RegionView        `json:"regions"`
+}
+
+// RegionView is a named part of the map: its label and kind (downtown, plaza, alleys,
+// overpass, river, park, docks).
+type RegionView struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	RectView
 }
 
 // View is the city as clients see it. The city never changes after NewCity.
@@ -177,6 +189,9 @@ func (c *City) View() CityView {
 	}
 	for n, r := range c.Districts {
 		v.Districts[n] = rv(r)
+	}
+	for _, r := range c.Regions {
+		v.Regions = append(v.Regions, RegionView{r.Name, r.Kind, rv(r.R)})
 	}
 	return v
 }

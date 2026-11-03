@@ -35,6 +35,7 @@ type Mission struct {
 type ScoreRow struct {
 	PlayerID, Nick, Squad string
 	Best, Freezes, Books  int
+	Players               int // other players this one froze
 	Rig                   int // best RAM tier of an ally the player deployed
 }
 
@@ -284,6 +285,14 @@ func (m *Missions) OnResult(r Result, w *World) {
 			m.escape(t, w) // the freeze that held the escape failed
 		}
 	}
+}
+
+// PlayerTakedown scores a PvP freeze: ptsPlayer for the shooter's run and best, and a
+// player takedown on their row.
+func (m *Missions) PlayerTakedown(by, victim string, w *World) {
+	p := m.player(by, w)
+	p.Players++
+	m.score(p, ptsPlayer, w)
 }
 
 // score adds pts to p's run (the running run of p's squad) and their best.

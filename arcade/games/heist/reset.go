@@ -31,6 +31,9 @@ func (g *Game) Reset(ctx context.Context) (sessions, checkpoints int, err error)
 	for _, al := range g.w.Allies {
 		seen[al.SessionID] = true
 	}
+	for _, sid := range g.w.PlayerSessions() {
+		seen[sid] = true
+	}
 	for _, cp := range g.booked {
 		if cp != "" {
 			cps = append(cps, cp)
@@ -157,4 +160,6 @@ func (g *Game) drainOld(old *Scheduler, rec map[opKey]int) {
 
 // drained reports whether drainOld waits for an op of kind: it creates a session (or a
 // checkpoint) the fresh game knows nothing about.
-func drained(kind string) bool { return kind == "spawn" || kind == "ally" || kind == "extract" }
+func drained(kind string) bool {
+	return kind == "spawn" || kind == "ally" || kind == "pagent" || kind == "extract"
+}

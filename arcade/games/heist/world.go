@@ -43,6 +43,17 @@ type Avatar struct {
 	Down                         bool    // knocked out: no move, fire, act or being shot
 	RespawnAt, LastHit           float64 // world times
 	Inv                          []Part  // parts carried, dropped when Down; a full set builds an ally
+
+	// PvP (players.go). A player is Enrolled from their first run; from then on their own
+	// agent (Agent) runs while they are in play.
+	Enrolled      bool
+	Frozen        bool    // frozen by another player: no move or fire until RespawnAt
+	FrozenBy      string  // the player who froze them
+	FrozenAt      float64 // world time
+	ProtectUntil  float64 // world time spawn protection ends
+	PvPHits       int     // hits from other players since LastPvP (reset after pvpHitDecay)
+	LastPvP       float64
+	Agent         PlayerAgent
 }
 
 // NewAvatar is an online avatar at pos with full health.
@@ -105,6 +116,10 @@ type World struct {
 	Drops   map[string]*Drop
 	Rand    *rand.Rand        // loot rolls; NewWorld seeds it from the clock
 	Allies  map[string]*Ally  // deployed allies; ones still spawning are kept in pending
+	// OnPlayerFrozen, if set, is told every PvP takedown (the Game scores it).
+	OnPlayerFrozen func(by, victim string)
+	// PlayerAgentCap overrides PlayerAgentCap (tests).
+	PlayerAgentCap int
 
 	ctl     map[string]*control
 	pending map[string]*pendingAlly // ally spawns submitted, no result yet
@@ -164,6 +179,10 @@ func (w *World) Tick(dt float64) []Intent {
 			w.tickDown(a, k)
 			continue
 		}
+		if a.Frozen {
+			w.tickFrozen(a, k)
+			continue
+		}
 		w.regen(a, dt)
 		if !a.Online {
 			*k = control{}
@@ -185,6 +204,7 @@ func (w *World) Tick(dt float64) []Intent {
 	}
 	out = append(out, w.tickAllies(dt)...)
 	out = append(out, w.huntersFire(dt)...)
+	out = append(out, w.tickAgents()...)
 	w.moveTargets(dt)
 	return out
 }
@@ -202,8 +222,15 @@ func (w *World) moveAvatar(a *Avatar, dir Vec, dt float64) {
 	}
 }
 
-// fire auto-aims a's shot.
+// fire auto-aims a's shot at whatever is closest in range and in line of sight: an
+// agent, or a player from another squad.
 func (w *World) fire(a *Avatar) []Intent {
+	t := w.nearest(a.Pos, fireRange, func(t *Target) bool { return t.State == Working && !t.Busy && w.City.LineOfSight(a.Pos, t.Pos) })
+	if e, d := w.nearestEnemy(a, fireRange); e != nil && (t == nil || d < dist(a.Pos, t.Pos)) {
+		a.FireCD = fireCD
+		w.hitPlayer(e, a)
+		return nil
+	}
 	fired, out := w.shoot(a.Pos, a.PlayerID)
 	if fired {
 		a.FireCD = fireCD
@@ -211,10 +238,11 @@ func (w *World) fire(a *Avatar) []Intent {
 	return out
 }
 
-// shoot hits the nearest Working, non-busy target within fireRange of from, crediting
-// player by (an ally's shots are its owner's). The hitsToFreeze-th hit asks for a freeze.
+// shoot hits the nearest Working, non-busy target within fireRange of from and in line
+// of sight, crediting player by (an ally's shots are its owner's). The hitsToFreeze-th
+// hit asks for a freeze.
 func (w *World) shoot(from Vec, by string) (bool, []Intent) {
-	t := w.nearest(from, fireRange, func(t *Target) bool { return t.State == Working && !t.Busy })
+	t := w.nearest(from, fireRange, func(t *Target) bool { return t.State == Working && !t.Busy && w.City.LineOfSight(from, t.Pos) })
 	if t == nil {
 		return false, nil
 	}

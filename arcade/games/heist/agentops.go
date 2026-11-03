@@ -214,6 +214,7 @@ func policyErr(err error) error {
 // session is what the adapter remembers about one live session.
 type session struct {
 	ally     bool
+	player   bool // a player's own agent (siegeplayer)
 	lastTask string // A2A task ID of the last prompt reply (Checkpoint's head)
 	// staleHead: a suspend since lastTask changed the snapshot, so lastTask can't be
 	// checkpointed any more ("SnapshotTagFailed: snapshot changed"); a new turn fixes it.
@@ -226,16 +227,20 @@ type session struct {
 // agentOps is the kagent-backed Ops.
 type agentOps struct {
 	heister, sidekick agentAPI
+	player            agentAPI // players' own agents; sidekick when unset
 	resumeFirst       bool
 
 	mu       sync.Mutex
 	sessions map[string]*session
 }
 
-// NewKagentOps makes the real Ops: heist targets run on heister, allies on sidekick.
-// extract is "resume-first" (default: Resume, Checkpoint, Delete) or "direct".
-func NewKagentOps(heister, sidekick *kagent.Kagent, extract string) Ops {
-	return newAgentOps(heister, sidekick, extract)
+// NewKagentOps makes the real Ops: heist targets run on heister, allies on sidekick and
+// each player's own agent on player. extract is "resume-first" (default: Resume,
+// Checkpoint, Delete) or "direct".
+func NewKagentOps(heister, sidekick, player *kagent.Kagent, extract string) Ops {
+	o := newAgentOps(heister, sidekick, extract)
+	o.player = player
+	return o
 }
 
 func newAgentOps(heister, sidekick agentAPI, extract string) *agentOps {
@@ -259,10 +264,20 @@ func (o *agentOps) sessLocked(sid string) *session {
 func (o *agentOps) client(sid string) agentAPI {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if s := o.sessions[sid]; s != nil && s.ally {
+	if s := o.sessions[sid]; s != nil && s.player {
+		return o.playerAPI()
+	} else if s != nil && s.ally {
 		return o.sidekick
 	}
 	return o.heister
+}
+
+// playerAPI is the players' agent: siegeplayer, or sidekick when it isn't configured.
+func (o *agentOps) playerAPI() agentAPI {
+	if o.player != nil {
+		return o.player
+	}
+	return o.sidekick
 }
 
 // validationFailed reports kagent's output_validation_failed: heister ended its turn
@@ -343,6 +358,57 @@ func (o *agentOps) SpawnAlly(ctx context.Context, name string) (string, string, 
 		return "", "", "", err
 	}
 	return sid, node(ctx, o.sidekick, sid), say, nil
+}
+
+// playerGreeting is a player agent's first turn: it is what places the actor on a worker.
+const (
+	playerGreeting = "A player just joined Substrate Siege and you are their agent. Say hi in one short line."
+	playerFallback = "Player agent online!"
+)
+
+// SpawnPlayer starts a player's own agent and runs its greeting turn.
+func (o *agentOps) SpawnPlayer(ctx context.Context, name string) (string, string, string, error) {
+	k := o.playerAPI()
+	sid, err := k.CreateSession(ctx, "gta-"+name)
+	if err != nil {
+		return "", "", "", err
+	}
+	o.mu.Lock()
+	o.sessLocked(sid).player = true
+	o.mu.Unlock()
+	say, err := func() (string, error) {
+		r, err := o.prompt(ctx, k, sid, playerGreeting)
+		if validationFailed(err) {
+			return playerFallback, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return parseSay(r)
+	}()
+	if err != nil {
+		o.discard(sid) // the game never learns this session's ID
+		return "", "", "", err
+	}
+	return sid, node(ctx, k, sid), say, nil
+}
+
+// Wake resumes a suspended session without prompting it; ms is the resume alone.
+func (o *agentOps) Wake(ctx context.Context, sid string) (int64, error) {
+	k := o.client(sid)
+	var ms int64
+	if err := settle(ctx, func() error {
+		start := time.Now()
+		err := k.Resume(ctx, sid)
+		ms = time.Since(start).Milliseconds()
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	o.mu.Lock()
+	o.sessLocked(sid).suspended = false
+	o.mu.Unlock()
+	return max(ms, 1), nil
 }
 
 // discard deletes a session the game will never hear about, on a fresh context (the op's
@@ -566,7 +632,11 @@ func (o *agentOps) refreeze(ctx context.Context, sid string) {
 func (o *agentOps) ListSessions(ctx context.Context) ([]string, error) {
 	var ids []string
 	var errs []error
-	for _, k := range []agentAPI{o.heister, o.sidekick} {
+	ks := []agentAPI{o.heister, o.sidekick}
+	if o.player != nil {
+		ks = append(ks, o.player)
+	}
+	for _, k := range ks {
 		got, err := k.ListSessionIDs(ctx)
 		ids = append(ids, got...)
 		errs = append(errs, err)

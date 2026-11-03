@@ -119,7 +119,7 @@ func (w *World) tickDown(a *Avatar, k *control) {
 		return
 	}
 	d := w.City.Dispatch
-	a.Down, a.HP, a.LastHit = false, maxHP, w.Now
+	a.Down, a.HP, a.LastHit, a.ProtectUntil = false, maxHP, w.Now, w.Now+protectFor
 	a.Pos = Vec{d.X + d.W/2, d.Y + d.H/2}
 	*k = control{}
 	w.Events = append(w.Events, Event{Kind: "respawn", Player: a.PlayerID})
@@ -156,11 +156,11 @@ func (w *World) huntersFire(dt float64) []Intent {
 		bestD := hunterRange + eps
 		for _, pid := range slices.Sorted(maps.Keys(w.Avatars)) {
 			a := w.Avatars[pid]
-			if d := dist(t.Pos, a.Pos); a.Online && !a.Down && d < bestD {
+			if d := dist(t.Pos, a.Pos); a.Online && !a.Down && !a.Frozen && w.Now >= a.ProtectUntil-eps && d < bestD && w.City.LineOfSight(t.Pos, a.Pos) {
 				best, bestD = a, d
 			}
 		}
-		if al, d := w.nearestAlly(t.Pos, hunterRange); al != nil && d < bestD {
+		if al, d := w.nearestAlly(t.Pos, hunterRange); al != nil && d < bestD && w.City.LineOfSight(t.Pos, al.Pos) {
 			t.ShotCD = hunterCD
 			out = append(out, w.hitAlly(al, t)...)
 			continue

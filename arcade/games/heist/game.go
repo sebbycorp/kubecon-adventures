@@ -103,6 +103,7 @@ func podHourFromEnv() float64 {
 func (g *Game) fresh() {
 	seed := uint64(time.Now().UnixNano())
 	g.w = NewWorld(g.city)
+	g.w.OnPlayerFrozen = func(by, victim string) { g.m.PlayerTakedown(by, victim, g.w) }
 	g.m = NewMissions(rand.New(rand.NewPCG(seed, seed>>1|1)))
 	g.q = NewSquads(rand.New(rand.NewPCG(seed>>3, seed|1)))
 	s := NewScheduler(g.ops, stepSlots, resumeSlots)
@@ -167,13 +168,19 @@ func (g *Game) shutdown() {
 		}
 	}
 	g.booked = map[string]string{}
+	players := g.w.PlayerSessions()
 	g.mu.Unlock()
 	s.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownCleanup)
+	defer cancel()
+	if len(players) > 0 {
+		// Players' own agents: nobody plays them after this process.
+		n := parallel(ctx, players, func(ctx context.Context, sid string) error { return g.ops.Delete(ctx, sid) })
+		slog.Info("substrate siege: shutdown deleted player agents", "deleted", n, "agents", len(players))
+	}
 	if len(cps) == 0 {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownCleanup)
-	defer cancel()
 	n := g.deleteCheckpoints(ctx, cps)
 	slog.Info("substrate siege: shutdown deleted booked checkpoints", "deleted", n, "booked", len(cps))
 }
@@ -187,6 +194,7 @@ func (g *Game) tick() {
 	g.mu.Lock()
 	g.drainResults()
 	g.flushInputs(time.Now())
+	g.enroll()
 	for _, in := range g.w.Tick(g.every.Seconds()) {
 		g.submit(in)
 	}
@@ -238,6 +246,15 @@ func (g *Game) route(r Result) {
 		// Errors carry kagent's status reason, never the agent's reply text.
 		slog.Warn("substrate siege: op failed", "kind", r.Kind, "target", r.Target, "ms", r.Ms, "err", r.Err)
 	}
+	if _, ok := playerOf(r.Target); ok {
+		if r.OK && (r.Kind == "freeze" || r.Kind == "pwake") {
+			g.p.Timings.Record("heist_player_"+r.Kind, r.Ms)
+		}
+		if orphan := g.w.ResolvePlayer(r); orphan != "" {
+			g.zap(orphan) // its player left the city while it was starting
+		}
+		return
+	}
 	switch r.Kind {
 	case "freeze", "spring", "extract":
 		if r.OK {
@@ -276,6 +293,16 @@ func (g *Game) route(r Result) {
 // submit runs a World intent, mapping its target or ally ID to the session. If the
 // scheduler refuses it, the busy flag is cleared so the world does not stall.
 func (g *Game) submit(in Intent) {
+	if pid, ok := playerOf(in.Target); ok {
+		var sess string
+		if a := g.w.Avatars[pid]; a != nil {
+			sess = a.Agent.SID
+		}
+		if !g.s.Submit(in.Kind, in.Target, sess, 0, 0) {
+			g.w.CancelPlayerOp(pid, in.Kind)
+		}
+		return
+	}
 	t, al := g.w.Targets[in.Target], g.w.Allies[in.Target]
 	var sess string
 	switch {
@@ -295,6 +322,16 @@ func (g *Game) submit(in Intent) {
 	}
 	if al != nil {
 		al.Busy, al.opBy = false, ""
+	}
+}
+
+// enroll gives every online player whose squad is running their own agent from now on
+// (World.tickAgents starts it). g.mu is held.
+func (g *Game) enroll() {
+	for _, a := range g.w.Avatars {
+		if !a.Enrolled && a.Online && g.m.active[a.Squad] != nil {
+			a.Enrolled = true
+		}
 	}
 }
 
@@ -410,6 +447,9 @@ func (g *Game) prune(ms *Mission) {
 // evict removes a long-offline avatar from the city (its allies are already retiring).
 // Its score stays; coming back gives a fresh avatar at Dispatch. g.mu is held.
 func (g *Game) evict(pid string) {
+	if a := g.w.Avatars[pid]; a != nil {
+		g.zap(a.Agent.SID) // an op still in flight comes back as an orphan (ResolvePlayer)
+	}
 	delete(g.w.Avatars, pid)
 	delete(g.w.ctl, pid)
 	delete(g.offline, pid)
@@ -619,7 +659,7 @@ func (g *Game) Top(n int) []platform.BoardRow {
 		if len(out) == n || r.Best == 0 {
 			break
 		}
-		row := platform.BoardRow{Nick: r.Nick, Score: r.Best, Detail: fmt.Sprintf("%d freezes · %d booked", r.Freezes, r.Books)}
+		row := platform.BoardRow{Nick: r.Nick, Score: r.Best, Detail: fmt.Sprintf("%d freezes · %d booked · %d players", r.Freezes, r.Books, r.Players)}
 		if a := g.w.Avatars[r.PlayerID]; a != nil {
 			row.Color = a.Color
 		}

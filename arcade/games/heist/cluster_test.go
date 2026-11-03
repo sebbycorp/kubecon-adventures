@@ -123,7 +123,7 @@ func TestKagentOpsLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := NewKagentOps(heister, sidekick, "resume-first")
+	o := NewKagentOps(heister, sidekick, sidekick, "resume-first")
 	var made []string
 	defer func() { // every session this test made is gone afterwards, pass or fail
 		for _, sid := range made {

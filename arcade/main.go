@@ -53,7 +53,7 @@ func main() {
 	duck := duckhunt.New(p, agentClient("duck"), *idle)
 	flw := flow.New(p, agentClient("flowbot"))
 	kagent.Observe(flw.OnOp) // every game's kagent calls show on the Agent Flow screen
-	gta := heist.New(p, heist.NewKagentOps(agentClient("heister"), agentClient("sidekick"), envOr("HEIST_EXTRACT", "resume-first")),
+	gta := heist.New(p, heist.NewKagentOps(agentClient("heister"), agentClient("sidekick"), agentClient("siegeplayer"), envOr("HEIST_EXTRACT", "resume-first")),
 		strings.Split(envOr("HEIST_NODES", "kagent-worker,kagent-worker2"), ","))
 	cd := defense.New(p, defense.NewKagentOps(agentClient(defense.AgentName)))
 	gw := envOr("GATEDEF_GATEWAY", "http://arcade.agentgateway-system.svc.cluster.local")

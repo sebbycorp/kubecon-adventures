@@ -52,6 +52,15 @@ func (f *fakeOps) SpawnAlly(ctx context.Context, name string) (string, string, s
 	return "sess-" + name, "node-1", "at your service", err
 }
 
+func (f *fakeOps) SpawnPlayer(ctx context.Context, name string) (string, string, string, error) {
+	err := f.block(ctx, "pagent", name)
+	return "sess-" + name, "node-1", "hi player", err
+}
+
+func (f *fakeOps) Wake(ctx context.Context, id string) (int64, error) {
+	return f.ms, f.block(ctx, "pwake", id)
+}
+
 func (f *fakeOps) Step(ctx context.Context, id string, step, steps int) (StepResult, error) {
 	err := f.block(ctx, "step", id)
 	return StepResult{Say: "hi", Loot: 3, Done: step == steps}, err

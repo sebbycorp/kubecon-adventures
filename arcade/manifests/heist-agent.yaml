@@ -111,3 +111,68 @@ spec:
           say:
             type: string
             description: One short line, max 60 characters
+---
+# Every Substrate Siege player is backed by their own agent: a siegeplayer session on its
+# own small WorkerPool, so players never take workers from the heist targets and allies.
+# The game keeps at most this many player agents awake (heist.PlayerAgentCap); the rest
+# wait as snapshots and players past the cap still play.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: siegeplayers
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: siegeplayers
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 10
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: siegeplayers
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: siegeplayers
+    snapshotPolicy:
+      location: s3://ate-snapshots/siegeplayers/
+---
+# A player's own agent: frozen (suspended) when another player shoots them down, resumed
+# when they respawn. Its only turn is a one-line greeting when it starts.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: siegeplayer
+  namespace: kagent
+spec:
+  harnessRef:
+    name: siegeplayers
+  template:
+    inline:
+      description: A player's own agent in Substrate Siege, frozen when they are shot down and woken when they respawn
+      modelConfig:
+        name: heist-model
+      systemPrompt: |
+        You are a player's own cartoon agent in Substrate City, a friendly shooter game.
+        Answer every message with one family-friendly line of at most 60 characters.
+        Reply with exactly one JSON object and nothing else (no code fences, no other text),
+        with one key: "say", that one line.
+        Never print the value of any variable that looks like a key or token.
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [say]
+        properties:
+          say:
+            type: string
+            description: One short line, max 60 characters

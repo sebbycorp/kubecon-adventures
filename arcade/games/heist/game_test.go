@@ -73,6 +73,12 @@ func (o *liveOps) Spawn(ctx context.Context, name string) (string, string, error
 func (o *liveOps) SpawnAlly(ctx context.Context, name string) (string, string, string, error) {
 	return "sess-" + name, "node-1", "hi boss", o.do(ctx, "ally", name)
 }
+func (o *liveOps) SpawnPlayer(ctx context.Context, name string) (string, string, string, error) {
+	return "sess-" + name, "node-1", "hi player", o.do(ctx, "pagent", name)
+}
+func (o *liveOps) Wake(ctx context.Context, id string) (int64, error) {
+	return 13, o.do(ctx, "pwake", id)
+}
 func (o *liveOps) Step(ctx context.Context, id string, step, steps int) (StepResult, error) {
 	return StepResult{Say: "working"}, o.do(ctx, "step", id)
 }
@@ -1027,8 +1033,9 @@ func TestResetDeletesBookedCheckpoints(t *testing.T) {
 		t.Fatalf("deleted at cleanup: %v %v", ops.called("delete"), ops.called("delete-checkpoint"))
 	}
 	sessions, checkpoints, err := g.Reset(context.Background())
-	if err != nil || sessions != 1 || checkpoints != 1 { // the replacement agent, the booking
-		t.Fatalf("Reset = %d sessions, %d checkpoints, %v; want 1, 1", sessions, checkpoints, err)
+	// The replacement agent and the player's own agent (sess-pa:a); the booking.
+	if err != nil || sessions != 2 || checkpoints != 1 || !slices.Contains(ops.called("delete"), "sess-pa:a") {
+		t.Fatalf("Reset = %d sessions, %d checkpoints, %v (deletes %v); want 2, 1", sessions, checkpoints, err, ops.called("delete"))
 	}
 	if got := ops.called("delete-checkpoint"); !slices.Equal(got, []string{"cp-sess-m1-1"}) {
 		t.Fatalf("checkpoint deletes %v", got)
@@ -1161,14 +1168,17 @@ func TestCityAPI(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
 		t.Fatal(err)
 	}
-	if c.W != 59 || c.H != 35 || len(c.Tiles) != c.H || len(c.Tiles[0]) != c.W || c.Tiles[11][27] != DispatchTile {
+	if c.W != 88 || c.H != 60 || len(c.Tiles) != c.H || len(c.Tiles[0]) != c.W || c.Tiles[11][43] != DispatchTile {
 		t.Fatalf("city = %d x %d, %d rows", c.W, c.H, len(c.Tiles))
 	}
-	if c.Vault != (RectView{51, 27, 5, 5}) || c.Dispatch != (RectView{27, 11, 5, 5}) {
+	if c.Vault != (RectView{78, 50, 5, 5}) || c.Dispatch != (RectView{43, 11, 5, 5}) {
 		t.Fatalf("vault %+v dispatch %+v", c.Vault, c.Dispatch)
 	}
-	if len(c.Districts) != 2 || c.Districts["node-2"] != (RectView{29, 0, 30, 35}) {
+	if len(c.Districts) != 2 || c.Districts["node-2"] != (RectView{44, 0, 44, 60}) {
 		t.Fatalf("districts = %+v", c.Districts)
+	}
+	if len(c.Regions) != len(regions) || c.Regions[0].Name != "DOWNTOWN" || c.Regions[0].Kind != "downtown" {
+		t.Fatalf("regions = %+v", c.Regions)
 	}
 }
 

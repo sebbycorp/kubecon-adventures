@@ -29,9 +29,9 @@ echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
 k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
 
-echo "==> Substrate Siege: heist WorkerPool, heister and sidekick Agents"
+echo "==> Substrate Siege: heist and siegeplayers WorkerPools, heister, sidekick and siegeplayer Agents"
 k apply -f manifests/heist-agent.yaml -f manifests/heist-policies.yaml
-k -n kagent wait agent/heister agent/sidekick --for=condition=Ready --timeout 5m
+k -n kagent wait agent/heister agent/sidekick agent/siegeplayer --for=condition=Ready --timeout 5m
 
 echo "==> Cluster Defense: defense WorkerPool and subagent Agent"
 k apply -f manifests/defense-agent.yaml -f manifests/defense-policies.yaml

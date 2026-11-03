@@ -28,9 +28,14 @@ type Ops interface {
 	// SpawnAlly starts a player's ally session (the sidekick Agent) and returns its
 	// greeting line.
 	SpawnAlly(ctx context.Context, name string) (sessionID, node, say string, err error)
-	// ListSessions lists every session of the game's agents (targets and allies), for
-	// the startup sweep of sessions an earlier process left behind.
+	// ListSessions lists every session of the game's agents (targets, allies and player
+	// agents), for the startup sweep of sessions an earlier process left behind.
 	ListSessions(ctx context.Context) ([]string, error)
+	// SpawnPlayer starts a player's own agent (the siegeplayer Agent): a new session and
+	// one greeting turn, which places it on a worker. It returns the greeting.
+	SpawnPlayer(ctx context.Context, name string) (sessionID, node, say string, err error)
+	// Wake resumes a suspended session without a turn (a player respawning).
+	Wake(ctx context.Context, sessionID string) (ms int64, err error)
 }
 
 // StepResult is what one agent step reports.
@@ -43,7 +48,7 @@ type StepResult struct {
 }
 
 // Result is the outcome of one submitted op. Spawned holds the new session ID for
-// "spawn" and "ally"; Node and Step.Say carry the node and the sprung line for "spring"
+// "spawn", "ally" and "pagent"; Node and Step.Say carry the node and the sprung line for "spring"
 // or the greeting for "ally"; Step.Say is the booked line and Checkpoint the
 // checkpoint's ID for "extract".
 type Result struct {
@@ -151,7 +156,7 @@ func laneOf(kind, target string) lane { return lane{target: target, step: kind =
 // same lane, the kind is unknown, or the scheduler is closed.
 func (s *Scheduler) Submit(kind, target, sessionID string, step, steps int) bool {
 	switch kind {
-	case "spawn", "ally", "step", "freeze", "spring", "extract", "delete":
+	case "spawn", "ally", "step", "freeze", "spring", "extract", "delete", "pagent", "pwake":
 	default:
 		return false
 	}
@@ -221,6 +226,10 @@ func (s *Scheduler) run(ctx context.Context, j job) (r Result) {
 		r.Spawned, r.Node, err = s.ops.Spawn(ctx, j.target)
 	case "ally":
 		r.Spawned, r.Node, r.Step.Say, err = s.ops.SpawnAlly(ctx, j.target)
+	case "pagent":
+		r.Spawned, r.Node, r.Step.Say, err = s.ops.SpawnPlayer(ctx, j.target)
+	case "pwake":
+		ms, err = s.ops.Wake(ctx, j.sessionID)
 	case "step":
 		r.Step, err = s.ops.Step(ctx, j.sessionID, j.step, j.steps)
 		r.Node = r.Step.Node
