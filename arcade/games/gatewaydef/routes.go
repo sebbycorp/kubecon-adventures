@@ -60,6 +60,10 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 		defer done()
 		g.hub.ServeSSE(w, r)
 	})
+	mux.HandleFunc("GET /gateway-defense/api/board", func(w http.ResponseWriter, r *http.Request) {
+		pl, _ := g.p.Players.FromRequest(r)
+		platform.WriteJSON(w, g.Leaderboard(pl.ID))
+	})
 	mux.HandleFunc("POST /gateway-defense/api/start", g.p.Players.WithPlayer(func(w http.ResponseWriter, r *http.Request, p platform.Player) {
 		id, err := g.Start(p)
 		platform.Result(w, map[string]string{"run": id}, err)

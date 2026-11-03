@@ -15,7 +15,7 @@ import (
 
 // Limits.
 const (
-	maxRuns     = 48              // runs in progress at once (a run older than runTTL no longer counts)
+	maxRuns     = 48 // runs in progress at once (a run older than runTTL no longer counts)
 	runTTL      = 30 * time.Minute
 	callRate    = 2.0 // real calls per second per player
 	callBurst   = 3.0
@@ -218,7 +218,7 @@ func (g *Game) lastLocked(tower string) Outcome {
 
 // Finish is a run's end as the phone reports it.
 type Finish struct {
-	Wave  int  `json:"wave"` // the wave reached (len(Waves)+1 after a full clear)
+	Wave  int  `json:"wave"` // the wave the run ended on (past len(Waves) once the boss is beaten)
 	Score int  `json:"score"`
 	Lives int  `json:"lives"`
 	Won   bool `json:"won"`
@@ -233,7 +233,11 @@ type Result struct {
 		Nick  string `json:"nick"`
 		Score int    `json:"score"`
 	} `json:"beat,omitempty"` // the score to beat for the next rank up
+	Top []Score `json:"top"` // the top topRows, for the end screen
 }
+
+// topRows is how much of the board the end screen shows.
+const topRows = 5
 
 // Finish ends the run and, if the score is possible, records it on the leaderboard: at
 // most MaxScore for the wave reached, and no faster than MinSeconds.
@@ -246,9 +250,8 @@ func (g *Game) Finish(pl platform.Player, runID string, f Finish) (Result, error
 	}
 	r.Finished = true
 	g.runsDone++
-	last := len(g.rules.Waves) + 1
-	f.Won = f.Won && f.Wave == last && f.Lives > 0
-	ok := f.Wave >= 1 && f.Wave <= last && f.Score >= 0 && f.Score <= g.rules.MaxScore(f.Wave) &&
+	f.Won = f.Won && f.Wave > len(g.rules.Waves)
+	ok := f.Wave >= 1 && f.Wave <= MaxWave && f.Score >= 0 && f.Score <= g.rules.MaxScore(f.Wave) &&
 		f.Lives >= 0 && f.Lives <= g.rules.Lives &&
 		g.now().Sub(r.Started).Seconds() >= g.rules.MinSeconds(f.Wave)*0.9
 	res := Result{Accepted: ok}
@@ -271,7 +274,39 @@ func (g *Game) Finish(pl platform.Player, runID string, f Finish) (Result, error
 			}
 		}
 	}
+	res.Top = rows[:min(topRows, len(rows))]
 	return res, nil
+}
+
+// Board is the leaderboard for one player: the top boardRows, with that player's own
+// row marked, and their rank when they are further down.
+type Board struct {
+	Rows []BoardRow `json:"rows"`
+	Me   *BoardRow  `json:"me,omitempty"`
+}
+
+// BoardRow is a leaderboard row with its rank, and whether it is the asking player's.
+type BoardRow struct {
+	Rank int  `json:"rank"`
+	You  bool `json:"you,omitempty"`
+	Score
+}
+
+// Leaderboard is the board as player sees it ("" for nobody in particular).
+func (g *Game) Leaderboard(player string) Board {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	b := Board{Rows: []BoardRow{}}
+	for i, s := range g.boardLocked() {
+		row := BoardRow{Rank: i + 1, You: player != "" && s.PlayerID == player, Score: s}
+		if i < boardRows {
+			b.Rows = append(b.Rows, row)
+		}
+		if row.You {
+			b.Me = &row
+		}
+	}
+	return b
 }
 
 // boardLocked is every best score, highest first (ties: earlier first).
