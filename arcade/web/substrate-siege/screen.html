@@ -104,6 +104,7 @@
   #pulseLbl b { color: var(--green); letter-spacing: 0; font-weight: 600; margin-left: 6px; }
 
   #nogl { position: fixed; left: 0; right: var(--right); top: 40%; text-align: center; color: var(--mute); }
+  #cta { margin-top: 8px; }
 </style>
 </head>
 <body class="idle">
@@ -123,12 +124,14 @@
 <div id="pulseBox"><canvas id="pulse" aria-label="Compute heartbeat"></canvas><div id="pulseLbl">COMPUTE<b id="pulseNow"></b></div></div>
 
 <div id="side">
-  <div id="qr"><div class="code" id="qrcode"></div><div><b>Scan to join the siege</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
+  <div id="qr"><div class="code" id="qrcode"></div><div><b>Scan to join the siege</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span><div id="cta"></div></div></div>
   <div id="board" class="card"><h2>BEST 3-MINUTE RUN <em>points · frozen · rig · allies</em></h2><div id="rows"></div><div id="squads" class="hidden"></div></div>
   <div id="feedCard" class="card"><h2>LIVE FEED</h2><div id="feed" aria-live="polite"></div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/static/arcade.js?v=1"></script>
+<script>Arcade.ctas(document.getElementById("cta"), "sm");</script>
 <script type="module">
 import { startCity, webglOK, colorOf, esc } from "/substrate-siege/static/city.js";
 import { connect } from "/substrate-siege/static/net.js";

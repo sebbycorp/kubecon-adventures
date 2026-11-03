@@ -93,12 +93,15 @@
   <h1>CLUSTER <span>DEFENSE</span></h1>
   <p style="font-size:14px;color:#fff">Shoot agents before they fill the cluster.</p>
   <button class="big" id="play">PLAY</button>
+  <div class="ab-block"><div class="ab-h">Top pilots</div><div data-ab-board="/cluster-defense" data-ab-n="5"></div></div>
 </div>
 
 <div id="menu" class="sheet panel hidden">
   <h1>MENU</h1>
   <button class="big" id="soundBtn">SOUND: ON</button>
   <p>Every agent is a real kagent subagent. Shooting one down is a real Agent Substrate suspend that frees its worker.</p>
+  <div class="ab-block"><div class="ab-h">Top pilots</div><div data-ab-board="/cluster-defense" data-ab-n="5"></div></div>
+  <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
   <div class="row"><a href="#" id="menuClose">Close</a><a href="/cluster-defense/screen" target="_blank">Big screen ↗</a><a href="/">Arcade</a></div>
 </div>
 
@@ -110,9 +113,11 @@
   <p class="beat" id="oBeat"></p>
   <button class="big" id="again">PLAY AGAIN</button>
   <p id="oNext"></p>
+  <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
 </div>
 <div id="status" class="panel hidden"></div>
 
+<script src="/static/arcade.js?v=1"></script>
 <script type="module">
 import { startSpace, roleOf, esc } from "/cluster-defense/static/space.js";
 import { connect } from "/cluster-defense/static/net.js";

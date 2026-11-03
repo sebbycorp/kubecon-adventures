@@ -151,6 +151,7 @@
   <div class="row"><button class="big ghost" id="quitBtn">End this run</button><button class="big ghost" id="restartBtn">Restart</button></div>
   <div class="row"><button class="big ghost" id="screenBtn">Big screen ↗</button><button class="big ghost" id="arcadeBtn">Arcade</button></div>
   <div class="row"><button class="big" id="menuClose">Back to the game</button></div>
+  <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
 </div>
 
 <div id="boardSheet" class="sheet hidden">
@@ -166,12 +167,14 @@
   <div class="rank" id="endRank"></div>
   <div class="beat" id="endBeat"></div>
   <div class="lb" id="endTop"></div>
+  <div class="ab-block"><div class="ab-h">Learn more</div><div data-ab-cta="sm"></div></div>
   <div class="row"><button class="big" id="again">PLAY AGAIN</button></div>
 </div>
 
 <div id="toast" class="hidden"></div>
 <div id="banner"></div>
 
+<script src="/static/arcade.js?v=1"></script>
 <script type="module">
 import { startGame } from "/gateway-defense/static/td.js";
 import { createSim } from "/gateway-defense/static/sim.js";

@@ -33,6 +33,12 @@
   #qr .code img, #qr .code svg { width: 100%; height: 100%; display: block; position: static; }
   #qr b { display: block; font-size: 16px; }
   #qr span { color: var(--mute); font-size: 12.5px; }
+  #qr .ab-ctas { margin-top: 10px; }
+  /* Top visitors, by what their agent did: right side, out of the way of a focused run. */
+  #board { right: 28px; top: 168px; width: 320px; max-height: calc(100vh - 168px - 230px); overflow: hidden; border: 1px solid #1f2326; border-radius: 12px;
+    background: #0b0d0cd9; padding: 10px 12px; font-size: 12.5px; transition: opacity .5s; --ab-accent: var(--green); }
+  #board h2 { margin: 0 0 8px; font: 600 10.5px Inter, sans-serif; letter-spacing: .12em; color: #6f7479; display: flex; justify-content: space-between; }
+  body.story #board { opacity: 0; }
   #qr .ask { display: block; margin-top: 6px; color: var(--green); font-size: 12.5px; min-height: 1.4em; transition: opacity .4s; }
 
   /* A soft, still glow behind the map. */
@@ -88,7 +94,7 @@
 
   /* Every agent on Substrate, from every game and harness: a row per kagent Agent with a
      dot per actor (bright = awake on a worker, dim = asleep in Snapshot Storage). */
-  #fleet { left: 32px; top: 236px; width: 356px; max-height: calc(100vh - 236px - 190px); overflow: hidden; border: 1px solid #1f2326; border-radius: 12px; background: #0b0d0cd9; padding: 10px 12px 8px; }
+  #fleet { left: 32px; top: 236px; width: 356px; max-height: calc(100vh - 236px - 230px); overflow: hidden; border: 1px solid #1f2326; border-radius: 12px; background: #0b0d0cd9; padding: 10px 12px 8px; }
   #fleet h2 { margin: 0 0 6px; font: 600 10.5px Inter, sans-serif; letter-spacing: .12em; color: #6f7479; display: flex; justify-content: space-between; }
   #fleet h2 b { color: var(--fg); letter-spacing: 0; }
   .fa { padding: 6px 0; border-top: 1px solid #1a1d1f; }
@@ -142,7 +148,8 @@
 <div id="stats" class="ui"></div>
 <div id="fleet" class="ui" aria-label="Every agent on Agent Substrate"></div>
 <div id="toasts" class="ui" aria-live="polite"></div>
-<div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span></div></div>
+<div id="qr" class="ui"><div class="code" id="qrcode"></div><div><b>Scan to run your own agent</b><span id="joinUrl"></span><span class="ask" id="askIdea"></span><div id="cta"></div></div></div>
+<div id="board" class="ui" aria-label="Top visitors"><h2><span>TOP AGENTS TODAY</span><span>tasks</span></h2><div id="boardRows"></div></div>
 <div id="story" class="ui off" aria-live="polite"></div>
 <div id="pulseBox" class="ui"><canvas id="pulse" aria-label="Compute heartbeat"></canvas><div id="pulseLbl">COMPUTE<b id="pulseNow"></b></div></div>
 <div id="feed" class="ui" aria-live="polite"></div>
@@ -150,6 +157,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>window.KAGENT_ICON = "/agent-flow/static/kagent-icon.svg"; window.AGW_ICON = "/agent-flow/static/agentgateway-icon.svg"; window.OPENAI_ICON = "/agent-flow/static/openai-icon.svg";</script>
 <script src="/agent-flow/static/scene.js"></script>
+<script src="/static/arcade.js?v=1"></script>
+<script>Arcade.ctas(document.getElementById("cta"), "sm"); Arcade.board(document.getElementById("boardRows"), "/agent-flow", { n: 10, unit: false, empty: "Scan the code and give your agent a task." });</script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);

@@ -73,6 +73,7 @@
   @keyframes up { 10%, 60% { box-shadow: 0 0 40px #4ade80; border-color: #4ade80; } }
   .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; vertical-align: middle; }
   #noBoard { color: var(--mute); font-size: 18px; text-align: center; margin-top: 40%; }
+  #cta { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -86,7 +87,7 @@
       <h2>THE CONTROLS<b id="totalReal"></b></h2>
       <div id="towers"></div>
     </div>
-    <div id="qr" class="panel"><div class="code" id="qrcode"></div><div><b>Scan to defend</b><span id="joinUrl"></span></div></div>
+    <div id="qr" class="panel"><div class="code" id="qrcode"></div><div><b>Scan to defend</b><span id="joinUrl"></span><div id="cta"></div></div></div>
   </section>
   <section id="center" class="panel">
     <div id="stats"><div><b id="sPlaying">0</b><small>PLAYING NOW</small></div><div><b id="sRuns">0</b><small>RUNS</small></div><div><b id="sBlocked">0</b><small>REAL BLOCKS</small></div></div>
@@ -99,6 +100,8 @@
   </section>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/static/arcade.js?v=1"></script>
+<script>Arcade.ctas(document.getElementById("cta"), "sm");</script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);

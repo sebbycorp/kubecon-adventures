@@ -20,6 +20,9 @@
   #qr { background: #fff; padding: 8px; width: fit-content; margin: 6px auto; }
   #qr img, #qr canvas { display: block; width: 150px; height: 150px; image-rendering: pixelated; }
   #joinurl { text-align: center; font-size: 8px; word-break: break-all; color: var(--sky); }
+  #top { font-size: 9px; --ab-accent: var(--yellow, #facc15); }
+  #top .ab-row { padding: 3px 6px; grid-template-columns: 1.4em 8px 1fr auto; gap: 6px; }
+  #cta { justify-content: center; margin-top: 8px; }
   #ticker { font-size: 8px; line-height: 1.9; flex: 1; min-height: 0; overflow: hidden; }
   #start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
            background: rgba(0,0,0,.85); cursor: pointer; z-index: 5; text-align: center; gap: 24px; }
@@ -34,6 +37,11 @@
     <h2>SCAN TO PLAY</h2>
     <div id="qr"></div>
     <div id="joinurl"></div>
+    <div id="cta"></div>
+  </div>
+  <div class="box">
+    <h2>TOP PLAYERS</h2>
+    <div id="top"></div>
   </div>
   <div class="box">
     <h2>DUCKS</h2>
@@ -68,6 +76,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/static/arcade.js?v=1"></script>
+<script>Arcade.ctas(document.getElementById("cta"), "sm"); Arcade.board(document.getElementById("top"), "/duck-hunt", { n: 10, detail: false, unit: false, empty: "HATCH A DUCK TO SCORE" });</script>
 <script src="/static/sprites.js"></script>
 <script src="/duck-hunt/static/sky.js"></script>
 <script>

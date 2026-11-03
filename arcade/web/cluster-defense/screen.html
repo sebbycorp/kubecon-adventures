@@ -54,6 +54,7 @@
   #allTime ol { margin: 4px 0 0; padding-left: 22px; font-size: 13px; line-height: 1.6; }
   #allTime li span:last-child { float: right; color: #ffd23d; font-weight: 800; }
   #conn { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--dim); }
+  #cta { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -68,7 +69,7 @@
   </div>
   <div id="side">
     <div><h1>CLUSTER <span>DEFENSE</span></h1><div class="sub">Every ship you shoot is a real kagent subagent on Agent Substrate.</div></div>
-    <div id="qr" class="panel"><div id="qrcode"></div><div><b>Scan to fly</b><span id="joinUrl"></span><div class="sub" style="margin-top:6px">Shoot agents before they fill the cluster. Every hit-down is a real Substrate suspend that frees a worker.</div></div></div>
+    <div id="qr" class="panel"><div id="qrcode"></div><div><b>Scan to fly</b><span id="joinUrl"></span><div class="sub" style="margin-top:6px">Shoot agents before they fill the cluster. Every hit-down is a real Substrate suspend that frees a worker.</div><div id="cta"></div></div></div>
     <div id="gaugeBig" class="panel">
       <div class="k"><span>WORKERS BUSY</span><span id="phase">—</span></div>
       <div class="n" id="busy">0 / 16</div>
@@ -88,6 +89,8 @@
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/static/arcade.js?v=1"></script>
+<script>Arcade.ctas(document.getElementById("cta"), "sm");</script>
 <script type="module">
 import { startSpace, roleOf, shipColor, esc } from "/cluster-defense/static/space.js";
 import { connect } from "/cluster-defense/static/net.js";
