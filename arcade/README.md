@@ -10,6 +10,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
 | Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a 3-minute multiplayer city shooter | Playable | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
 | Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
+| Gateway Defense | The platform's controls (prompt guard, rate limit, egress, suspend) as towers, each kill a real call; solo tower defense | Playable | [below](#gateway-defense) |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
 ## Start
@@ -29,6 +30,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
 | Substrate Siege phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/substrate-siege, http://localhost:8090/substrate-siege/screen |
 | Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
+| Gateway Defense phone / big screen | http://localhost:8090/gateway-defense, http://localhost:8090/gateway-defense/screen |
 | Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
@@ -159,3 +161,16 @@ A run keeps 1 + its online players agents on the streets (at most 4), 32 in the 
 - The big screen (`/substrate-siege/screen`) shows the whole city, a QR code, the best-run leaderboard, a live feed and live suspend and booking times.
 
 Booth load (24 bots playing back-to-back 3-minute runs for 5 minutes, `TestBoothLoad`, 2026-11-03): 403 freezes, 240 bookings, no stuck runs and no booking conflicts, but the LLM budget is the limit. All 24 runs starting together burst to 584k tokens a minute in the first minute, then held at 295–325k against the 300k budget, so agentgateway rate-limited about 14% of LLM calls (211 of 1564). A turn caught by that waits out its 45 s timeout, and a freeze has to wait for the agent's turn to end: freeze p95 33 s (p50 3.5 s; the suspend call alone p95 0.3 s), booking p95 10.7 s, 70 steps and bookings timed out. The phone shows FREEZING the moment the hit lands either way. Real players start at different times and book less than bots; raising the budget or spacing steps further is the lever. Reset the round with `curl -XPOST localhost:8090/admin/substrate-siege/api/reset`.
+
+## Gateway Defense
+
+A solo tower defense on the phone. Rogue agent traffic marches down a lane to the player's cluster: jailbreakers, token-burners, escapers (blocked-site callers) and runaways (idle agents hogging workers), ten waves ending in a Rogue Orchestrator boss. The towers are the platform's controls, each triple damage on the traffic it was made for. The simulation runs on the phone (the server serves the rules from `games/gatewaydef/config.go`, so both agree); a tower's kill asks the server for a real call, at most 2 a second per player (burst 3, 12 in flight across the arcade), and the phone shows its real outcome over the kill:
+
+| Tower | The real call | What is real |
+|-------|---------------|--------------|
+| Prompt Guard | A jailbreak prompt into `/gatedef/guard/v1/chat/completions` | agentgateway's prompt guard answers 403. The route's backend is the arcade's own sink (a custom AI provider on the arcade Service), never OpenAI: even a guard miss can't reach an LLM, and no key is attached. |
+| Rate Limiter | `/gatedef/limit`, keyed per player, 1 request a minute | agentgateway's local rate limit answers 429 (up to 3 tries, a burner's burst). |
+| Suspend Beam | A Substrate Suspend of a `rogue` session | Three runaway sessions on the `gatedef` WorkerPool, primed once with a one-word turn, are suspended for real and resumed 2 s later (no tokens after priming). |
+| Egress Wall | `rogue` runs `wget https://example.com` with its bash tool | atenet-egress refuses it (rogue has no EgressPolicy). It costs an LLM turn, so one shared probe runs at most once a minute; the first kill after a probe shows it as real, later ones as its last real result. |
+
+A kill over the budget shows that tower's last real result, marked as such. Leaks cost a life (the boss, 10) and say what the creep would have done. Scores are checked before the leaderboard: at most the most the wave reached allows, and no faster than its creeps can spawn on 2× (`MaxScore`, `MinSeconds`). The big screen (`/gateway-defense/screen`) shows a QR code, per-control real call counts and p50 timings, a live feed of the real blocks and the top defenders. `manifests/gatedef.yaml` holds the WorkerPool, the `rogue` Agent, its guarded LLM route (`/gatedef/v1`, 30k tokens a minute), the guard and limit routes and their policies, all in-cluster only.
