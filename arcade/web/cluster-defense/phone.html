@@ -52,9 +52,24 @@
   .stats div { border: 1px solid var(--edge); border-radius: 10px; padding: 8px 4px; font-size: 10px; color: var(--dim); }
   .stats b { display: block; font-size: 20px; color: var(--ink); }
   .row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; }
-  #mute { position: fixed; right: 10px; top: calc(86px + var(--st)); padding: 5px 8px; font-size: 12px; z-index: 3; }
   #status { position: fixed; left: 50%; top: 45%; transform: translateX(-50%); z-index: 6; padding: 10px 16px; text-align: center; }
-  #banner { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); z-index: 4; font-weight: 800; font-size: 26px; letter-spacing: .1em; color: var(--bad); text-shadow: 0 0 20px rgba(255, 60, 80, .8); pointer-events: none; white-space: nowrap; }
+  #gauge.warn { border-color: var(--warn); }
+  #gauge.alarm { border-color: var(--bad); animation: beat .8s infinite; }
+  @keyframes beat { 0%, 100% { box-shadow: 0 0 0 rgba(255, 60, 80, 0); } 15% { box-shadow: 0 0 26px rgba(255, 60, 80, .9); } 30% { box-shadow: 0 0 6px rgba(255, 60, 80, .3); } 45% { box-shadow: 0 0 22px rgba(255, 60, 80, .8); } }
+  #combo { font-size: 12px; font-weight: 800; color: #ffd23d; min-height: 15px; }
+  .decay { height: 4px; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; margin-top: 2px; }
+  .decay i { display: block; height: 100%; width: 0; background: #ffd23d; }
+  #title { font-size: 9px; color: var(--dim); letter-spacing: .06em; white-space: nowrap; }
+  #powers { position: fixed; right: 10px; top: calc(128px + var(--st)); display: flex; gap: 6px; pointer-events: none; }
+  .pw { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px; background: conic-gradient(var(--c) calc(var(--f) * 360deg), rgba(255, 255, 255, .08) 0); }
+  .pw span { width: 30px; height: 30px; border-radius: 50%; background: rgba(10, 16, 44, .92); display: flex; align-items: center; justify-content: center; }
+  #big { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 4; font-weight: 800; font-size: 40px; letter-spacing: .06em; pointer-events: none; white-space: nowrap; text-shadow: 0 0 22px currentColor; transition: opacity .3s; }
+  #big.pop { animation: pop .35s ease-out; }
+  @keyframes pop { 0% { transform: translate(-50%, -50%) scale(.4); } 70% { transform: translate(-50%, -50%) scale(1.15); } 100% { transform: translate(-50%, -50%) scale(1); } }
+  #menuBtn { position: fixed; right: 10px; top: calc(86px + var(--st)); padding: 5px 9px; font-size: 11px; font-weight: 800; letter-spacing: .08em; z-index: 3; }
+  .beat { font-size: 13px; color: #ffd23d; margin: 6px 0; }
+  #banner { position: fixed; left: 50%; top: 24%; transform: translateX(-50%); z-index: 4; font-weight: 800; font-size: 22px; letter-spacing: .08em; pointer-events: none; text-align: center; padding: 10px 16px; border-radius: 12px; background: rgba(10, 16, 44, .78); border: 1px solid var(--edge); }
+  #banner small { display: block; font-size: 13px; letter-spacing: .14em; margin-bottom: 2px; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -63,25 +78,28 @@
 <div id="hud">
   <div id="top">
     <div id="gauge" class="panel"><div class="k"><span>CLUSTER</span><span><b id="fillTxt">0/16</b> WORKERS BUSY</span></div><div class="bar"><i id="fillBar"></i></div></div>
-    <div id="me" class="panel"><div class="k">SUSPENDED</div><div class="v" id="score">0</div><div class="t" id="clock">—</div></div>
+    <div id="me" class="panel"><div class="k">SCORE</div><div class="v" id="score">0</div><div id="combo"></div><div class="decay"><i id="decay"></i></div><div class="t" id="clock">—</div><div id="title"></div></div>
   </div>
   <div id="feed"></div>
-  <button id="mute" class="panel">🔊</button>
+  <div id="powers"></div>
+  <button id="menuBtn" class="panel">MENU</button>
   <div id="stickZone"><div id="stick"><div id="knob"></div></div></div>
   <div id="fire">FIRE<small>hold</small></div>
 </div>
 <div id="banner" class="hidden"></div>
+<div id="big" class="hidden"></div>
 
 <div id="start" class="sheet panel hidden">
   <h1>CLUSTER <span>DEFENSE</span></h1>
-  <p>Subagents keep spinning up and every running one holds a worker. Fill all the workers and the cluster is full.</p>
-  <ul>
-    <li>🚀 Fly with the left thumb. Hold <b>FIRE</b>.</li>
-    <li>❄ Two hits <b>suspends</b> an agent for real (Agent Substrate snapshots it and frees its worker).</li>
-    <li>☸ Keep the cluster from filling. Everyone plays together.</li>
-  </ul>
+  <p style="font-size:14px;color:#fff">Shoot agents before they fill the cluster.</p>
   <button class="big" id="play">PLAY</button>
-  <div class="row"><a href="/cluster-defense/screen" target="_blank">Big screen ↗</a><a href="/">Arcade</a></div>
+</div>
+
+<div id="menu" class="sheet panel hidden">
+  <h1>MENU</h1>
+  <button class="big" id="soundBtn">SOUND: ON</button>
+  <p>Every agent is a real kagent subagent. Shooting one down is a real Agent Substrate suspend that frees its worker.</p>
+  <div class="row"><a href="#" id="menuClose">Close</a><a href="/cluster-defense/screen" target="_blank">Big screen ↗</a><a href="/">Arcade</a></div>
 </div>
 
 <div id="over" class="sheet panel hidden">
@@ -89,6 +107,7 @@
   <p id="overText"></p>
   <div class="stats"><div><b id="oTime">0:00</b>SURVIVED</div><div><b id="oSus">0</b>SUSPENDED</div><div><b id="oPeak">0</b>PEAK HOSTED</div></div>
   <p id="oMine"></p>
+  <p class="beat" id="oBeat"></p>
   <button class="big" id="again">PLAY AGAIN</button>
   <p id="oNext"></p>
 </div>
@@ -128,33 +147,68 @@ window.cd = { snap: () => snap, ctl }; // for the headless autopilot screenshots
 // ---- sound: a tiny synth, started on the first touch ----
 let soundOn = true, actx = null;
 try { soundOn = localStorage.getItem("cd-sound") !== "off"; } catch {}
-$("mute").textContent = soundOn ? "🔊" : "🔇";
 addEventListener("pointerdown", () => { if (!actx && soundOn) try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }, { capture: true });
-function sfx(kind) {
-  if (!soundOn || !actx) return;
-  const set = { shot: ["square", 900, 300, 0.06, 0.03], hit: ["triangle", 300, 160, 0.08, 0.06], sus: ["sine", 520, 1560, 0.35, 0.09], full: ["sawtooth", 220, 55, 0.9, 0.08] }[kind];
-  if (!set) return;
-  const [wave, f0, f1, dur, vol] = set, t0 = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+// tone(wave, from Hz, to Hz, seconds, volume, delay)
+function tone(wave, f0, f1, dur, vol, delay = 0) {
+  const t0 = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
   o.type = wave; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
   g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
 }
+function sfx(kind, n = 1) {
+  if (!soundOn || !actx) return;
+  if (actx.state === "suspended") actx.resume();
+  const up = 1 + (n - 1) * 0.18; // combos zip higher
+  ({
+    shot: () => tone("square", 900, 300, 0.05, 0.025),
+    hit: () => tone("triangle", 320, 170, 0.07, 0.05),
+    zip: () => { tone("sawtooth", 260 * up, 2400 * up, 0.12, 0.05); tone("sine", 1320 * up, 1980 * up, 0.18, 0.06, 0.08); },
+    big: () => { tone("sawtooth", 180, 2600, 0.25, 0.06); tone("sine", 660, 1320, 0.4, 0.07, 0.15); tone("sine", 990, 1980, 0.4, 0.05, 0.28); },
+    power: () => { tone("sine", 600, 1200, 0.1, 0.06); tone("sine", 900, 1800, 0.12, 0.05, 0.08); },
+    bomb: () => { tone("sawtooth", 120, 40, 0.6, 0.1); tone("sine", 2000, 200, 0.5, 0.05); },
+    bump: () => tone("triangle", 140, 60, 0.15, 0.08),
+    alarm: () => { tone("square", 880, 880, 0.18, 0.03); tone("square", 660, 660, 0.18, 0.03, 0.22); },
+    saved: () => [523, 659, 784, 1046].forEach((f, i) => tone("triangle", f, f, 0.14, 0.06, i * 0.08)),
+    wave: () => tone("sine", 200, 800, 0.5, 0.05),
+    squad: () => [784, 988, 1175].forEach((f, i) => tone("square", f, f, 0.12, 0.035, i * 0.07)),
+    full: () => tone("sawtooth", 220, 55, 0.9, 0.08),
+  })[kind]?.();
+}
 const buzz = (ms) => { if (soundOn && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
-$("mute").onclick = () => { soundOn = !soundOn; $("mute").textContent = soundOn ? "🔊" : "🔇"; try { localStorage.setItem("cd-sound", soundOn ? "on" : "off"); } catch {} };
+const soundLabel = () => { $("soundBtn").textContent = soundOn ? "SOUND: ON" : "SOUND: OFF"; };
+soundLabel();
+$("soundBtn").onclick = () => { soundOn = !soundOn; soundLabel(); try { localStorage.setItem("cd-sound", soundOn ? "on" : "off"); } catch {} };
+let menuOpen = false;
+$("menuBtn").onclick = () => { menuOpen = true; };
+$("menuClose").onclick = (e) => { e.preventDefault(); menuOpen = false; };
 
 // ---- events: feed lines, sounds ----
 const feed = [];
 function onEvent(e, s) {
   const a = s.agents.find((x) => x.id === e.agent);
   const who = (id) => { const p = s.ships.find((x) => x.id === id); return p ? esc(p.nick) : "someone"; };
-  if (e.player === me.id && e.kind === "hit") { sfx("hit"); buzz(10); }
-  if (e.player === me.id && e.kind === "suspended") { sfx("sus"); buzz(40); }
-  if (e.kind === "over") { sfx("full"); buzz(200); }
+  const mine = e.player === me.id;
+  if (mine && e.kind === "hit") { sfx("hit"); buzz(8); }
+  if (mine && e.kind === "suspended") {
+    const big = e.text === "boss" || e.text === "orchestrator" || e.text === "runaway" || e.text === "early";
+    sfx(big ? "big" : "zip", e.combo); buzz(big ? [30, 40, 60] : 35);
+    if (e.combo >= 2) bigText(`x${e.combo} COMBO!`, ["", "", "#7dff8a", "#5ad1ff", "#c79bff", "#ffd23d"][e.combo]);
+    if (e.text === "runaway") bigText("★ RUNAWAY! +" + e.points, "#ffd23d");
+    if (e.text === "early") bigText("CAUGHT EARLY! +" + e.points, "#ffb347");
+  }
+  if (mine && e.kind === "power") { sfx(e.text === "bomb" ? "bomb" : "power"); buzz(e.text === "bomb" ? [60, 30, 120] : 20); }
+  if (mine && e.kind === "bump") { sfx("bump"); buzz(30); }
+  if (mine && e.kind === "title") banner(`🏅 NEW TITLE`, e.text.toUpperCase(), "#ffd23d", 2600);
+  if (e.kind === "wave") { sfx("wave"); banner(`WAVE ${e.points}`, e.text, e.text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff", 3000); }
+  if (e.kind === "squad") { sfx("squad"); buzz([20, 30, 20]); banner("CO-OP", `SQUAD SAVE! +${e.points}`, "#ffd23d", 2000); }
+  if (e.kind === "saved") { sfx("saved"); banner("PHEW", "SAVED IT!", "#3dff8f", 2000); }
+  if (e.kind === "kids") bigText("+" + e.text + " SUBAGENTS!", "#ffb347");
+  if (e.kind === "over") { sfx("full"); buzz(300); }
   const line = {
-    suspended: `<span style="color:#9ff4ff">❄ ${who(e.player)} suspended ${esc(a ? a.name : e.text)} in ${e.ms} ms</span>`,
+    suspended: `<span style="color:#9ff4ff">❄ ${who(e.player)} suspended ${esc(a ? a.name : e.text)} · +${e.points}${e.combo > 1 ? " x" + e.combo : ""} · ${e.ms} ms</span>`,
     task: a ? `<span style="color:${roleOf(a.role).color}">${roleOf(a.role).icon} ${esc(a.name)}: “${esc(e.text)}”</span>` : "",
     policy: `<span style="color:#ffb38a">⛔ agentgateway rate-limited an agent</span>`,
-    round: `<span style="color:#4da3ff">☸ Round ${esc(e.text)}: defend the cluster!</span>`,
+
   }[e.kind];
   if (!line) return;
   feed.unshift({ html: line, at: performance.now() });
@@ -163,34 +217,57 @@ function onEvent(e, s) {
 
 // ---- HUD ----
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
-let lastPhase = "";
+let bannerT = 0, bigT = 0;
+function banner(top, text, color, ms) {
+  $("banner").innerHTML = `<small>${esc(top)}</small>${esc(text)}`;
+  $("banner").style.color = color;
+  show("banner"); clearTimeout(bannerT); bannerT = setTimeout(() => show("banner", false), ms);
+}
+function bigText(text, color) {
+  const el = $("big");
+  el.textContent = text; el.style.color = color || "#fff";
+  el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
+  show("big"); clearTimeout(bigT); bigT = setTimeout(() => show("big", false), 900);
+}
+const POW = { rapid: ["⚡", "#ffe14d", 8], spread: ["🔱", "#ff8fd8", 8], shield: ["🛡️", "#6fd3ff", 10] };
+let lastPhase = "", lastAlarm = 0;
 function hud() {
   const s = snap;
   if (!s) return;
   const f = s.fill, k = f.slots ? f.running / f.slots : 0;
   $("fillTxt").textContent = `${f.running}/${f.slots}`;
   $("fillBar").style.width = `${Math.min(100, k * 100)}%`;
-  $("fillBar").style.background = k < 0.5 ? "var(--ok)" : k < 0.8 ? "var(--warn)" : "var(--bad)";
+  $("fillBar").style.background = k < 0.7 ? "var(--ok)" : k < 0.9 ? "var(--warn)" : "var(--bad)";
+  $("gauge").classList.toggle("warn", k >= 0.7 && !s.alarm);
+  $("gauge").classList.toggle("alarm", !!s.alarm);
+  if (s.alarm && s.round.phase === "live" && performance.now() - lastAlarm > 1600) { lastAlarm = performance.now(); sfx("alarm"); buzz(80); }
   $("score").textContent = s.score || 0;
+  const combo = s.combo || 1;
+  $("combo").textContent = combo > 1 ? `x${combo} COMBO` : "";
+  $("decay").style.width = combo > 1 ? `${Math.min(100, ((s.comboLeft || 0) / 2) * 100)}%` : "0%";
+  $("title").textContent = s.title || "";
+  $("powers").innerHTML = Object.entries(POW).filter(([kk]) => s[kk + "Left"] > 0)
+    .map(([kk, [icon, c, full]]) => `<div class="pw" style="--c:${c};--f:${Math.min(1, s[kk + "Left"] / full)}"><span>${icon}</span></div>`).join("");
   const r = s.round;
-  $("clock").textContent = r.phase === "live" ? `⏱ ${fmt(r.survived + (performance.now() - snapAt) / 1000)}` : r.phase === "over" ? "round over" : "ready";
+  $("clock").textContent = r.phase === "live" ? `⏱ ${fmt(r.survived + (performance.now() - snapAt) / 1000)} · W${s.wave.n}` : r.phase === "over" ? "round over" : "ready";
   $("feed").innerHTML = feed.map((l) => `<div style="opacity:${Math.max(0, 1 - (performance.now() - l.at) / 6000)}">${l.html}</div>`).join("");
-  show("start", r.phase === "idle");
+  show("start", r.phase === "idle" && !menuOpen);
+  show("menu", menuOpen);
   $("play").disabled = !r.canPlay;
-  show("over", r.phase === "over");
+  show("over", r.phase === "over" && !menuOpen);
   if (r.phase === "over") {
     $("overTitle").textContent = r.reason === "full" ? "CLUSTER FULL" : "ROUND OVER";
     $("overText").textContent = r.reason === "full" ? `All ${f.slots} workers were busy. Agent Substrate hosted up to ${r.hosted} agents on them by suspending the idle ones.` : "Nobody was flying, so the round ended.";
     $("oTime").textContent = fmt(r.survived);
     $("oSus").textContent = r.suspended;
     $("oPeak").textContent = r.hosted;
-    $("oMine").innerHTML = `You suspended <b>${s.score || 0}</b>${s.rank ? ` · #${s.rank} this round` : ""}${s.best ? ` · record ${fmt(s.best)}` : ""}`;
+    $("oMine").innerHTML = `Your score <b>${s.score || 0}</b> (${s.suspends || 0} suspended) · best <b>${s.best || 0}</b>${s.rank ? ` · #${s.rank} all-time` : ""}<br>${esc(s.title || "")}`;
+    $("oBeat").textContent = s.next ? `Beat ${s.next.nick}'s ${s.next.best} to rank #${s.next.rank}` : s.rank === 1 ? "You're #1 on the all-time board!" : "";
     $("again").disabled = !r.canPlay;
     $("oNext").textContent = r.next > 0 ? `Next round starts on its own in ${Math.ceil(r.next)} s` : "";
   }
   if (r.phase !== lastPhase) {
-    if (r.phase === "over" && r.reason === "full") { $("banner").textContent = "CLUSTER FULL!"; show("banner"); setTimeout(() => show("banner", false), 1800); }
-    if (r.phase === "live" && lastPhase) { $("banner").textContent = "DEFEND THE CLUSTER!"; $("banner").style.color = "#4da3ff"; show("banner"); setTimeout(() => { show("banner", false); $("banner").style.color = ""; }, 1500); }
+    if (r.phase === "over" && r.reason === "full") bigText("CLUSTER FULL!", "#ff4d5e");
     lastPhase = r.phase;
   }
 }

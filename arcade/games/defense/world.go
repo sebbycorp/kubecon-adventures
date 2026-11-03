@@ -1,12 +1,13 @@
 // Package defense is Cluster Defense: a co-op space shooter where every enemy is a real
 // kagent agent on Agent Substrate. Agents spin up at the edge of space, fly to the
 // cluster station and run one real task turn there, each holding a worker. Players fly
-// ships and shoot them: two hits suspend the agent for real, freeing its worker as a
+// ships and shoot them: enough hits suspend the agent for real, freeing its worker as a
 // snapshot that drifts to Snapshot Storage. When every worker of the pool is busy the
 // cluster is full and the round is over.
 //
-// This file is the pure world: ships, agents, bullets and rounds. It never talks to
-// kagent; Tick returns Intents for the Game to run and the Game reports results back
+// This file is the pure world: ships, agents, bullets and rounds. fun.go holds what
+// makes it a game (agent kinds, waves, combos, power-ups, co-op moments). Neither talks
+// to kagent; Tick returns Intents for the Game to run and the Game reports results back
 // through Resolve.
 package defense
 
@@ -44,43 +45,36 @@ var (
 
 // Tuning, in units and seconds.
 const (
-	shipSpeed     = 26.0
-	shipAccel     = 70.0
-	shipDrag      = 3.0 // per second, when the stick is centred
-	shipMargin    = 2.0
-	deadZone      = 0.12
-	fireCD        = 0.16
-	bulletSpeed   = 75.0
-	bulletLife    = 0.5 // so a shot reaches 37.5 units
-	assistRange   = 36.0
-	assistCone    = 22 * math.Pi / 180
-	agentRadius   = 2.2
-	hitsToSuspend = 2
-	orbitMin      = 8.0
-	orbitMax      = 15.0
-	orbitSpeed    = 1.6 // units per second along the orbit
-	capsuleSpeed  = 14.0
-	firstSpawn    = 2.0  // seconds into a round
-	spawnBase     = 3.2  // seconds between spawns at the start, one player
-	spawnFloor    = 0.6  // ... falling to this
-	spawnRamp     = 100  // seconds for the gap to shrink by e
-	playerBoost   = 0.35 // each extra online player spawns 35% more
-	spawnMin      = 0.7  // never faster than this: ~85 task turns a minute, about the 100k token budget
-	waveEvery     = 30.0 // a wave of several agents at once
-	abandonAfter  = 30.0 // a live round with nobody online ends
-	overMin       = 3.0  // PLAY can restart this long after a round ends
-	nextRound     = 15.0 // ... and the next round starts on its own after this
-	maxEvents     = 64
-	DefaultSlots  = 16
+	shipSpeed    = 30.0
+	shipAccel    = 110.0
+	shipDrag     = 2.2 // per second, when the stick is centred
+	shipMargin   = 2.0
+	deadZone     = 0.12
+	fireCD       = 0.16
+	rapidCD      = 0.07
+	spreadAngle  = 9 * math.Pi / 180
+	bulletSpeed  = 75.0
+	bulletLife   = 0.5 // so a shot reaches 37.5 units
+	assistRange  = 36.0
+	assistCone   = 22 * math.Pi / 180
+	orbitMin     = 8.0
+	orbitMax     = 15.0
+	orbitSpeed   = 1.6 // units per second along the orbit
+	capsuleSpeed = 14.0
+	abandonAfter = 30.0 // a live round with nobody online ends
+	overMin      = 1.0  // PLAY can restart this soon after a round ends
+	nextRound    = 15.0 // ... and the next round starts on its own after this
+	maxEvents    = 96
+	DefaultSlots = 16
 )
 
-// Role is a kind of subagent: each has its own look on the client and its own task.
+// Role is a kind of subagent work: each has its own look and its own task.
 type Role struct {
 	Name  string
 	Speed float64
 }
 
-// Roles are the subagent kinds, in spawn rotation order.
+// Roles are the subagent jobs, in spawn rotation order.
 var Roles = []Role{
 	{"planner", 5}, {"coder", 6}, {"tester", 7}, {"researcher", 4.5},
 	{"reviewer", 5.5}, {"deployer", 8}, {"summarizer", 6.5}, {"scraper", 7.5},
@@ -100,7 +94,7 @@ type AgentState string
 
 const (
 	Running    AgentState = "running"    // holds a worker (flying in, or at the cluster)
-	Suspending AgentState = "suspending" // two hits landed, the suspend is in flight
+	Suspending AgentState = "suspending" // the last hit landed, the suspend is in flight
 	Suspended  AgentState = "suspended"  // a snapshot capsule drifting to storage
 )
 
@@ -111,21 +105,34 @@ type Ship struct {
 	Heading         float64 // radians, 0 = +x
 	FireCD          float64
 	Online          bool
-	Score           int // suspends this round
-	Total           int // suspends ever
+	Score           int // points this round
+	Suspends        int // suspends this round
+	Best            int // best round score this session
+	Total           int // suspends ever (titles)
+	Combo           int // current multiplier, 1..comboMax
+	LastKill        float64
+	RapidUntil      float64
+	SpreadUntil     float64
+	ShieldUntil     float64
+	StunUntil       float64
 }
 
 // Agent is one subagent session in space.
 type Agent struct {
 	ID, Session, Role, Name string
+	Kind                    string // scout, worker, orchestrator, runaway, boss
 	Pos                     Vec
 	State                   AgentState
-	Hits                    int
+	Hits, Need              int
 	Say                     string // its task line, once its turn answered
 	Done                    bool   // its task turn finished
 	Arrived                 bool   // reached its orbit round the cluster
 	By                      string // player whose shot started the suspend
 	SuspendMs               int64
+	Born                    float64
+	KidsDone                bool    // an orchestrator spawned its subagents
+	NextKids                float64 // a boss's next batch
+	LastRam                 float64
 	orbitR, orbitA, orbitW  float64
 	seen                    bool // its task intent has been issued
 }
@@ -142,6 +149,7 @@ type Bullet struct {
 type Event struct {
 	Kind, Agent, Player, Text string
 	Ms                        int64
+	Points, Combo             int
 }
 
 // Input is a player's controls: the stick (each axis -1..1) and FIRE.
@@ -185,44 +193,57 @@ type Round struct {
 	Peak           int    // most agents running at once
 	PeakHosted     int    // most sessions (running and suspended) at once
 	Reason         string // "full" or "abandoned"
-	nextSpawn      float64
-	nextWave       float64
-	waves          int
+	Wave           int
+	WaveName       string
+	Boss           bool
 	empty          float64 // world time the last player went offline, while live
+	queue          []string
+	nextSpawn      float64
+	queuedAt       float64 // when the wave's queue emptied
+	nextWave       float64
 }
 
 // pending is a spawn whose session has not come back yet.
 type pending struct {
-	role  string
-	round int
-	pos   Vec
+	role, kind string
+	round      int
+	pos        Vec
 }
 
 // World is the whole simulation. It is not safe for concurrent use.
 type World struct {
-	Ships   map[string]*Ship
-	Agents  map[string]*Agent
-	Bullets []*Bullet
-	Stored  map[string]string // agent ID -> session, snapshots that reached storage this round
-	Round   Round
-	Now     float64
-	Slots   int // workers in the pool: the cluster is full at this many running agents
-	Events  []Event
-	Best    float64 // longest round survived, seconds
+	Ships      map[string]*Ship
+	Agents     map[string]*Agent
+	Bullets    []*Bullet
+	Powerups   map[string]*Powerup
+	Stored     map[string]string // agent ID -> session, snapshots that reached storage this round
+	Round      Round
+	Now        float64
+	Slots      int // workers in the pool: the cluster is full at this many running agents
+	Events     []Event
+	Best       float64 // longest round survived, seconds
+	TeamStreak int     // suspends by anyone, each within teamGap of the last
+	BestStreak int
 
-	rnd      *rand.Rand
-	in       map[string]Input
-	spawning map[string]pending
-	out      []Intent
-	seq      int
-	bseq     int
-	roleI    int
+	rnd       *rand.Rand
+	in        map[string]Input
+	spawning  map[string]pending
+	out       []Intent
+	seq       int
+	bseq      int
+	roleI     int
+	bucket    float64 // spawn tokens (spawnRate a second, spawnBurst at most)
+	teamLast  float64
+	recent    []kill // suspends of the last squadWindow, for SQUAD SAVE
+	lastSquad float64
+	alarm     bool
 }
 
 // NewWorld is an empty world using rnd for spawns.
 func NewWorld(rnd *rand.Rand) *World {
-	return &World{Ships: map[string]*Ship{}, Agents: map[string]*Agent{}, Stored: map[string]string{},
-		Round: Round{Phase: Idle}, Slots: DefaultSlots, rnd: rnd, in: map[string]Input{}, spawning: map[string]pending{}}
+	return &World{Ships: map[string]*Ship{}, Agents: map[string]*Agent{}, Stored: map[string]string{}, Powerups: map[string]*Powerup{},
+		Round: Round{Phase: Idle}, Slots: DefaultSlots, rnd: rnd, in: map[string]Input{}, spawning: map[string]pending{}, bucket: spawnBurst,
+		teamLast: math.Inf(-1), lastSquad: math.Inf(-1)}
 }
 
 // Join brings a player's ship online, creating it next to the cluster.
@@ -230,14 +251,14 @@ func (w *World) Join(id, nick, color string) *Ship {
 	s := w.Ships[id]
 	if s == nil {
 		a := w.rnd.Float64() * 2 * math.Pi
-		s = &Ship{ID: id, Nick: nick, Color: color, Pos: Cluster.add(Vec{math.Cos(a), math.Sin(a)}.mul(orbitMax + 6)), Heading: a}
+		s = &Ship{ID: id, Nick: nick, Color: color, Pos: Cluster.add(Vec{math.Cos(a), math.Sin(a)}.mul(orbitMax + 6)), Heading: a, Combo: 1}
 		w.Ships[id] = s
 	}
 	s.Nick, s.Color, s.Online = nick, color, true
 	return s
 }
 
-// Leave takes a player's ship offline (it stays, drifting, and keeps its score).
+// Leave takes a player's ship offline (it stays, and keeps its score).
 func (w *World) Leave(id string) {
 	if s := w.Ships[id]; s != nil {
 		s.Online = false
@@ -260,7 +281,7 @@ func (w *World) Input(id string, in Input) {
 	w.in[id] = in
 }
 
-// ErrTooSoon refuses PLAY right after a round ends, so the summary can be read.
+// ErrTooSoon refuses PLAY in the instant after a round ends (a double tap).
 var ErrTooSoon = errors.New("the next round starts in a moment")
 
 // Play starts a round: from idle at once, after a round ends once overMin has passed.
@@ -279,12 +300,16 @@ func (w *World) Play() error {
 }
 
 func (w *World) start() {
-	w.Round = Round{N: w.Round.N + 1, Phase: Live, Started: w.Now, nextSpawn: w.Now + firstSpawn, nextWave: w.Now + waveEvery}
+	w.Round = Round{N: w.Round.N + 1, Phase: Live, Started: w.Now}
 	for _, s := range w.Ships {
-		s.Score = 0
+		s.Score, s.Suspends, s.Combo, s.LastKill = 0, 0, 1, 0
+		s.RapidUntil, s.SpreadUntil, s.ShieldUntil, s.StunUntil = 0, 0, 0, 0
 	}
 	w.Bullets = nil
+	clear(w.Powerups)
+	w.TeamStreak, w.alarm, w.recent, w.teamLast = 0, false, nil, math.Inf(-1)
 	w.event(Event{Kind: "round", Text: fmt.Sprint(w.Round.N)})
+	w.nextWaveNow()
 }
 
 // Running counts agents holding a worker: running ones and those whose suspend is still
@@ -335,11 +360,13 @@ func (w *World) Tick(dt float64) []Intent {
 		dt = 0
 	}
 	w.Now += dt
+	w.bucket = min(spawnBurst, w.bucket+spawnRate*dt)
 	for _, id := range slices.Sorted(maps.Keys(w.Ships)) {
 		w.tickShip(w.Ships[id], dt)
 	}
 	w.tickBullets(dt)
 	w.tickAgents(dt)
+	w.tickPowerups()
 	w.tickRound()
 	out := w.out
 	w.out = nil
@@ -348,6 +375,9 @@ func (w *World) Tick(dt float64) []Intent {
 
 func (w *World) tickShip(s *Ship, dt float64) {
 	s.FireCD = max(0, s.FireCD-dt)
+	if s.Combo > 1 && w.Now-s.LastKill > comboWindow {
+		s.Combo = 1
+	}
 	in := w.in[s.ID]
 	if !s.Online {
 		in = Input{}
@@ -370,15 +400,22 @@ func (w *World) tickShip(s *Ship, dt float64) {
 	if s.Pos.Y < shipMargin || s.Pos.Y > ArenaH-shipMargin {
 		s.Pos.Y, s.Vel.Y = clampf(s.Pos.Y, shipMargin, ArenaH-shipMargin), 0
 	}
-	if in.Fire && s.FireCD <= 1e-9 && w.Round.Phase == Live {
+	if w.Round.Phase != Live || !s.Online {
+		return
+	}
+	w.pickup(s)
+	if in.Fire && s.FireCD <= 1e-9 && w.Now >= s.StunUntil {
 		w.fire(s)
 	}
 }
 
 // fire shoots along the ship's heading, bent toward the nearest running agent inside
-// the assist cone (aimed where it will be when the shot arrives).
+// the assist cone (aimed where it will be when the shot arrives). Spread fires three.
 func (w *World) fire(s *Ship) {
 	s.FireCD = fireCD
+	if w.Now < s.RapidUntil {
+		s.FireCD = rapidCD
+	}
 	dir := Vec{math.Cos(s.Heading), math.Sin(s.Heading)}
 	var best *Agent
 	bestD := assistRange
@@ -402,8 +439,16 @@ func (w *World) fire(s *Ship) {
 			dir = aim.mul(1 / n)
 		}
 	}
-	w.bseq++
-	w.Bullets = append(w.Bullets, &Bullet{ID: w.bseq, Pos: s.Pos.add(dir.mul(1.5)), Vel: dir.mul(bulletSpeed), Life: bulletLife, Owner: s.ID})
+	angles := []float64{0}
+	if w.Now < s.SpreadUntil {
+		angles = []float64{-spreadAngle, 0, spreadAngle}
+	}
+	base := math.Atan2(dir.Y, dir.X)
+	for _, da := range angles {
+		d := Vec{math.Cos(base + da), math.Sin(base + da)}
+		w.bseq++
+		w.Bullets = append(w.Bullets, &Bullet{ID: w.bseq, Pos: s.Pos.add(d.mul(1.5)), Vel: d.mul(bulletSpeed), Life: bulletLife, Owner: s.ID})
+	}
 }
 
 // tickBullets moves shots and lands them: a shot hits the first running agent its path
@@ -420,12 +465,12 @@ func (w *World) tickBullets(dt float64) {
 			if a.State != Running {
 				continue
 			}
-			if t, ok := segmentHit(from, to, a.Pos, agentRadius); ok && t < bestT {
+			if t, ok := segmentHit(from, to, a.Pos, kindOf(a.Kind).Radius); ok && t < bestT {
 				hit, bestT = a, t
 			}
 		}
 		if hit != nil {
-			w.hit(hit, b.Owner)
+			w.hit(hit, b.Owner, 1)
 			continue
 		}
 		b.Pos, b.Life = to, b.Life-dt
@@ -458,13 +503,21 @@ func segmentHit(a, b, c Vec, r float64) (float64, bool) {
 	return t, t >= 0 && t <= 1
 }
 
-// hit lands one shot by player on a; the second asks for a suspend.
-func (w *World) hit(a *Agent, player string) {
-	a.Hits++
-	w.event(Event{Kind: "hit", Agent: a.ID, Player: player})
-	if a.Hits < hitsToSuspend {
+// hit lands n hits by player on a; reaching its Need asks for a suspend.
+func (w *World) hit(a *Agent, player string, n int) {
+	if a.State != Running {
 		return
 	}
+	a.Hits = min(a.Hits+n, a.Need)
+	w.event(Event{Kind: "hit", Agent: a.ID, Player: player})
+	if a.Hits < a.Need {
+		return
+	}
+	w.suspend(a, player)
+}
+
+// suspend marks a for suspending by player and asks for the real Suspend.
+func (w *World) suspend(a *Agent, player string) {
 	a.State, a.By = Suspending, player
 	w.out = append(w.out, Intent{Kind: "suspend", ID: a.ID, Session: a.Session, By: player})
 }
@@ -477,15 +530,44 @@ func (w *World) agentVel(a *Agent) Vec {
 	if a.Arrived {
 		return Vec{-math.Sin(a.orbitA), math.Cos(a.orbitA)}.mul(orbitSpeed * a.orbitW)
 	}
-	to := w.orbitPoint(a).sub(a.Pos)
+	to := w.goal(a).sub(a.Pos)
 	if n := to.len(); n > 1e-9 {
-		return to.mul(roleSpeed(a.Role) / n)
+		return to.mul(w.speed(a) / n)
 	}
 	return Vec{}
 }
 
+func (w *World) speed(a *Agent) float64 { return roleSpeed(a.Role) * kindOf(a.Kind).Speed }
+
 func (w *World) orbitPoint(a *Agent) Vec {
 	return Cluster.add(Vec{math.Cos(a.orbitA), math.Sin(a.orbitA)}.mul(a.orbitR))
+}
+
+// goal is where a running agent flies: its orbit point, or, for a runaway with a ship
+// close, straight away from that ship.
+func (w *World) goal(a *Agent) Vec {
+	if a.Kind == "runaway" {
+		if s := w.nearestShip(a.Pos, fleeRange); s != nil {
+			away := a.Pos.sub(s.Pos)
+			if n := away.len(); n > 1e-9 {
+				g := a.Pos.add(away.mul(10 / n))
+				return Vec{clampf(g.X, 4, ArenaW-4), clampf(g.Y, 4, ArenaH-4)}
+			}
+		}
+	}
+	return w.orbitPoint(a)
+}
+
+func (w *World) nearestShip(p Vec, r float64) *Ship {
+	var best *Ship
+	bd := r
+	for _, id := range slices.Sorted(maps.Keys(w.Ships)) {
+		s := w.Ships[id]
+		if d := dist(s.Pos, p); s.Online && d < bd {
+			best, bd = s, d
+		}
+	}
+	return best
 }
 
 func (w *World) tickAgents(dt float64) {
@@ -497,15 +579,20 @@ func (w *World) tickAgents(dt float64) {
 		}
 		switch a.State {
 		case Running:
-			if a.Arrived {
+			w.tickKids(a)
+			w.bump(a)
+			if a.Arrived && a.Kind != "runaway" {
 				a.orbitA += a.orbitW * orbitSpeed / a.orbitR * dt
 				a.Pos = w.orbitPoint(a)
 				continue
 			}
-			to := w.orbitPoint(a).sub(a.Pos)
-			step := roleSpeed(a.Role) * dt
+			to := w.goal(a).sub(a.Pos)
+			step := w.speed(a) * dt
 			if d := to.len(); d <= step {
-				a.Pos, a.Arrived = w.orbitPoint(a), true
+				a.Pos = w.goal(a)
+				if a.Kind != "runaway" {
+					a.Arrived = true
+				}
 			} else {
 				a.Pos = a.Pos.add(to.mul(step / d))
 			}
@@ -521,12 +608,6 @@ func (w *World) tickAgents(dt float64) {
 	}
 }
 
-// spawnGap is the seconds between spawns t seconds into a round with n players online.
-func spawnGap(t float64, n int) float64 {
-	g := max(spawnFloor, spawnBase*math.Exp(-t/spawnRamp))
-	return max(spawnMin, g/(1+playerBoost*float64(max(n, 1)-1)))
-}
-
 func (w *World) tickRound() {
 	r := &w.Round
 	if r.Phase == Over && w.Now-r.Ended >= nextRound && w.online() > 0 {
@@ -539,6 +620,7 @@ func (w *World) tickRound() {
 	running := w.Running()
 	r.Peak = max(r.Peak, running)
 	r.PeakHosted = max(r.PeakHosted, w.Hosted())
+	w.tension(running)
 	if running >= w.Slots {
 		w.end("full")
 		return
@@ -553,34 +635,25 @@ func (w *World) tickRound() {
 	} else {
 		r.empty = 0
 	}
-	// Never ask for more sessions than the pool has free workers: the one that fills the
-	// last worker ends the round.
-	room := w.Slots - running - len(w.spawning)
-	if room <= 0 {
-		return
-	}
-	t := w.Now - r.Started
-	if w.Now >= r.nextWave {
-		r.waves++
-		r.nextWave = w.Now + waveEvery
-		for range min(room, 2+r.waves) {
-			w.spawn()
-			room--
-		}
-	}
-	if room > 0 && w.Now >= r.nextSpawn {
-		w.spawn()
-		r.nextSpawn = w.Now + spawnGap(t, w.online())
-	}
+	w.tickWave(running)
 }
 
-// spawn asks for a new session; the agent enters the world when it comes back.
-func (w *World) spawn() {
+// room is how many more sessions may be asked for: never more than the pool has free
+// workers (the one that fills the last worker ends the round), and never faster than
+// the spawn budget.
+func (w *World) room() int {
+	return min(w.Slots-w.Running()-len(w.spawning), int(w.bucket))
+}
+
+// spawn asks for a new session of kind at pos; the agent enters the world when it comes
+// back. The caller checked room.
+func (w *World) spawn(kind string, pos Vec) {
 	w.seq++
+	w.bucket--
 	id := fmt.Sprintf("a%d", w.seq)
 	role := Roles[w.roleI%len(Roles)].Name
 	w.roleI++
-	w.spawning[id] = pending{role: role, round: w.Round.N, pos: w.edgePoint()}
+	w.spawning[id] = pending{role: role, kind: kind, round: w.Round.N, pos: pos}
 	w.Round.Spawned++
 	w.out = append(w.out, Intent{Kind: "spawn", ID: id, Role: role})
 }
@@ -616,6 +689,7 @@ func (w *World) end(reason string) {
 	}
 	clear(w.Agents)
 	clear(w.Stored)
+	clear(w.Powerups)
 	w.Bullets = nil
 	w.event(Event{Kind: "over", Text: reason, Ms: int64(survived * 1000)})
 }
@@ -636,13 +710,15 @@ func (w *World) Resolve(r Result) {
 			w.out = append(w.out, Intent{Kind: "delete", ID: r.ID, Session: r.Session}) // its round is over
 			return
 		}
-		a := &Agent{ID: r.ID, Session: r.Session, Role: p.role, Name: fmt.Sprintf("%s-%s", p.role, r.ID[1:]), Pos: p.pos, State: Running,
-			orbitR: orbitMin + w.rnd.Float64()*(orbitMax-orbitMin), orbitA: w.rnd.Float64() * 2 * math.Pi, orbitW: 1}
+		k := kindOf(p.kind)
+		a := &Agent{ID: r.ID, Session: r.Session, Role: p.role, Kind: p.kind, Need: k.Hits, Name: fmt.Sprintf("%s-%s", p.role, r.ID[1:]),
+			Pos: p.pos, State: Running, Born: w.Now, NextKids: w.Now + bossKidsEvery,
+			orbitR: orbitMin + w.rnd.Float64()*(orbitMax-orbitMin) + k.Radius - 2.2, orbitA: w.rnd.Float64() * 2 * math.Pi, orbitW: 1}
 		if w.rnd.IntN(2) == 0 {
 			a.orbitW = -1
 		}
 		w.Agents[a.ID] = a
-		w.event(Event{Kind: "spawned", Agent: a.ID, Text: a.Role})
+		w.event(Event{Kind: "spawned", Agent: a.ID, Text: a.Kind})
 	case "task":
 		a := w.Agents[r.ID]
 		if a == nil {
@@ -664,10 +740,6 @@ func (w *World) Resolve(r Result) {
 		}
 		a.State, a.SuspendMs = Suspended, r.Ms
 		w.Round.Suspended++
-		if s := w.Ships[a.By]; s != nil {
-			s.Score++
-			s.Total++
-		}
-		w.event(Event{Kind: "suspended", Agent: a.ID, Player: a.By, Text: a.Role, Ms: r.Ms})
+		w.scored(a, r.Ms)
 	}
 }

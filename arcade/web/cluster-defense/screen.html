@@ -41,6 +41,18 @@
   #overlay h2 { margin: 0 0 6px; font-size: 40px; letter-spacing: .12em; }
   #overlay p { margin: 6px 0; color: #c9d6ff; }
   .hidden { display: none !important; }
+  #gaugeBig.alarm { border-color: var(--bad); animation: beat .8s infinite; }
+  @keyframes beat { 0%, 100% { box-shadow: 0 0 0 rgba(255, 60, 80, 0); } 15% { box-shadow: 0 0 30px rgba(255, 60, 80, .9); } 45% { box-shadow: 0 0 24px rgba(255, 60, 80, .8); } }
+  #waveTop { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); padding: 6px 16px; font-weight: 800; letter-spacing: .1em; font-size: 15px; }
+  #streak { position: absolute; right: 16px; top: 14px; text-align: right; padding: 6px 14px; }
+  #streak b { display: block; font-size: 30px; color: #ffd23d; line-height: 1; }
+  #streak small { font-size: 10px; color: var(--dim); letter-spacing: .1em; }
+  #bannerBig { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-weight: 800; font-size: 46px; letter-spacing: .1em; text-align: center; text-shadow: 0 0 30px currentColor; pointer-events: none; }
+  #bannerBig small { display: block; font-size: 16px; letter-spacing: .2em; color: var(--dim); text-shadow: none; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #board li i, #allTime li i { font-style: normal; font-size: 10px; color: var(--dim); }
+  #allTime ol { margin: 4px 0 0; padding-left: 22px; font-size: 13px; line-height: 1.6; }
+  #allTime li span:last-child { float: right; color: #ffd23d; font-weight: 800; }
   #conn { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--dim); }
 </style>
 </head>
@@ -50,10 +62,13 @@
     <canvas id="view"></canvas>
     <div id="overlay" class="panel hidden"><h2 id="oTitle"></h2><p id="oText"></p><p id="oNext"></p></div>
     <div id="conn"></div>
+    <div id="waveTop" class="panel hidden"></div>
+    <div id="streak" class="panel hidden"><small>TEAM STREAK</small><b id="streakN">0</b><small id="streakBest"></small></div>
+    <div id="bannerBig" class="hidden"></div>
   </div>
   <div id="side">
     <div><h1>CLUSTER <span>DEFENSE</span></h1><div class="sub">Every ship you shoot is a real kagent subagent on Agent Substrate.</div></div>
-    <div id="qr" class="panel"><div id="qrcode"></div><div><b>Scan to fly</b><span id="joinUrl"></span><div class="sub" style="margin-top:6px">Two hits suspends a subagent and frees its worker. Don't let the cluster fill up.</div></div></div>
+    <div id="qr" class="panel"><div id="qrcode"></div><div><b>Scan to fly</b><span id="joinUrl"></span><div class="sub" style="margin-top:6px">Shoot agents before they fill the cluster. Every hit-down is a real Substrate suspend that frees a worker.</div></div></div>
     <div id="gaugeBig" class="panel">
       <div class="k"><span>WORKERS BUSY</span><span id="phase">—</span></div>
       <div class="n" id="busy">0 / 16</div>
@@ -65,7 +80,10 @@
       <div><b id="sTime">0:00</b>SURVIVED</div><div><b id="sSus">0</b>SUSPENDED</div><div><b id="sBest">—</b>RECORD</div>
       <div><b id="sP50">—</b>SUSPEND P50</div><div><b id="sP95">—</b>P95</div><div><b id="sTok">0</b>TOKENS/MIN</div>
     </div>
-    <div id="board" class="panel"><div class="sub">TOP SUSPENDERS THIS ROUND</div><ol id="boardList"></ol></div>
+    <div class="two">
+      <div id="board" class="panel"><div class="sub">THIS ROUND</div><ol id="boardList"></ol></div>
+      <div id="allTime" class="panel"><div class="sub">ALL-TIME BEST</div><ol id="allTimeList"></ol></div>
+    </div>
     <div id="feed" class="panel"></div>
   </div>
 </div>
@@ -104,17 +122,34 @@ function onEvent(e, s) {
   const who = (id) => { const p = s.ships.find((x) => x.id === id); return p ? `<span style="color:${shipColor(p.color)}">${esc(p.nick)}</span>` : "someone"; };
   const line = {
     task: a ? `<span style="color:${roleOf(a.role).color}">${roleOf(a.role).icon} ${esc(a.name)}</span> “${esc(e.text)}”` : "",
-    suspended: `<span style="color:#9ff4ff">❄</span> ${who(e.player)} suspended ${esc(a ? a.name : e.text)} · ${e.ms} ms`,
+    suspended: `<span style="color:#9ff4ff">❄</span> ${who(e.player)} suspended ${esc(a ? a.name : e.text)} · +${e.points}${e.combo > 1 ? " x" + e.combo : ""} · ${e.ms} ms`,
+    wave: `<span style="color:${e.text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff"}">≋ Wave ${e.points}: ${esc(e.text)} (${e.combo} agents)</span>`,
+    squad: `<span style="color:#ffd23d">★ SQUAD SAVE: ${esc(e.text)} pilots at once</span>`,
+    saved: `<span style="color:#3dff8f">✓ SAVED IT: the cluster is breathing again</span>`,
+    alarm: `<span style="color:#ff4d5e">⚠ Cluster at 90%!</span>`,
+    kids: a ? `<span style="color:#ffb347">⇶ ${esc(a.name)} spawned ${esc(e.text)} subagents</span>` : "",
+    title: `<span style="color:#ffd23d">🏅 ${who(e.player)} is now ${esc(e.text)}</span>`,
+    power: e.text === "bomb" ? `<span style="color:#ff6b5e">💣 ${who(e.player)} dropped a Snapshot Bomb</span>` : "",
     spawned: a ? `<span style="color:#8ea0d6">+ ${roleOf(a.role).icon} ${esc(a.name)} spun up</span>` : "",
     policy: `<span style="color:#ffb38a">⛔ agentgateway rate-limited a subagent</span>`,
     round: `<span style="color:#4da3ff">☸ Round ${esc(e.text)} started</span>`,
     over: `<span style="color:#ff4d5e">✖ ${e.text === "full" ? "CLUSTER FULL" : "Round over"}</span>`,
   }[e.kind];
+  if (e.kind === "wave") bigBanner(`WAVE ${e.points}`, e.text, e.text.startsWith("BOSS") ? "#ff4d5e" : "#4da3ff", 3000);
+  if (e.kind === "squad") bigBanner("CO-OP", "SQUAD SAVE!", "#ffd23d", 2200);
+  if (e.kind === "saved") bigBanner("PHEW", "SAVED IT!", "#3dff8f", 2200);
+  if (e.kind === "over" && e.text === "full") bigBanner("GAME OVER", "CLUSTER FULL", "#ff4d5e", 2500);
   if (!line) return;
   feed.unshift(line);
   feed.length = Math.min(feed.length, 40);
 }
 
+let bannerT = 0;
+function bigBanner(top, text, color, ms) {
+  $("bannerBig").innerHTML = `<small>${esc(top)}</small>${esc(text)}`;
+  $("bannerBig").style.color = color;
+  show("bannerBig"); clearTimeout(bannerT); bannerT = setTimeout(() => show("bannerBig", false), ms);
+}
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 const ms = (v) => (v ? (v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${v}ms`) : "—");
 function hud() {
@@ -123,7 +158,14 @@ function hud() {
   const f = s.fill, k = f.slots ? f.running / f.slots : 0, r = s.round;
   $("busy").textContent = `${f.running} / ${f.slots}`;
   $("bar").style.width = `${Math.min(100, k * 100)}%`;
-  $("bar").style.background = k < 0.5 ? "var(--ok)" : k < 0.8 ? "var(--warn)" : "var(--bad)";
+  $("bar").style.background = k < 0.7 ? "var(--ok)" : k < 0.9 ? "var(--warn)" : "var(--bad)";
+  $("gaugeBig").classList.toggle("alarm", !!s.alarm);
+  show("waveTop", r.phase === "live" && s.wave.n > 0);
+  $("waveTop").textContent = `WAVE ${s.wave.n} · ${s.wave.name}`;
+  $("waveTop").style.color = s.wave.boss ? "#ff4d5e" : "";
+  show("streak", r.phase === "live");
+  $("streakN").textContent = s.teamStreak;
+  $("streakBest").textContent = s.bestStreak ? `best ${s.bestStreak}` : "";
   $("hostedN").textContent = f.hosted;
   $("workersN").textContent = f.slots;
   const sub = s.substrate;
@@ -131,11 +173,12 @@ function hud() {
   $("phase").textContent = r.phase === "live" ? `ROUND ${r.n}` : r.phase === "over" ? "ROUND OVER" : "WAITING FOR PILOTS";
   $("sTime").textContent = fmt(r.phase === "live" ? r.survived + (performance.now() - snapAt) / 1000 : r.survived);
   $("sSus").textContent = r.suspended;
-  $("sBest").textContent = s.best ? fmt(s.best) : "—";
+  $("sBest").textContent = s.record ? fmt(s.record) : "—";
   $("sP50").textContent = ms(s.timings.suspendP50);
   $("sP95").textContent = ms(s.timings.suspendP95);
   $("sTok").textContent = s.tokensPerMin >= 1000 ? `${Math.round(s.tokensPerMin / 1000)}k` : s.tokensPerMin;
-  $("boardList").innerHTML = s.board.slice(0, 8).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span><span>${b.score}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">Nobody yet. Scan the code!</li>`;
+  $("boardList").innerHTML = s.board.slice(0, 6).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span><span>${b.score}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">Scan to play!</li>`;
+  $("allTimeList").innerHTML = (s.allTime || []).slice(0, 6).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span> <i>${esc(b.title)}</i><span>${b.best}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">—</li>`;
   $("feed").innerHTML = feed.map((l) => `<div>${l}</div>`).join("");
   show("overlay", r.phase !== "live");
   if (r.phase === "idle") {

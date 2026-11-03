@@ -9,7 +9,7 @@ import (
 func testWorld() *World { return NewWorld(rand.New(rand.NewPCG(1, 2))) }
 
 // kinds counts intents by kind.
-func kinds(in []Intent) map[string]int {
+func countKinds(in []Intent) map[string]int {
 	m := map[string]int{}
 	for _, i := range in {
 		m[i.Kind]++
@@ -19,8 +19,8 @@ func kinds(in []Intent) map[string]int {
 
 // addAgent puts a running agent with a session at p.
 func addAgent(w *World, id string, p Vec) *Agent {
-	a := &Agent{ID: id, Session: "s-" + id, Role: "coder", Name: "coder-" + id, Pos: p, State: Running,
-		orbitR: 10, orbitW: 1, seen: true}
+	a := &Agent{ID: id, Session: "s-" + id, Role: "coder", Kind: "worker", Need: 2, Name: "coder-" + id, Pos: p, State: Running,
+		orbitR: 10, orbitW: 1, seen: true, NextKids: 1e9}
 	w.Agents[id] = a
 	return a
 }
@@ -75,7 +75,7 @@ func TestTwoHitsSuspend(t *testing.T) {
 	if len(sus) != 1 || sus[0].ID != "a1" || sus[0].Session != "s-a1" || sus[0].By != "p" {
 		t.Fatalf("suspend intents = %+v", sus)
 	}
-	if a.State != Suspending || a.Hits != hitsToSuspend {
+	if a.State != Suspending || a.Hits != 2 {
 		t.Fatalf("agent = %+v", a)
 	}
 	if w.Running() != 1 {
@@ -167,7 +167,7 @@ func TestSpawnTaskAndPlacement(t *testing.T) {
 		t.Fatalf("agent = %+v", a)
 	}
 	got := w.Tick(0.1)
-	if k := kinds(got); k["task"] != 1 {
+	if k := countKinds(got); k["task"] != 1 {
 		t.Fatalf("intents after placement = %+v", got)
 	}
 	w.Resolve(Result{Kind: "task", ID: spawn.ID, OK: true, Say: "Shipped!"})
@@ -180,18 +180,6 @@ func TestSpawnTaskAndPlacement(t *testing.T) {
 	}
 	if !a.Arrived || math.Abs(dist(a.Pos, Cluster)-a.orbitR) > 1e-6 {
 		t.Fatalf("agent never settled into orbit: %+v", a)
-	}
-}
-
-func TestSpawnGapRamps(t *testing.T) {
-	if g0, g1 := spawnGap(0, 1), spawnGap(200, 1); !(g1 < g0) || g0 != spawnBase {
-		t.Fatalf("gap 0s=%v 200s=%v", g0, g1)
-	}
-	if spawnGap(0, 8) >= spawnGap(0, 1) {
-		t.Fatal("more players should spawn faster")
-	}
-	if spawnGap(1e6, 48) < spawnMin {
-		t.Fatal("gap below the floor")
 	}
 }
 
@@ -236,7 +224,7 @@ func TestRoundEndDeletesEverything(t *testing.T) {
 	w.spawning["a4"] = pending{role: "coder", round: w.Round.N}
 	w.end("full")
 	got := w.Tick(0)
-	if k := kinds(got); k["delete"] != 3 {
+	if k := countKinds(got); k["delete"] != 3 {
 		t.Fatalf("deletes = %+v", got)
 	}
 	// The spawn in flight is deleted when it lands, and never enters the world.

@@ -38,23 +38,47 @@ const (
 // allowedOrigins may open the socket besides the request's own host.
 var allowedOrigins = []string{"kubecon.agentpwned.ai"}
 
-// SnapHead is the per-receiver part of a snapshot.
+// SnapHead is the per-receiver part of a snapshot. Score is this round's points, Best
+// the best round this session, Rank the all-time place (0: unranked) and Next the
+// player one place above (whose Best to beat). The *Left fields are seconds.
 type SnapHead struct {
-	T     string `json:"t"`
-	Me    string `json:"me"`
-	Score int    `json:"score,omitempty"`
-	Total int    `json:"total,omitempty"`
-	Rank  int    `json:"rank,omitempty"`
+	T          string    `json:"t"`
+	Me         string    `json:"me"`
+	Score      int       `json:"score,omitempty"`
+	Suspends   int       `json:"suspends,omitempty"`
+	Best       int       `json:"best,omitempty"`
+	Total      int       `json:"total,omitempty"`
+	Title      string    `json:"title,omitempty"`
+	Combo      int       `json:"combo,omitempty"`
+	ComboLeft  float64   `json:"comboLeft,omitempty"`
+	RapidLeft  float64   `json:"rapidLeft,omitempty"`
+	SpreadLeft float64   `json:"spreadLeft,omitempty"`
+	ShieldLeft float64   `json:"shieldLeft,omitempty"`
+	Rank       int       `json:"rank,omitempty"`
+	Next       *NextView `json:"next,omitempty"`
+}
+
+// NextView is the player to beat for the next all-time place.
+type NextView struct {
+	Nick string `json:"nick"`
+	Best int    `json:"best"`
+	Rank int    `json:"rank"`
 }
 
 // SnapCommon is the part every receiver shares.
 type SnapCommon struct {
 	Now          float64          `json:"now"`
+	Wave         WaveView         `json:"wave"`
+	TeamStreak   int              `json:"teamStreak"`
+	BestStreak   int              `json:"bestStreak"`
+	Alarm        bool             `json:"alarm"`
+	Powerups     []PowerView      `json:"powerups"`
+	AllTime      []ScoreView      `json:"allTime"`
 	Arena        [2]float64       `json:"arena"`
 	Cluster      [2]float64       `json:"cluster"`
 	Storage      [2]float64       `json:"storage"`
 	Round        RoundView        `json:"round"`
-	Best         float64          `json:"best"`
+	Record       float64          `json:"record"` // longest round survived, seconds
 	Ships        []ShipView       `json:"ships"`
 	Agents       []AgentView      `json:"agents"`
 	Bullets      []BulletView     `json:"bullets"`
@@ -65,6 +89,21 @@ type SnapCommon struct {
 	Timings      map[string]int64 `json:"timings"`
 	TokensPerMin int64            `json:"tokensPerMin"`
 	Paused       bool             `json:"paused"`
+}
+
+type WaveView struct {
+	N    int    `json:"n"`
+	Name string `json:"name"`
+	Boss bool   `json:"boss"`
+	Left int    `json:"left"` // agents of the wave still to spawn
+}
+
+type PowerView struct {
+	ID   string  `json:"id"`
+	Kind string  `json:"kind"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	TTL  float64 `json:"ttl"`
 }
 
 type RoundView struct {
@@ -93,12 +132,20 @@ type ShipView struct {
 	H      float64 `json:"h"`
 	Online bool    `json:"online"`
 	Score  int     `json:"score"`
+	Combo  int     `json:"combo"`
+	Shield bool    `json:"shield,omitempty"`
+	Stun   bool    `json:"stun,omitempty"`
+	Rapid  bool    `json:"rapid,omitempty"`
+	Spread bool    `json:"spread,omitempty"`
+	Title  string  `json:"title"`
 }
 
 type AgentView struct {
 	ID      string  `json:"id"`
 	Name    string  `json:"name"`
 	Role    string  `json:"role"`
+	Kind    string  `json:"kind"`
+	Need    int     `json:"need"`
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
 	State   string  `json:"state"`
@@ -123,14 +170,19 @@ type EventView struct {
 	Player string `json:"player,omitempty"`
 	Text   string `json:"text,omitempty"`
 	Ms     int64  `json:"ms,omitempty"`
+	Points int    `json:"points,omitempty"` // suspended: points scored; wave: its number; squad: bonus each
+	Combo  int    `json:"combo,omitempty"`  // suspended: the multiplier; wave: its agents
 }
 
 type ScoreView struct {
-	ID    string `json:"id"`
-	Nick  string `json:"nick"`
-	Color string `json:"color"`
-	Score int    `json:"score"`
-	Total int    `json:"total"`
+	ID       string `json:"id"`
+	Nick     string `json:"nick"`
+	Color    string `json:"color"`
+	Score    int    `json:"score"`
+	Suspends int    `json:"suspends"`
+	Best     int    `json:"best"`
+	Total    int    `json:"total"`
+	Title    string `json:"title"`
 }
 
 // FillView is the cluster's load: running agents against the pool's workers.
@@ -158,8 +210,8 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 	w := g.w
 	r := w.Round
 	c := SnapCommon{Now: r2(w.Now), Arena: [2]float64{ArenaW, ArenaH}, Cluster: [2]float64{Cluster.X, Cluster.Y},
-		Storage: [2]float64{Storage.X, Storage.Y}, Best: r2(w.Best), Ships: []ShipView{}, Agents: []AgentView{},
-		Bullets: []BulletView{}, Events: []EventView{}, Board: []ScoreView{}, Timings: map[string]int64{},
+		Storage: [2]float64{Storage.X, Storage.Y}, Record: r2(w.Best), Ships: []ShipView{}, Agents: []AgentView{},
+		Bullets: []BulletView{}, Events: []EventView{}, Board: []ScoreView{}, Powerups: []PowerView{}, Timings: map[string]int64{},
 		TokensPerMin: g.tokensPerMin(), Paused: g.paused}
 	rv := RoundView{N: r.N, Phase: string(r.Phase), Started: r2(r.Started), Ended: r2(r.Ended), Suspended: r.Suspended,
 		Spawned: r.Spawned, Peak: r.Peak, Hosted: r.PeakHosted, Reason: r.Reason, CanPlay: !g.listing && !g.paused}
@@ -174,24 +226,28 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 	c.Round = rv
 	for _, id := range slices.Sorted(maps.Keys(w.Ships)) {
 		s := w.Ships[id]
-		c.Ships = append(c.Ships, ShipView{s.ID, s.Nick, s.Color, r2(s.Pos.X), r2(s.Pos.Y), r2(s.Vel.X), r2(s.Vel.Y), r2(s.Heading), s.Online, s.Score})
+		c.Ships = append(c.Ships, ShipView{s.ID, s.Nick, s.Color, r2(s.Pos.X), r2(s.Pos.Y), r2(s.Vel.X), r2(s.Vel.Y), r2(s.Heading), s.Online, s.Score,
+			s.Combo, w.Now < s.ShieldUntil, w.Now < s.StunUntil, w.Now < s.RapidUntil, w.Now < s.SpreadUntil, Title(s.Total)})
 	}
 	for _, id := range slices.Sorted(maps.Keys(w.Agents)) {
 		a := w.Agents[id]
-		c.Agents = append(c.Agents, AgentView{a.ID, a.Name, a.Role, r2(a.Pos.X), r2(a.Pos.Y), string(a.State), a.Hits, a.Say, a.Done, a.Arrived})
+		c.Agents = append(c.Agents, AgentView{a.ID, a.Name, a.Role, a.Kind, a.Need, r2(a.Pos.X), r2(a.Pos.Y), string(a.State), a.Hits, a.Say, a.Done, a.Arrived})
 	}
 	for _, b := range w.Bullets {
 		c.Bullets = append(c.Bullets, BulletView{b.ID, r2(b.Pos.X), r2(b.Pos.Y), r2(b.Vel.X), r2(b.Vel.Y), b.Owner})
 	}
 	for _, e := range ev {
-		c.Events = append(c.Events, EventView{e.Kind, e.Agent, e.Player, e.Text, e.Ms})
+		c.Events = append(c.Events, EventView{e.Kind, e.Agent, e.Player, e.Text, e.Ms, e.Points, e.Combo})
 	}
-	for i, row := range g.board() {
-		if i == boardRows {
-			break
-		}
-		c.Board = append(c.Board, row)
+	for _, id := range slices.Sorted(maps.Keys(w.Powerups)) {
+		p := w.Powerups[id]
+		c.Powerups = append(c.Powerups, PowerView{p.ID, p.Kind, r2(p.Pos.X), r2(p.Pos.Y), r2(p.Expires - w.Now)})
 	}
+	round, allTime := g.boards()
+	c.Board = round[:min(len(round), boardRows)]
+	c.AllTime = allTime[:min(len(allTime), boardRows)]
+	c.Wave = WaveView{r.Wave, r.WaveName, r.Boss, len(r.queue)}
+	c.TeamStreak, c.BestStreak, c.Alarm = w.TeamStreak, w.BestStreak, w.alarm
 	c.Fill = FillView{Running: w.Running(), Slots: w.Slots, Spawning: w.Spawning(), Hosted: w.Hosted(), Stored: len(w.Stored)}
 	if g.p != nil {
 		sub := g.p.Substrate()
@@ -213,18 +269,25 @@ func (g *Game) commonLocked(ev []Event) SnapCommon {
 	return c
 }
 
-// board ranks ships by suspends this round, then all-time, then nick. g.mu is held.
-func (g *Game) board() []ScoreView {
-	var out []ScoreView
+// boards ranks ships by points this round, and all-time by best round (then suspends
+// ever, then nick). g.mu is held.
+func (g *Game) boards() (round, allTime []ScoreView) {
 	for _, s := range g.w.Ships {
-		if s.Score > 0 || s.Total > 0 || s.Online {
-			out = append(out, ScoreView{s.ID, s.Nick, s.Color, s.Score, s.Total})
+		v := ScoreView{s.ID, s.Nick, s.Color, s.Score, s.Suspends, s.Best, s.Total, Title(s.Total)}
+		if s.Score > 0 || s.Online {
+			round = append(round, v)
+		}
+		if s.Best > 0 {
+			allTime = append(allTime, v)
 		}
 	}
-	slices.SortFunc(out, func(a, b ScoreView) int {
-		return cmp.Or(cmp.Compare(b.Score, a.Score), cmp.Compare(b.Total, a.Total), cmp.Compare(a.Nick, b.Nick), cmp.Compare(a.ID, b.ID))
+	slices.SortFunc(round, func(a, b ScoreView) int {
+		return cmp.Or(cmp.Compare(b.Score, a.Score), cmp.Compare(b.Suspends, a.Suspends), cmp.Compare(a.Nick, b.Nick), cmp.Compare(a.ID, b.ID))
 	})
-	return out
+	slices.SortFunc(allTime, func(a, b ScoreView) int {
+		return cmp.Or(cmp.Compare(b.Best, a.Best), cmp.Compare(b.Total, a.Total), cmp.Compare(a.Nick, b.Nick), cmp.Compare(a.ID, b.ID))
+	})
+	return round, allTime
 }
 
 // frames is one broadcast: the shared part and each receiver's head.
@@ -235,14 +298,30 @@ type frames struct {
 
 func (g *Game) framesLocked(ev []Event) frames {
 	f := frames{common: g.commonLocked(ev), heads: map[*client]SnapHead{}}
+	_, allTime := g.boards()
 	rank := map[string]int{}
-	for i, row := range g.board() {
+	for i, row := range allTime {
 		rank[row.ID] = i + 1
 	}
+	now := g.w.Now
+	left := func(until float64) float64 { return r2(max(0, until-now)) }
 	for c := range g.clients {
 		h := SnapHead{T: "snap", Me: c.player}
 		if s := g.w.Ships[c.player]; s != nil && !c.screen {
-			h.Score, h.Total, h.Rank = s.Score, s.Total, rank[c.player]
+			h.Score, h.Suspends, h.Best, h.Total, h.Title = s.Score, s.Suspends, s.Best, s.Total, Title(s.Total)
+			h.Combo, h.RapidLeft, h.SpreadLeft, h.ShieldLeft = s.Combo, left(s.RapidUntil), left(s.SpreadUntil), left(s.ShieldUntil)
+			if s.Combo > 1 {
+				h.ComboLeft = left(s.LastKill + comboWindow)
+			}
+			h.Rank = rank[c.player]
+			// The player to beat: one place up, or the last place when unranked.
+			up := len(allTime) - 1
+			if h.Rank > 0 {
+				up = h.Rank - 2
+			}
+			if up >= 0 && up < len(allTime) && allTime[up].ID != s.ID {
+				h.Next = &NextView{allTime[up].Nick, allTime[up].Best, up + 1}
+			}
 		}
 		f.heads[c] = h
 	}

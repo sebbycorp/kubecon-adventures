@@ -18,6 +18,10 @@ export const ROLES = {
   summarizer: { color: "#ffe16b", icon: "📝" },
   scraper: { color: "#6bffd8", icon: "🕸️" },
 };
+export const POWERS = { rapid: { icon: "⚡", color: "#ffe14d", label: "RAPID" }, spread: { icon: "🔱", color: "#ff8fd8", label: "SPREAD" },
+  shield: { icon: "🛡️", color: "#6fd3ff", label: "SHIELD" }, bomb: { icon: "💣", color: "#ff6b5e", label: "SNAPSHOT BOMB" } };
+// KINDS: how big each agent class is drawn (arena units), matching the server's radius.
+export const KINDS = { scout: { r: 1.5 }, worker: { r: 2.2 }, orchestrator: { r: 3.2 }, runaway: { r: 2.0 }, boss: { r: 5.5 } };
 export const SHIP = { green: "#3dff8f", blue: "#4da3ff", red: "#ff5a6a", purple: "#b77dff", gold: "#ffd23d", pink: "#ff7ad9" };
 export const shipColor = (c) => SHIP[c] || "#9fd6ff";
 export const roleOf = (r) => ROLES[r] || { color: "#cfd8ff", icon: "🤖" };
@@ -34,7 +38,10 @@ export function startSpace(canvas, opts) {
   let W = 160, H = 100, CL = { x: 80, y: 50 }, ST = { x: 146, y: 88 };
   let vw = 1, vh = 1, dpr = 1, scale = 1;
   const cam = { x: 80, y: 50 };
-  let shake = 0;
+  let shake = 0, hitStop = 0, flashA = 0;
+  const seenBullets = new Set();
+  const muzzles = []; // {ship, t}
+  const bankOf = new Map(); // ship id -> {h, bank}
 
   // ---- starfield: three layers of stars over a repeating tile, and soft nebulas ----
   const rnd = mulberry(7);
@@ -59,7 +66,7 @@ export function startSpace(canvas, opts) {
     }
   }
   const ring = (x, y, c, r0, r1, life) => { if (rings.length < 80) rings.push({ x, y, t: 0, life, c, r0, r1 }); };
-  const floatText = (x, y, text, c, life = 1.2) => { if (floats.length < 40) floats.push({ x, y, t: 0, life, text, c }); };
+  const floatText = (x, y, text, c, life = 1.2, size = 1.2) => { if (floats.length < 40) floats.push({ x, y, t: 0, life, text, c, size }); };
 
   function apply(s) {
     snap = s; snapAt = performance.now();
@@ -70,19 +77,37 @@ export function startSpace(canvas, opts) {
       if (a.say && (!sayAt.has(a.id) || sayAt.get(a.id).say !== a.say)) sayAt.set(a.id, { say: a.say, t: performance.now() });
     }
     for (const id of sayAt.keys()) if (!s.agents.some((a) => a.id === id)) sayAt.delete(id);
+    // A new bullet flashes its ship's muzzle.
+    const ids = new Set();
+    for (const b of s.bullets) {
+      ids.add(b.id);
+      if (!seenBullets.has(b.id) && b.owner !== me && muzzles.length < 60) muzzles.push({ ship: b.owner, t: 0 });
+    }
+    for (const id of seenBullets) if (!ids.has(id)) seenBullets.delete(id);
+    for (const id of ids) seenBullets.add(id);
     for (const e of s.events || []) {
       const a = s.agents.find((x) => x.id === e.agent);
       switch (e.kind) {
-        case "spawned": if (a) ring(a.x, a.y, roleOf(a.role).color, 0.5, 6, 0.8); break;
-        case "hit": if (a) { burst(a.x, a.y, "#ffffff", 6, 10, 0.3); if (e.player === me) shake = Math.max(shake, 0.25); } break;
+        case "spawned": if (a) ring(a.x, a.y, a.kind === "boss" ? "#ff4d5e" : roleOf(a.role).color, 0.5, a.kind === "boss" ? 16 : 6, 0.8); break;
+        case "hit": if (a) { burst(a.x, a.y, "#ffffff", 7, 12, 0.25); burst(a.x, a.y, roleOf(a.role).color, 4, 8, 0.35); if (e.player === me) shake = Math.max(shake, 0.2); } break;
         case "suspended":
           if (a) {
-            burst(a.x, a.y, "#9ff4ff", 30, 18, 0.9);
-            ring(a.x, a.y, "#9ff4ff", 1, 9, 0.6);
-            floatText(a.x, a.y - 3, e.player === me ? `❄ +1 · ${e.ms} ms` : `❄ ${e.ms} ms`, "#bff8ff", 1.4);
-            if (e.player === me) shake = Math.max(shake, 0.6);
+            const big = a.kind === "boss" || a.kind === "orchestrator" || a.kind === "runaway";
+            burst(a.x, a.y, "#9ff4ff", big ? 70 : 30, big ? 26 : 18, 0.9);
+            if (a.kind === "runaway") burst(a.x, a.y, "#ffd23d", 40, 22, 1.1);
+            ring(a.x, a.y, "#9ff4ff", 1, big ? 18 : 9, 0.6);
+            const mult = e.combo > 1 ? ` x${e.combo}` : "";
+            floatText(a.x, a.y - 3, `+${e.points}${mult}${e.text === "early" ? " EARLY!" : ""}`, e.player === me ? "#ffffff" : "#bff8ff", 1.3, e.player === me ? 1.6 : 1.1);
+            floatText(a.x, a.y + 3, `❄ ${e.ms} ms`, "#7fdbe6", 1.1, 0.8);
+            if (e.player === me) { shake = Math.max(shake, big ? 1.1 : 0.6); hitStop = big ? 0.1 : 0.06; flashA = big ? 0.35 : 0.18; }
           }
           break;
+        case "kids": if (a) { ring(a.x, a.y, "#ffb347", 2, 12, 0.7); floatText(a.x, a.y - 5, `+${e.text} subagents!`, "#ffb347", 1.6, 1.2); } break;
+        case "bomb": { const p = s.ships.find((x) => x.id === e.player); if (p) { ring(p.x, p.y, "#9ff4ff", 1, 26, 0.9); ring(p.x, p.y, "#ffffff", 1, 22, 0.6); burst(p.x, p.y, "#9ff4ff", 80, 30, 1); } if (e.player === me) { shake = 1.4; flashA = 0.6; } break; }
+        case "bump": { const p = s.ships.find((x) => x.id === e.player); if (p) burst(p.x, p.y, "#ffb38a", 10, 12, 0.3); if (e.player === me) shake = Math.max(shake, 0.5); break; }
+        case "power": { const p = s.ships.find((x) => x.id === e.player); if (p) { ring(p.x, p.y, (POWERS[e.text] || {}).color || "#fff", 1, 6, 0.5); floatText(p.x, p.y - 4, (POWERS[e.text] || {}).label || e.text, (POWERS[e.text] || {}).color || "#fff", 1.2, 1.1); } break; }
+        case "squad": floatText(CL.x, CL.y - 12, "SQUAD SAVE!", "#ffd23d", 2, 2.2); ring(CL.x, CL.y, "#ffd23d", 4, 30, 1); break;
+        case "saved": floatText(CL.x, CL.y - 12, "SAVED IT!", "#3dff8f", 2, 2.2); ring(CL.x, CL.y, "#3dff8f", 4, 24, 1); break;
         case "slipped": if (a) floatText(a.x, a.y - 3, "slipped!", "#ffb38a"); break;
         case "over": shake = phone ? 1.2 : 0.6; break;
       }
@@ -163,10 +188,14 @@ export function startSpace(canvas, opts) {
   }
 
   // The cluster: a blue wheel with one light per worker round it, and a load ring.
-  function drawCluster(t, fill) {
+  function drawCluster(t, fill, alarm) {
     const x = sx(CL.x), y = sy(CL.y), u = scale;
+    if (alarm) {
+      const beat = Math.max(0, Math.sin(t * 7.5)) ** 4;
+      glow(x, y, (11 + beat * 5) * u, `rgba(255,40,60,${0.25 + beat * 0.35})`);
+    }
     const slots = Math.max(1, fill.slots), busy = Math.min(slots, fill.running), f = busy / slots;
-    const hot = f < 0.5 ? "#3dff8f" : f < 0.8 ? "#ffcc33" : "#ff4d5e";
+    const hot = f < 0.7 ? "#3dff8f" : f < 0.9 ? "#ffcc33" : "#ff4d5e";
     glow(x, y, 9 * u, f < 0.8 ? "rgba(60,120,255,0.35)" : "rgba(255,60,80,0.35)");
     // load ring
     ctx.lineWidth = 0.8 * u;
@@ -247,7 +276,10 @@ export function startSpace(canvas, opts) {
 
   // A subagent: a round little bot in its role's colour with big eyes and its icon.
   function drawAgent(a, p, t) {
-    const R = roleOf(a.role), u = scale * K, x = sx(p.x), y = sy(p.y), r = 2.0 * u;
+    const R = roleOf(a.role), kr = (KINDS[a.kind] || KINDS.worker).r / 2.2;
+    const u = scale * K * kr, x = sx(p.x), y = sy(p.y), r = 2.0 * u;
+    const gold = a.kind === "runaway", boss = a.kind === "boss", orch = a.kind === "orchestrator", scout = a.kind === "scout";
+    const body = gold ? "#ffd23d" : boss ? "#ff4d5e" : R.color;
     if (a.state === "suspended") {
       glow(x, y, 3 * u, "rgba(120,240,255,0.5)");
       ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 2 + p.x) * 0.3);
@@ -260,16 +292,22 @@ export function startSpace(canvas, opts) {
     }
     const sus = a.state === "suspending";
     const bob = Math.sin(t * 3 + p.x * 0.7) * 0.25 * u;
-    glow(x, y + bob, r * 1.9, sus ? "rgba(140,240,255,0.55)" : hexA(R.color, 0.35));
+    glow(x, y + bob, r * (gold ? 2.6 : 1.9), sus ? "rgba(140,240,255,0.55)" : hexA(body, gold ? 0.6 : 0.35));
+    if (scout && !sus) { // speed streaks behind it
+      const dx = CL.x - p.x, dy = CL.y - p.y, dl = Math.hypot(dx, dy) || 1;
+      ctx.strokeStyle = hexA(body, 0.5); ctx.lineWidth = 0.25 * u;
+      for (const o of [-0.6, 0, 0.6]) { ctx.beginPath(); ctx.moveTo(x - (dx / dl) * r * 1.2 - (dy / dl) * o * u, y + bob - (dy / dl) * r * 1.2 + (dx / dl) * o * u); ctx.lineTo(x - (dx / dl) * r * 2.6 - (dy / dl) * o * u, y + bob - (dy / dl) * r * 2.6 + (dx / dl) * o * u); ctx.stroke(); }
+    }
+    if (gold && !sus && Math.random() < 0.5) parts.push({ x: p.x + (Math.random() - 0.5) * 4, y: p.y + (Math.random() - 0.5) * 4, vx: 0, vy: -2, t: 0, life: 0.6, c: "#fff3a0", r: 0.2 });
     // antenna
-    ctx.strokeStyle = sus ? "#bff8ff" : R.color; ctx.lineWidth = 0.22 * u;
+    ctx.strokeStyle = sus ? "#bff8ff" : body; ctx.lineWidth = 0.22 * u;
     ctx.beginPath(); ctx.moveTo(x, y + bob - r * 0.9); ctx.lineTo(x + 0.3 * u, y + bob - r * 1.45); ctx.stroke();
     ctx.fillStyle = a.done ? "#ffffff" : (Math.sin(t * 8) > 0 ? R.color : "#ffffff");
     ctx.beginPath(); ctx.arc(x + 0.3 * u, y + bob - r * 1.5, 0.28 * u, 0, TAU); ctx.fill();
     // body
     const g = ctx.createRadialGradient(x - r * 0.35, y + bob - r * 0.4, r * 0.1, x, y + bob, r);
-    g.addColorStop(0, sus ? "#e8fdff" : lighten(R.color));
-    g.addColorStop(1, sus ? "#5fb8cc" : R.color);
+    g.addColorStop(0, sus ? "#e8fdff" : lighten(body));
+    g.addColorStop(1, sus ? "#5fb8cc" : body);
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(x, y + bob, r, 0, TAU); ctx.fill();
     if (a.hits > 0 && !sus) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.3 * u; ctx.beginPath(); ctx.arc(x, y + bob, r + 0.4 * u, 0, TAU); ctx.stroke(); }
@@ -280,12 +318,30 @@ export function startSpace(canvas, opts) {
       ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.ellipse(ex, ey, 0.52 * u, sus ? 0.12 * u : 0.62 * u, 0, 0, TAU); ctx.fill();
       if (!sus) { ctx.fillStyle = "#14183a"; ctx.beginPath(); ctx.arc(ex + lx, ey + ly, 0.27 * u, 0, TAU); ctx.fill(); }
     }
-    // smile
+    // smile (a boss scowls, a runaway grins)
     ctx.strokeStyle = "rgba(20,24,58,0.8)"; ctx.lineWidth = 0.18 * u;
-    ctx.beginPath(); ctx.arc(x, y + bob + 0.45 * u, 0.5 * u, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.beginPath();
+    if (boss) ctx.arc(x, y + bob + 1.0 * u, 0.5 * u, 1.15 * Math.PI, 1.85 * Math.PI);
+    else ctx.arc(x, y + bob + 0.45 * u, gold ? 0.7 * u : 0.5 * u, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+    if (boss) { // angry brows
+      ctx.lineWidth = 0.3 * u;
+      for (const sgn of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sgn * 1.2 * u, y + bob - 1.1 * u); ctx.lineTo(x + sgn * 0.3 * u, y + bob - 0.75 * u); ctx.stroke(); }
+    }
+    if (orch || boss) { // a crown
+      ctx.fillStyle = boss ? "#ffd23d" : "#ffe9a8";
+      const cy = y + bob - r * 0.95, cw = r * 0.8;
+      ctx.beginPath(); ctx.moveTo(x - cw, cy); ctx.lineTo(x - cw, cy - 0.7 * u); ctx.lineTo(x - cw / 2, cy - 0.3 * u); ctx.lineTo(x, cy - 0.9 * u);
+      ctx.lineTo(x + cw / 2, cy - 0.3 * u); ctx.lineTo(x + cw, cy - 0.7 * u); ctx.lineTo(x + cw, cy); ctx.closePath(); ctx.fill();
+    }
+    if (a.need > 2 && !sus) { // health pips for the big ones
+      const bw = r * 2, f = 1 - a.hits / a.need;
+      ctx.fillStyle = "rgba(0,0,0,0.5)"; roundRect(x - bw / 2, y + bob + r + 0.3 * u, bw, 0.45 * u, 0.2 * u); ctx.fill();
+      ctx.fillStyle = f > 0.5 ? "#3dff8f" : f > 0.25 ? "#ffcc33" : "#ff4d5e"; roundRect(x - bw / 2, y + bob + r + 0.3 * u, bw * f, 0.45 * u, 0.2 * u); ctx.fill();
+    }
     // role badge
     ctx.font = `${Math.max(9, 1.3 * u)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(R.icon, x + r * 0.95, y + bob - r * 0.8);
+    ctx.fillText(gold ? "⭐" : R.icon, x + r * 0.95, y + bob - r * 0.8);
     if (sus) {
       ctx.strokeStyle = `rgba(160,245,255,${0.5 + 0.5 * Math.sin(t * 12)})`; ctx.lineWidth = 0.35 * u;
       ctx.setLineDash([0.6 * u, 0.5 * u]);
@@ -293,7 +349,8 @@ export function startSpace(canvas, opts) {
       ctx.setLineDash([]);
       label(x, y + bob + r + 1.6 * u, "SUSPENDING…", "#bff8ff", Math.max(9, 0.95 * u));
     } else {
-      label(x, y + bob + r + 1.4 * u, a.name, hexA(R.color, 0.95), Math.max(8, 0.85 * u));
+      const tag = boss ? "BOSS" : gold ? "★ RUNAWAY +10" : orch ? "ORCHESTRATOR" : a.name;
+      label(x, y + bob + r + (a.need > 2 ? 2.0 : 1.4) * scale * K, tag, gold ? "#ffe27a" : boss ? "#ff8f9a" : hexA(R.color, 0.95), Math.max(8, (boss ? 1.3 : 0.85) * scale * K));
     }
     const s = sayAt.get(a.id);
     const showFor = phone ? 5000 : 4000;
@@ -304,8 +361,26 @@ export function startSpace(canvas, opts) {
   function drawShip(s, p, h, mine, t) {
     const c = shipColor(s.color), u = scale * K * (mine ? 1.15 : 1), x = sx(p.x), y = sy(p.y);
     const moving = Math.hypot(s.vx, s.vy) > 2 || (mine && Math.hypot(input().mx || 0, input().my || 0) > 0.12);
+    const bk = bankOf.get(s.id) || { h, bank: 0 };
+    let dh = h - bk.h; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    bk.bank += (clampN(dh * 6, -0.9, 0.9) - bk.bank) * 0.2; bk.h = h;
+    bankOf.set(s.id, bk);
+    if (s.shield) {
+      ctx.strokeStyle = `rgba(111,211,255,${0.55 + 0.25 * Math.sin(t * 9)})`; ctx.lineWidth = 0.25 * u;
+      ctx.fillStyle = "rgba(111,211,255,0.12)";
+      ctx.beginPath(); ctx.arc(x, y, 2.6 * u, 0, TAU); ctx.fill(); ctx.stroke();
+    }
+    if (s.stun && Math.random() < 0.6) parts.push({ x: p.x + (Math.random() - 0.5) * 3, y: p.y + (Math.random() - 0.5) * 3, vx: 0, vy: 0, t: 0, life: 0.2, c: "#ffe14d", r: 0.18 });
     ctx.save(); ctx.translate(x, y); ctx.rotate(h);
+    ctx.scale(1, 1 - Math.abs(bk.bank) * 0.35);
     if (!s.online) ctx.globalAlpha = 0.35;
+    const mz = muzzles.find((m) => m.ship === s.id);
+    if (mz || (mine && input().fire && snap && snap.round.phase === "live" && Math.floor(t * (snap.rapidLeft > 0 ? 14 : 6)) % 2 === 0)) {
+      const mc = s.spread ? "#ff8fd8" : s.rapid ? "#ffe14d" : "#fff7c0";
+      const gm = ctx.createRadialGradient(2.3 * u, 0, 0, 2.3 * u, 0, 1.3 * u);
+      gm.addColorStop(0, "#ffffff"); gm.addColorStop(0.4, mc); gm.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = gm; ctx.beginPath(); ctx.arc(2.3 * u, 0, 1.3 * u, 0, TAU); ctx.fill();
+    }
     if (moving) {
       const fl = 1.4 + Math.random() * 0.8;
       const g = ctx.createLinearGradient(-1.2 * u, 0, -(1.2 + fl) * u, 0);
@@ -335,11 +410,28 @@ export function startSpace(canvas, opts) {
     label(x, y - 2.3 * u, s.nick, mine ? "#ffffff" : c, Math.max(9, (mine ? 1.0 : 0.85) * scale));
   }
 
+  function drawPowerups(s, t) {
+    for (const pw of s.powerups || []) {
+      const P = POWERS[pw.kind] || { icon: "?", color: "#fff" };
+      if (pw.ttl < 3 && Math.floor(t * 8) % 2) continue;
+      const x = sx(pw.x), y = sy(pw.y) + Math.sin(t * 3 + pw.x) * 0.3 * scale, u = scale * K;
+      glow(x, y, 3 * u, hexA(P.color, 0.45));
+      ctx.save(); ctx.translate(x, y); ctx.rotate(t * 1.5);
+      ctx.strokeStyle = P.color; ctx.lineWidth = 0.25 * u; ctx.fillStyle = "rgba(10,16,40,0.85)";
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; ctx.lineTo(Math.cos(a) * 1.5 * u, Math.sin(a) * 1.5 * u); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      ctx.font = `${Math.max(10, 1.5 * u)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(P.icon, x, y + 0.05 * u);
+    }
+  }
+
   function drawBullets(s, age) {
     for (const b of s.bullets) {
       const x = b.x + b.vx * age, y = b.y + b.vy * age;
       const owner = s.ships.find((o) => o.id === b.owner);
-      const c = owner ? shipColor(owner.color) : "#fff";
+      const c = owner ? (owner.spread ? "#ff8fd8" : owner.rapid ? "#ffe14d" : shipColor(owner.color)) : "#fff";
       const n = Math.hypot(b.vx, b.vy) || 1, tx = (b.vx / n) * 2.2, ty = (b.vy / n) * 2.2;
       ctx.strokeStyle = c; ctx.lineWidth = Math.max(2, 0.45 * scale); ctx.lineCap = "round";
       ctx.globalAlpha = 0.9;
@@ -374,7 +466,10 @@ export function startSpace(canvas, opts) {
   let last = performance.now(), clock = 0;
   function draw() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, 0.1);
-    last = now; clock += dt;
+    last = now;
+    if (hitStop > 0) { hitStop -= dt; return; } // the frame holds for a beat on a suspend
+    clock += dt;
+    for (let i = muzzles.length - 1; i >= 0; i--) if ((muzzles[i].t += dt) > 0.07) muzzles.splice(i, 1);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const s = snap;
     if (phone) scale = Math.min(vw, vh) / 40;
@@ -394,7 +489,8 @@ export function startSpace(canvas, opts) {
     drawBackground(clock);
     if (s) {
       drawStorage(clock, s.fill.stored);
-      drawCluster(clock, s.fill);
+      drawCluster(clock, s.fill, s.alarm);
+      drawPowerups(s, clock);
       for (const r of rings) {
         r.t += dt;
         const f = r.t / r.life;
@@ -424,12 +520,16 @@ export function startSpace(canvas, opts) {
         f.t += dt;
         if (f.t > f.life) { floats.splice(i, 1); continue; }
         ctx.globalAlpha = Math.min(1, 2 * (1 - f.t / f.life));
-        label(sx(f.x), sy(f.y - f.t * 3), f.text, f.c, Math.max(11, 1.2 * scale));
+        label(sx(f.x), sy(f.y - f.t * 3), f.text, f.c, Math.max(11, f.size * scale * (phone ? 1 : 0.9)));
         ctx.globalAlpha = 1;
       }
       if (phone && mine) drawPointers(s, mine);
     }
     cam.x -= shx; cam.y -= shy;
+    if (flashA > 0) {
+      ctx.fillStyle = `rgba(220,250,255,${flashA})`; ctx.fillRect(0, 0, vw, vh);
+      flashA = Math.max(0, flashA - dt * 2.5);
+    }
   }
 
   return {
@@ -440,6 +540,7 @@ export function startSpace(canvas, opts) {
   };
 }
 
+function clampN(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function hexA(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;

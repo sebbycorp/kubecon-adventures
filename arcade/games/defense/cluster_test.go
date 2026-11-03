@@ -288,6 +288,7 @@ func TestBoothLoad(t *testing.T) {
 	var fills []float64
 	maxRunning, rounds := 0, map[int]RoundView{}
 	stuck := 0
+	waveMax, counts := map[int]int{}, map[string]int{}
 	onSnap := func(s *loadSnap) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -297,7 +298,16 @@ func TestBoothLoad(t *testing.T) {
 				since[a.ID] = now
 			}
 		}
+		if s.Round.Phase == "live" {
+			waveMax[s.Round.N] = max(waveMax[s.Round.N], s.Wave.N)
+		}
 		for _, e := range s.Events {
+			switch e.Kind {
+			case "squad", "bomb", "kids", "saved", "alarm", "power", "slipped":
+				counts[e.Kind]++
+			case "suspended":
+				counts["suspended:"+e.Text]++
+			}
 			if e.Kind == "suspended" {
 				if t0, ok := since[e.Agent]; ok {
 					waits = append(waits, float64(now.Sub(t0).Milliseconds()))
@@ -383,9 +393,10 @@ loop:
 		}
 	}) {
 		r := rounds[n]
-		t.Logf("round %d: %s %s · survived %.0f s · %d suspended · %d spawned · peak running %d · peak hosted %d",
-			n, r.Phase, r.Reason, r.Survived, r.Suspended, r.Spawned, r.Peak, r.Hosted)
+		t.Logf("round %d: %s %s · survived %.0f s · reached wave %d · %d suspended · %d spawned · peak running %d · peak hosted %d",
+			n, r.Phase, r.Reason, r.Survived, waveMax[n], r.Suspended, r.Spawned, r.Peak, r.Hosted)
 	}
+	t.Logf("events: %v", counts)
 	t.Logf("fill while live: p50 %.0f%% p95 %.0f%% · max running %d", 100*pctl(fills, .5), 100*pctl(fills, .95), maxRunning)
 	t.Logf("suspends %d: hit-to-suspended p50 %.0f p95 %.0f ms; Substrate suspend call p50 %.0f p95 %.0f ms; stuck %d",
 		len(waits), pctl(waits, .5), pctl(waits, .95), pctl(calls, .5), pctl(calls, .95), stuck)

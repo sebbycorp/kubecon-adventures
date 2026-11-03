@@ -270,7 +270,7 @@ func (g *Game) Stats() map[string]any {
 	defer g.mu.Unlock()
 	return map[string]any{"online": g.w.online(), "round": g.w.Round.N, "phase": string(g.w.Round.Phase),
 		"running": g.w.Running(), "hosted": g.w.Hosted(), "slots": g.w.Slots, "suspendedThisRound": g.w.Round.Suspended,
-		"tokensPerMin": g.tokensPerMin(), "bestSeconds": int(g.w.Best), "paused": g.paused}
+		"tokensPerMin": g.tokensPerMin(), "bestSeconds": int(g.w.Best), "wave": g.w.Round.Wave, "paused": g.paused}
 }
 
 // sweep deletes every session the subagent Agent has: in a fresh process nothing owns
