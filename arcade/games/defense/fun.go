@@ -29,15 +29,16 @@ var kinds = map[string]Kind{
 }
 
 // need is the hits an agent of kind needs now: later waves and bigger crowds bring
-// armour (+1 every 2 waves, +1 per 5 pilots past the first), and a boss scales with
-// the crowd, so a full booth still meets a cluster it can lose.
+// armour (growing 25% a wave, so it compounds; +1 per 3 pilots past the first), and a
+// boss scales with the crowd. Spawns are capped by the token budget, so toughness is
+// what makes a full booth still lose the cluster in the end (wave ~12 for 16 bots).
 func (w *World) need(kind string) int {
 	k := kindOf(kind)
 	n := w.online()
 	if kind == "boss" {
 		return int(math.Round(float64(k.Hits) * (1 + 0.25*float64(max(n, 1)-1))))
 	}
-	return k.Hits + (max(w.Round.Wave, 1)-1)/2 + (max(n, 1)-1)/5
+	return k.Hits + int(math.Pow(1.25, float64(max(w.Round.Wave, 1)-1))) - 1 + (max(n, 1)-1)/3
 }
 
 func kindOf(k string) Kind {
