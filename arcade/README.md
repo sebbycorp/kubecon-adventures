@@ -8,6 +8,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
 | Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
+| Grand Theft Agent | Lifecycle: suspend, snapshot, resume, delete, as a multiplayer city shooter | Designed | [docs/grand-theft-agent.md](docs/grand-theft-agent.md) |
 | Agent Invaders | Scale and density | Next | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
