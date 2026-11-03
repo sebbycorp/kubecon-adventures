@@ -81,8 +81,8 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "index.html") })
-	mux.HandleFunc("GET /tv", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "tv.html") }) // the booth TV
+	mux.HandleFunc("GET /{$}", servePage(versionedPage(web(""), "index.html")))
+	mux.HandleFunc("GET /tv", servePage(versionedPage(web(""), "tv.html"))) // the booth TV
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
 	arcadeAPI(mux, p, duck, flw, gta, cd, gd, missions)
