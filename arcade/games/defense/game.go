@@ -49,6 +49,7 @@ type Game struct {
 	listing  bool               // the startup sweep is still listing sessions
 	paused   bool
 	seq      uint64
+	zaps     []Intent // deletes the runner refused (it was full); retried every tick
 	tokens   []tokenMark
 	tokenSum int64
 	done     chan struct{}
@@ -134,7 +135,8 @@ func (g *Game) drain() {
 
 // route applies one Result. g.mu is held.
 func (g *Game) route(r Result) {
-	if !r.OK && r.Err != "stopped" {
+	gone := r.Kind == "task" && g.w.Agents[r.ID] == nil // its round ended and deleted it mid-turn
+	if !r.OK && r.Err != "stopped" && !gone {
 		// Errors carry kagent's status, never an agent's reply text.
 		slog.Warn("cluster defense: op failed", "kind", r.Kind, "agent", r.ID, "ms", r.Ms, "err", r.Err)
 	}
@@ -171,7 +173,7 @@ func (g *Game) submit(in Intent) {
 	case "spawn", "suspend":
 		g.w.Resolve(Result{Kind: in.Kind, ID: in.ID, Session: in.Session, Err: "busy"})
 	case "delete":
-		slog.Warn("cluster defense: delete refused, the next startup sweep will catch it", "session", in.Session)
+		g.zaps = append(g.zaps, in) // a round's end can ask for hundreds at once
 	}
 }
 
@@ -186,8 +188,12 @@ func (g *Game) tokensPerMin() int64 {
 	return g.tokenSum
 }
 
-// housekeep takes idle players offline and evicts long-offline ships. g.mu is held.
+// housekeep retries refused deletes, takes idle players offline and evicts long-offline
+// ships. g.mu is held.
 func (g *Game) housekeep() {
+	for len(g.zaps) > 0 && g.r.Submit(g.zaps[0], "") {
+		g.zaps = g.zaps[1:]
+	}
 	for pid, n := range g.conns {
 		if s := g.w.Ships[pid]; n > 0 && s != nil && s.Online && g.w.Now-g.lastIn[pid] >= idleAfter {
 			g.w.Leave(pid)
@@ -335,6 +341,9 @@ func (g *Game) shutdown() {
 	}
 	for _, s := range g.w.Stored {
 		ids = append(ids, s)
+	}
+	for _, z := range g.zaps {
+		ids = append(ids, z.Session)
 	}
 	g.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownWait)

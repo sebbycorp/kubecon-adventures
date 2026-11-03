@@ -89,6 +89,9 @@ func TestKagentOpsLifecycle(t *testing.T) {
 	}
 }
 
+// fireDuty is how often a bot holds FIRE (BOOTH_FIRE, default 0.55).
+var fireDuty = 0.55
+
 // loadSnap is the part of a snapshot the load test reads.
 type loadSnap struct {
 	SnapHead
@@ -162,7 +165,7 @@ func (b *loadBot) tick(ctx context.Context, leader, lazy bool) {
 			best, bd = a, d
 		}
 	}
-	fire := rand.Float64() < 0.55
+	fire := rand.Float64() < fireDuty
 	if lazy {
 		a := float64(time.Now().UnixMilli()%20000) / 20000 * 2 * math.Pi
 		b.send(ctx, map[string]any{"t": "in", "mx": math.Cos(a), "my": math.Sin(a), "fire": fire && bd < 32})
@@ -272,6 +275,9 @@ func TestBoothLoad(t *testing.T) {
 	}
 	if v, err := strconv.Atoi(os.Getenv("BOOTH_BOTS")); err == nil && v > 0 {
 		nbots = v
+	}
+	if v, err := strconv.ParseFloat(os.Getenv("BOOTH_FIRE"), 64); err == nil && v >= 0 {
+		fireDuty = v
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(secs+120)*time.Second)
 	defer cancel()

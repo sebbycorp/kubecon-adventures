@@ -2,6 +2,7 @@ package defense
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -108,5 +109,24 @@ func TestPolicyTaskShowsGatewayLine(t *testing.T) {
 	g.route(Result{Kind: "task", ID: "a1", Err: "policy: rate limited by agentgateway: 429"})
 	if a := g.w.Agents["a1"]; !a.Done || a.Say == "" {
 		t.Fatalf("agent = %+v", a)
+	}
+}
+
+// TestGameRetriesRefusedDeletes: a round's end can ask for more deletes than the runner
+// queues; the rest wait and go out as room frees, so no session is left behind.
+func TestGameRetriesRefusedDeletes(t *testing.T) {
+	f := newFakeOps()
+	g := New(nil, f)
+	defer g.r.Close(context.Background())
+	_ = g.w.Play()
+	n := maxQueued + 100
+	for i := range n {
+		sid, _ := f.Spawn(context.Background(), "x")
+		g.w.Stored[fmt.Sprint("s", i)] = sid
+	}
+	g.w.end("full")
+	waitFor(t, g, "every session deleted", func() bool { return f.liveCount() == 0 && len(g.zaps) == 0 })
+	if f.deleted.Load() != int64(n) {
+		t.Fatalf("deleted %d of %d", f.deleted.Load(), n)
 	}
 }
