@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -103,6 +104,24 @@ func (f *fakeOps) noStart(t *testing.T) {
 	case c := <-f.started:
 		t.Fatalf("unexpected start of %s %s", c.kind, c.id)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// noStartOf fails if a call of one of kinds starts within a short window. Calls of
+// other kinds (say a step the test left blocked, whose goroutine starts late) are
+// ignored.
+func (f *fakeOps) noStartOf(t *testing.T, kinds ...string) {
+	t.Helper()
+	deadline := time.After(50 * time.Millisecond)
+	for {
+		select {
+		case c := <-f.started:
+			if slices.Contains(kinds, c.kind) {
+				t.Fatalf("unexpected start of %s %s", c.kind, c.id)
+			}
+		case <-deadline:
+			return
+		}
 	}
 }
 

@@ -388,7 +388,9 @@ func TestMissionEndDeletesAllies(t *testing.T) {
 				t.Fatalf("allies left %v", x.w.Allies)
 			}
 			x.m.Tick(x.w, x.s)
-			x.f.noStart(t) // nothing more to delete
+			// Nothing more to delete. (The "failed" case leaves a step blocked; its
+			// goroutine may start after the deletes, so only deletes are checked.)
+			x.f.noStartOf(t, "delete")
 		})
 	}
 }
