@@ -37,6 +37,16 @@ const STAGE_NODE = {
 };
 const DONE = new Set(["reply", "snapshot", "asleep", "error"]);
 
+// GAMES names the kagent Agents of every arcade game (and the stray test agents), with
+// the colour their actors get on the map. Agents not listed still show, in grey.
+const GAMES = {
+  duck: ["Duck Hunt", "#facc15"], "duck-direct": ["Duck Hunt test", "#a3893a"], "duck-noschema": ["Duck Hunt test", "#a3893a"],
+  "hello-duck": ["kagent demo", "#9ca3af"], escapee: ["Sandbox Escape", "#f87171"], "escape-probe": ["Sandbox Escape test", "#a35a5a"],
+  forky: ["Fork Frenzy", "#a78bfa"], flowbot: ["Agent Flow", "#5fd068"], heister: ["Substrate Siege", "#38bdf8"],
+  sidekick: ["Substrate Siege ally", "#7dd3fc"], loadbot: ["load test", "#6b7280"],
+};
+const gameOf = (agent) => GAMES[agent] || [agent, "#9ca3af"];
+
 function posAt(s) {
   let i = 1;
   while (i < DIST.length - 1 && s > DIST[i]) i++;
@@ -218,17 +228,19 @@ function createScene(svg, opts = {}) {
   // at its edge (its glow and chevrons are drawn in machines()).
   const TW = { x: 13, y: 0.55, w: 0.8, h: 1.5 }; // portal centre on the belt, half-width, height
   const awakeG = el("g", {}, L.obj);
-  // awake draws one small cube on the sandbox platform per actor running in Substrate right now.
-  let awakeN = -1;
+  // awake draws one small cube on the sandbox platform per actor running in Substrate right
+  // now, in its game's colour: a number (all green) or a list of colours.
+  let awakeKey = "";
   function awake(n) {
-    n = Math.min(n, 9);
-    if (n === awakeN) return;
-    awakeN = n;
+    const cols = (Array.isArray(n) ? n : Array(Math.max(0, n)).fill("#5fd068")).slice(0, 15);
+    const k = cols.join();
+    if (k === awakeKey) return;
+    awakeKey = k;
     awakeG.innerHTML = "";
-    for (let i = 0; i < n; i++) {
-      const c = box(11.75 + (i % 5) * 0.52, 8.55 + Math.floor(i / 5) * 0.5, 0.3, 0.3, 0.3, awakeG, { st: "var(--green)", f1: "#1a3320", f2: "#122016", f3: "#0f1a12", z: 0.15 });
+    cols.forEach((col, i) => {
+      const c = box(11.75 + (i % 5) * 0.52, 8.55 + Math.floor(i / 5) * 0.5, 0.3, 0.3, 0.3, awakeG, { st: col, f1: "#1a2420", f2: "#121816", f3: "#0f1412", z: 0.15 });
       c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
-    }
+    });
   }
 
   // wall shows every sleeping agent in Substrate as one tile on the floor beside Snapshot
@@ -403,11 +415,27 @@ function createScene(svg, opts = {}) {
     l.r.animate([{ stroke: "#9cff9f", strokeWidth: 3 }, { stroke: "#34373a", strokeWidth: 1 }], { duration: 1200 });
   };
   // A snapshot orb travelling between the sandbox and rustfs.
-  function orb(from, to) {
+  function orb(from, to, color = "var(--green)", r = 7, delay = 0, lift = 60) {
     const [a, b] = P(...from, 0.6), [c, d] = P(...to, 0.9);
-    const o = el("circle", { r: 7, fill: "var(--green)", opacity: 0.9, filter: "url(#glow)" }, L.orbs);
-    o.animate([{ cx: a, cy: b }, { cx: (a + c) / 2, cy: Math.min(b, d) - 60 }, { cx: c, cy: d }], { duration: 900, easing: "ease-in-out" }).onfinish = () => o.remove();
-    o.setAttribute("cx", c); o.setAttribute("cy", d);
+    const o = el("circle", { r, cx: a, cy: b, fill: color, opacity: 0, filter: "url(#glow)" }, L.orbs);
+    o.animate([{ cx: a, cy: b, opacity: 0.9 }, { cx: (a + c) / 2, cy: Math.min(b, d) - lift, opacity: 0.9 }, { cx: c, cy: d, opacity: 0.9 }],
+      { duration: 900, delay, easing: "ease-in-out" }).onfinish = () => o.remove();
+  }
+  // actor shows one lifecycle change of another game's actor: a new actor flies from the
+  // Substrate scheduler to the sandboxes, a wake comes out of Snapshot Storage, a sleep goes
+  // into it, and a deleted actor fades out over the storage floor.
+  const ATE = [7, 9], BOX = [13, 9], RF = [16.6, 11.1];
+  function actor(kind, color, delay = 0) {
+    switch (kind) {
+      case "new": orb(ATE, BOX, color, 5, delay, 28); break;
+      case "wake": orb(RF, BOX, color, 5, delay); break;
+      case "sleep": orb(BOX, RF, color, 5, delay); break;
+      case "gone": {
+        const [cx, cy] = P(RF[0] + 1.4, RF[1] - 0.6, 0.4);
+        const e = el("circle", { cx, cy, r: 4, fill: "none", stroke: color, "stroke-width": 2, opacity: 0 }, L.orbs);
+        e.animate([{ r: 4, opacity: 0.9 }, { r: 16, opacity: 0 }], { duration: 900, delay, easing: "ease-out" }).onfinish = () => e.remove();
+      }
+    }
   }
   // bubble floats a short message up from a spot on the map, then fades it out. Bubbles at
   // the same spot stack upward instead of covering each other.
@@ -568,7 +596,7 @@ function createScene(svg, opts = {}) {
   L.front = el("g", { "pointer-events": "none" }, svg); // scenery in front of the cubes (the gate's near pillar)
   svg.appendChild(L.fx); // bubbles stay on top of everything
   const alarm = () => { M.alarmUntil = performance.now() + 3000; };
-  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, drawCube, bubble, ripple, awake, trail, tour, machines, spot, wall, alarm };
+  return { L, ORB, LAB, pg, idp, rf, pulse, flash, orb, actor, drawCube, bubble, ripple, awake, trail, tour, machines, spot, wall, alarm };
 }
 
 function fmtMs(ms) {
@@ -606,14 +634,15 @@ function shapeOf(id) {
 // stream to the caller, which feeds states in through the returned apply.
 // With camera, the view zooms in and follows the newest live request (or the idle tour).
 // onPick(key) is called when a station is clicked; clicking a cube follows that request.
-function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, compact, camera, live = true }) {
+function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, onActor, me, compact, camera, live = true }) {
   let picked = null, pickedUntil = 0, pinned = null;
   const sc = createScene(svg, { compact, me, onPick: onPick && ((key) => { picked = key; pickedUntil = Date.now() + 9000; sc.ripple(key); sc.flash(key); onPick(key); }) });
   const VW = 1360, VH = 762, cam = { x: 700, y: 410 }; // the whole map, with room to breathe
   let focusId = null, focusUntil = 0, tourAt = null;
   const cubes = new Map(); // run ID -> {g, s, target, nick, stage, bad}
   const seenSteps = new Map(); // run ID -> steps already announced
-  let seenHook = Date.now() - 2000, seenMove = Date.now() - 2000;
+  let seenHook = Date.now() - 2000, seenMove = Date.now() - 2000, seenActor = Date.now() - 2000;
+  const saidAt = {}; // station -> when it last got an actor bubble
   let firstState = true;
 
   function apply(st) {
@@ -665,7 +694,27 @@ function startFlowScreen(svg, { onState, onStep, onHook, onPick, onMove, me, com
       const live = [...cubes.entries()].filter(([, c]) => !c.final && !c.other).sort((a, b) => b[1].started - a[1].started);
       if (live.length) { focusId = live[0][0]; focusUntil = 0; } else if (!fc) focusId = null;
     }
-    sc.awake(st.substrate?.running || 0);
+    // Every other game's actors: orbs in their game's colour (a few per batch), a bubble per
+    // station at most every 1.2 s, and the awake cubes coloured by game.
+    for (const m of st.actors || []) {
+      if (m.at <= seenActor) continue;
+      seenActor = Math.max(seenActor, m.at);
+      if (firstState || me) continue;
+      const [game, color] = gameOf(m.agent);
+      for (let i = 0; i < Math.min(m.n, 4); i++) sc.actor(m.kind, color, i * 140);
+      const where = { new: [7, 9, 2.6], wake: [18.6, 10.6, 1.2], sleep: [18.6, 10.6, 1.2], gone: [18.6, 10.6, 1.2] }[m.kind];
+      const verb = { new: "new actor", wake: "woke", sleep: "asleep", gone: "deleted" }[m.kind];
+      const now = Date.now(), key = String(where);
+      if (where && !compact && now - (saidAt[key] || 0) > 1200) {
+        saidAt[key] = now;
+        sc.bubble(where, `${game} · ${m.n > 1 ? m.n + " " : ""}${verb}`);
+      }
+      if (m.kind === "new" || m.kind === "wake") sc.ripple("box");
+      onActor && onActor(m, game, color);
+    }
+    const cols = [];
+    for (const a of st.substrate?.agents || []) for (let i = 0; i < a.awake; i++) cols.push(gameOf(a.name)[1]);
+    sc.awake(cols.length || !st.substrate?.agents ? cols : st.substrate?.running || 0);
     sc.wall(st.substrate?.suspended || 0);
     // Sleeps and wakes from the phone's buttons (and auto-sleep): the snapshot orb moves
     // between the sandbox and Snapshot Storage with the real timing.

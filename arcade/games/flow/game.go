@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path"
 	"regexp"
@@ -155,6 +156,23 @@ type Move struct {
 	At         int64  `json:"at"`
 }
 
+// ActorMove is a lifecycle change of actors outside Agent Flow (every other game and
+// harness), batched per agent and kind for one poll: N actors of Agent went new, wake,
+// sleep or gone. Node is one of the nodes involved.
+type ActorMove struct {
+	Agent string `json:"agent"`
+	Kind  string `json:"kind"` // new, wake, sleep, gone
+	N     int    `json:"n"`
+	Node  string `json:"node,omitempty"`
+	At    int64  `json:"at"`
+}
+
+// flowAgent is Agent Flow's own kagent Agent: its actors already ride the belt as runs.
+const flowAgent = "flowbot"
+
+// maxActorMoves is how many recent actor changes the state carries.
+const maxActorMoves = 60
+
 // autoSleep is how long a hand-woken agent may sit idle before Substrate snapshots it again.
 const autoSleep = 45 * time.Second
 
@@ -190,6 +208,8 @@ type Game struct {
 	runs    []*Run
 	hooks   []Hook
 	moves   []Move
+	actors  map[string]kagent.ActorInfo // every Substrate actor at the last poll (nil before the first)
+	amoves  []ActorMove
 	blocked int // runs stopped by agentgateway's prompt guard
 	limited int // runs stopped by agentgateway's rate limit
 	total   int
@@ -207,6 +227,79 @@ func New(p *platform.Platform, k *kagent.Kagent) *Game {
 func (g *Game) Run(ctx context.Context) {
 	go g.hub.Run(ctx, func() any { return g.Snapshot() })
 	go g.runActorPoller(ctx)
+	go g.runFleetPoller(ctx)
+}
+
+// runFleetPoller watches every actor in Substrate, whatever game or harness made it, and
+// records each second's changes as ActorMoves so the big screen can show them.
+func (g *Game) runFleetPoller(ctx context.Context) {
+	for {
+		c, cancel := context.WithTimeout(ctx, 3*time.Second)
+		all, err := g.k.AllActors(c)
+		cancel()
+		if err == nil && g.fleetDiff(all, time.Now().UnixMilli()) {
+			g.hub.Poke()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// fleetDiff compares all with the last poll and appends the changes; it reports whether
+// there were any. The first poll only records.
+func (g *Game) fleetDiff(all map[string]kagent.ActorInfo, at int64) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	prev := g.actors
+	g.actors = all
+	if prev == nil {
+		return false
+	}
+	type key struct{ agent, kind string }
+	batch := map[key]*ActorMove{}
+	add := func(a kagent.ActorInfo, kind string) {
+		if a.Agent == flowAgent {
+			return
+		}
+		m := batch[key{a.Agent, kind}]
+		if m == nil {
+			m = &ActorMove{Agent: a.Agent, Kind: kind, At: at}
+			batch[key{a.Agent, kind}] = m
+		}
+		m.N++
+		if a.Node != "" {
+			m.Node = a.Node
+		}
+	}
+	asleep := func(st string) bool { return st == "SUSPENDED" || st == "SUSPENDING" }
+	for id, a := range all {
+		switch p, ok := prev[id]; {
+		case !ok:
+			add(a, "new")
+		case asleep(p.State) && !asleep(a.State):
+			add(a, "wake")
+		case !asleep(p.State) && asleep(a.State):
+			add(a, "sleep")
+		}
+	}
+	for id, p := range prev {
+		if _, ok := all[id]; !ok {
+			add(p, "gone")
+		}
+	}
+	if len(batch) == 0 {
+		return false
+	}
+	for _, k := range slices.SortedFunc(maps.Keys(batch), func(a, b key) int { return strings.Compare(a.agent+a.kind, b.agent+b.kind) }) {
+		g.amoves = append(g.amoves, *batch[k])
+	}
+	if n := len(g.amoves); n > maxActorMoves {
+		g.amoves = slices.Clone(g.amoves[n-maxActorMoves:])
+	}
+	return true
 }
 
 // runActorPoller keeps each agent's Substrate actor state and node fresh, and puts
@@ -680,6 +773,7 @@ type State struct {
 	Blocked   int                             `json:"blocked"`
 	Limited   int                             `json:"limited"`
 	Moves     []Move                          `json:"moves"`
+	Actors    []ActorMove                     `json:"actors"` // lifecycle changes of every other game's actors
 	Fleet     map[string]AgentInfo            `json:"fleet"` // by player ID
 	Cluster   Cluster                         `json:"cluster"`
 	Agents    int                             `json:"agents"`
@@ -693,7 +787,7 @@ type State struct {
 func (g *Game) Snapshot() State {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Blocked: g.blocked, Limited: g.limited, Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
+	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Actors: slices.Clone(g.amoves), Blocked: g.blocked, Limited: g.limited, Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
 		Substrate: g.p.Substrate(), Now: time.Now().UnixMilli(), Fleet: map[string]AgentInfo{}, Cluster: g.cluster}
 	for id, a := range g.agents {
 		if a.sessionID == "" {

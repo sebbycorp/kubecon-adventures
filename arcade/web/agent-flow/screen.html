@@ -250,8 +250,17 @@ function stationCard(key) {
   el.classList.remove("off");
 }
 
+// Other games' actor changes go to the feed, at most one line every 2.5 s.
+let actorFeedAt = 0;
 const flow = startFlowScreen($("scene"), {
   camera: false, // a still view of the whole map; only the things on it move
+  onActor(m, game) {
+    if (m.kind === "new" || m.kind === "wake") heart.beat(0.5, game + " · " + (m.kind === "new" ? "new" : "woke"));
+    if (Date.now() - actorFeedAt < 2500) return;
+    actorFeedAt = Date.now();
+    const verb = { new: "new agent actor", wake: "woke from a snapshot", sleep: "snapshotted to storage", gone: "deleted" }[m.kind];
+    feed("", game, `${m.n > 1 ? m.n + " agents: " : ""}${verb}`, m.node || "", "");
+  },
   onMove(m) {
     if (m.error) return;
     if (m.kind === "wake") heart.beat(0.9, m.nick + " · woke");
@@ -297,9 +306,6 @@ const flow = startFlowScreen($("scene"), {
 
 // fleet draws every agent on Substrate, whatever game or harness runs it: one row per
 // kagent Agent (largest first), a dot per actor, then the worker pools.
-const HARNESS = { duck: "Duck Hunt", "hello-duck": "kagent demo", "duck-direct": "Duck Hunt test", "duck-noschema": "Duck Hunt test",
-  escapee: "Sandbox Escape", "escape-probe": "Sandbox Escape test", forky: "Fork Frenzy", flowbot: "Agent Flow",
-  heister: "Substrate Siege", sidekick: "Substrate Siege ally", loadbot: "load test" };
 const MAXDOTS = 160;
 function fleet(sub) {
   const agents = sub.agents || [], pools = sub.pools || [];
@@ -307,10 +313,10 @@ function fleet(sub) {
   const rows = agents.map((a) => {
     const other = Math.max(0, a.actors - a.awake - a.suspended), shown = Math.min(a.actors, MAXDOTS);
     let dots = "";
-    for (let i = 0; i < shown; i++) dots += i < a.awake ? '<i class="on"></i>' : i < a.awake + other ? '<i class="mid"></i>' : "<i></i>";
+    const [game, col] = GAMES[a.name] || ["", "#9ca3af"];
+    for (let i = 0; i < shown; i++) dots += i < a.awake ? `<i class="on" style="background:${col};box-shadow:0 0 6px ${col}"></i>` : i < a.awake + other ? '<i class="mid"></i>' : `<i style="background:${col}40"></i>`;
     if (a.actors > shown) dots += `<em>+${(a.actors - shown).toLocaleString()}</em>`;
-    const game = HARNESS[a.name] || "";
-    return `<div class="fa"><div class="hd"><div><b>${esc(a.name)}</b>${game ? ` <small>${esc(game)}</small>` : ""}</div>` +
+    return `<div class="fa"><div class="hd"><div><b style="color:${col}">${esc(a.name)}</b>${game ? ` <small>${esc(game)}</small>` : ""}</div>` +
       `<span><em>${a.awake}</em> awake · ${a.suspended.toLocaleString()} asleep${other ? ` · ${other} waking` : ""}</span></div><div class="dots">${dots}</div></div>`;
   }).join("");
   const pl = pools.map((p) => `<span>${esc(p.name)} <b>${p.workers}</b>${p.replicas && p.replicas !== p.workers ? `/${p.replicas}` : ""}</span>`).join("");
