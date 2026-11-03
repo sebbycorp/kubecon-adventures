@@ -34,6 +34,15 @@ The pages are plain HTML/canvas/JS under `arcade/web/grand-theft-agent`, like th
 - **Target speech:** `say` ≤ **60** characters. Model `gpt-4.1-mini` through agentgateway route `/heist/v1`.
 - **Family-friendly:** no gore. The kill action is labelled **DELETE** and the target de-rezzes into pixels. No player-vs-player damage. No player free text reaches the LLM.
 - **Art:** original art only. No Rockstar or GTA names, logos, fonts or assets apart from the parody title "Grand Theft Agent".
+- **Hunters, loot and rigs** (spec section "Hunters, loot and rigs"; all values copied from it):
+  - hunters shoot within **5** tiles for **10** damage every **1.2 s**
+  - players have **100** health, regenerating **5/s** after **4 s** without a hit; when down, they respawn at Dispatch after **3 s**, and their inventory drops as a bag lasting **60 s**
+  - a confirmed freeze drops 1 part and a DELETE drops 1 more: RAM 50% (DDR1 40 / DDR2 25 / DDR3 18 / DDR4 12 / DDR5 5%), CPU 20%, drive 20%, motherboard 10%
+  - pickup radius **0.8**; inventory **8** slots; entering the Vault banks it into the stash
+  - a rig = board + CPU + RAM + drive and deploys an ally: a real session on Agent `sidekick`, range **6**, fire rate DDR1 **1.0/s** to DDR5 **2.2/s** (linear), DDR5 **+20%** speed
+  - at most **2** allies per player and **16** in the city
+  - an ally's freeze is the owner's takedown; an ally at 0 health is frozen (real suspend) and can be sprung by its owner (real resume)
+- **Matrix look:** the 3D city in black and green, with digital rain on the buildings, wireframe glow, dark suited hunters with green outlines, and glowing parts (DDR5 gold). Original assets only.
 - **Admin routes** live under `/admin/grand-theft-agent/…`; the tunnel already blocks `^/admin`.
 - **Images and dependencies:** pin image versions. New dependencies are limited to `github.com/coder/websocket v1.8.15` (Go) and Three.js `0.170.0` vendored at `web/grand-theft-agent/vendor/three.module.min.js` (browser).
 - **Controls:** on-screen joystick + FIRE + ACTION on every device (touch or mouse pointer). **No keyboard controls** (user decision).
@@ -271,6 +280,70 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
 - [ ] **Step 4: Run** the same command. Expected: PASS.
 - [ ] **Step 5: Commit** `git add games/heist/mission*.go && git commit -m "Grand Theft Agent: missions, squads, stars and scoring"`
 
+### Task 5A: Hunters, health and loot
+
+**Files:**
+- Create: `games/heist/loot.go`, `games/heist/loot_test.go`
+- Modify: `games/heist/world.go` (Avatar fields, hunter fire in `Tick`, drops in `Resolve`)
+
+**Interfaces:**
+- Consumes: Tasks 2–5 (`World`, `Target`, `Avatar`, `Resolve`, `Tick`, `City.Vault`, `City.Dispatch`)
+- Produces:
+  - `type Part struct { ID, Kind string; Tier int }`. `Kind` is one of `"ram"`, `"cpu"`, `"drive"`, `"board"`. `Tier` is 1–5 for RAM and 0 otherwise.
+  - `type Drop struct { ID string; Part Part; Pos Vec; Expires float64 }`
+  - `func RollPart(rnd *rand.Rand) Part` (math/rand/v2), using the exact table in Global Constraints
+  - `Avatar` gains `HP float64; Down bool; RespawnAt, LastHit float64; Inv []Part`
+  - `World` gains `Drops map[string]*Drop; Stash map[string][]Part; Rand *rand.Rand`. `NewWorld` seeds `Rand` from the clock; tests overwrite it.
+  - New events: `hit` (Player, Target = the shooter), `down`, `respawn`, `drop` (Text = the part, e.g. "DDR5"), `pickup`, `banked` (Text = count).
+
+- [ ] **Step 1: Write failing tests.**
+  - `TestRollPartTable`: over 100000 rolls with a fixed seed, every frequency is within ±1 percentage point of the table.
+  - `TestHuntersShootNearest`: a Working target 4 tiles from avatar A and 5.5 from B shoots A for 10 every 1.2 s. Frozen, Dragged and Busy targets don't shoot.
+  - `TestRegenAfterQuiet`: health regenerates 5/s only after 4 s without a hit, capped at 100.
+  - `TestDownDropsBagAndRespawns`: at 0 health the avatar goes Down, drops its drag (the target goes back to Frozen), and every `Inv` part becomes a Drop where it fell with `Expires = Now+60`. `Inv` empties. After 3 s it respawns at the Dispatch centre with 100 health. A Down avatar can't move, fire or act.
+  - `TestFreezeAndDeleteDropLoot`: `Resolve(freeze ok)` creates exactly one Drop at the target. `Resolve(delete ok)` creates one more. Failed resolves create none.
+  - `TestPickupAndFullInventory`: walking within 0.8 tile picks a drop up. With 8 parts the drop stays on the ground. Expired drops are removed.
+  - `TestVaultBanks`: entering `City.Vault` moves the whole `Inv` into `Stash[playerID]` and emits `banked`.
+- [ ] **Step 2: Run** `mise exec go@1.27.3 -- go test ./games/heist/ -run 'Roll|Hunters|Regen|Down|DropLoot|Pickup|Vault' -race -v`. Expected: FAIL.
+- [ ] **Step 3: Implement.**
+  - Hunter fire runs in `Tick` after avatar movement and uses `World.nearest`-style selection. A hunter shot has no intent; it only changes health in the world.
+  - Part IDs use `platform.NewID()`.
+- [ ] **Step 4: Run** `go test ./games/heist/ -race -v`. Expected: all tests pass, including the earlier ones.
+- [ ] **Step 5: Commit** `git add games/heist && git commit -m "Grand Theft Agent: hunters, health, loot and the stash"`
+
+### Task 5B: Rigs and allies
+
+**Files:**
+- Create: `games/heist/ally.go`, `games/heist/ally_test.go`
+- Modify:
+  - `games/heist/world.go`: allies in `Tick` and `Resolve`
+  - `games/heist/ops.go`: the `ally` kind
+  - `games/heist/mission.go`: ally spawn results, and deleting allies when a mission ends
+
+**Interfaces:**
+- Consumes: Task 5A (`Part`, `Stash`, `HP`), Task 4 (`Ops`, `Scheduler`), Task 5 (`Missions.OnResult`)
+- Produces:
+  - `type Ally struct { ID, Owner, SessionID, Say string; Pos Vec; HP float64; Tier int; State TargetState; Busy bool; FireCD float64 }`. `State` is `Working` or `Frozen`; an ally that is still spawning is not in the map.
+  - `World.Allies map[string]*Ally`
+  - `func (w *World) BuildRig(playerID string) (Intent, error)`
+    - It returns `Intent{Kind:"ally", Target:<new ally ID>, Player}` and removes a board, a CPU, the highest-tier RAM and a drive from the stash.
+    - Errors: `"missing parts"`, `"ally limit"` (2 per player, counting allies still spawning) and `"city full"` (16).
+  - `Ops` gains `SpawnAlly(ctx context.Context, name string) (sessionID, node, say string, err error)`.
+  - `Scheduler` gains the kind `"ally"`: control lane, uncapped. Its `Result` carries `Spawned`, `Node` and `Step.Say`.
+  - Freeze, spring and delete intents and `World.Resolve` accept ally IDs as well as target IDs: `Resolve` looks in `Targets`, then `Allies`.
+
+- [ ] **Step 1: Write failing tests.**
+  - `TestBuildRigSpendsParts`: a stash with board, CPU, DDR2, DDR5 and drive spends board, CPU, DDR5 and drive, leaves DDR2, and the ally's tier is 5. Missing parts, the per-player limit and the city limit return the named errors and spend nothing.
+  - `TestAllySpawnPlacesAlly` (via `Missions.OnResult` with an `ally` Result): the ally appears near its owner with `Say` set. A failed spawn refunds the parts to the stash.
+  - `TestAllyFollowsAndFires`: the ally stays within 2 tiles of a moving owner. It fires at the nearest Working target within 6 tiles at 1.0/s for DDR1 and 2.2/s for DDR5. Its hits go in `HitBy` under the owner. The third hit's freeze, once resolved, sets `FrozenBy = owner`, so the takedown is the owner's.
+  - `TestHuntersTargetAllies`: hunters shoot the nearest player or ally. An ally at 0 health yields exactly one `Intent{freeze, allyID}`; `Resolve` sets it Frozen.
+  - `TestOwnerSpringsAlly`: the owner's short ACTION next to their frozen ally yields `Intent{spring, allyID}`, with no spring cooldown for your own ally. Another player's ACTION does nothing to it.
+  - `TestMissionEndDeletesAllies`: when a mission ends (won, failed or escaped), the owner's allies get `delete` submitted, and `Resolve(delete ok)` removes them.
+- [ ] **Step 2: Run** `go test ./games/heist/ -run 'Rig|Ally|Allies|Springs' -race -v`. Expected: FAIL.
+- [ ] **Step 3: Implement.** Ally speed is the avatar speed, ×1.2 at DDR5. Allies don't drag or book. A frozen ally doesn't move or fire.
+- [ ] **Step 4: Run** `go test ./games/heist/ -race -v`. Expected: all tests pass.
+- [ ] **Step 5: Commit** `git add games/heist && git commit -m "Grand Theft Agent: rigs deploy real ally agents"`
+
 ### Task 6: Game loop, WebSocket, routes and wiring
 
 **Files:**
@@ -290,8 +363,9 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
     - `{"t":"in","mx":-1..1,"my":-1..1,"fire":bool,"act":bool}` at ≤ 20 Hz
     - `{"t":"squad","op":"solo"|"create"|"join","code":"ABCD"}`
     - `{"t":"start","level":1..3}`
+    - `{"t":"build"}` (build a rig; the reply is an event, or `{"t":"err","msg":…}`)
   - Server to client, 15 Hz:
-    - `{"t":"snap","now":…,"me":playerID,"avatars":[…],"targets":[…],"missions":[…],"events":[…],"board":[…],"substrate":{…},"cap":{"steps":n,"resumes":n,"queued":n}}`
+    - `{"t":"snap","now":…,"me":playerID,"avatars":[…(with hp, down)],"targets":[…],"allies":[…],"drops":[…],"missions":[…],"events":[…],"board":[…],"substrate":{…},"cap":{"steps":n,"resumes":n,"queued":n},"inv":[…],"stash":[…]}`. `inv` and `stash` are the receiving player's only.
     - Phones get every entity. Snapshots are small enough at 48 players and ~60 targets that culling isn't needed.
 - Routes:
   - `GET /grand-theft-agent` (`phone.html`)
@@ -324,7 +398,7 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
 
 **Files:**
 - Create: `games/heist/agentops.go`, `games/heist/agentops_test.go`
-- Modify: `games/heist/cluster_test.go` (add `TestKagentOpsLifecycle`), `main.go` (pass `newKagentOps(agentClient("heister"), extractMode)`)
+- Modify: `games/heist/cluster_test.go` (add `TestKagentOpsLifecycle`), `main.go` (pass `newKagentOps(agentClient("heister"), agentClient("sidekick"), extractMode)`), `manifests/heist-agent.yaml` (add Agent `sidekick` on Harness `heist`: same model config, outputSchema `{say: string}` required, a system prompt as a loyal cartoon bodyguard agent that answers in one family-friendly line ≤ 60 characters)
 
 **Interfaces:**
 - Consumes: `kagent.Kagent`, with:
@@ -336,7 +410,7 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
   - `Delete`
   - `ActorStates`
 - Produces:
-  - `func newKagentOps(k *kagent.Kagent, extract string) Ops`, where `extract` is `"direct"` or `"resume-first"` (from Task 1's finding; `HEIST_EXTRACT` env, default from that finding).
+  - `func newKagentOps(heister, sidekick *kagent.Kagent, extract string) Ops`. `SpawnAlly` = `CreateSession` on sidekick plus one `Prompt` ("You just booted up to protect your crew. Greet them in one line."). `Spring` on an ally session uses the prompt "You were frozen protecting your crew and just got rebooted. React in one line." The adapter remembers which sessions are allies., where `extract` is `"direct"` or `"resume-first"` (from Task 1's finding; `HEIST_EXTRACT` env, default from that finding).
   - `func stepPrompt(job string, step, steps int) string`
   - `func parseStep(r kagent.Reply) (StepResult, error)`
 
@@ -370,7 +444,8 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
 
 - [ ] **Step 1: Vendor Three.js.** Download `https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js` to `web/grand-theft-agent/vendor/three.module.min.js` and import it with a relative path (no import map, no CDN at runtime).
 - [ ] **Step 2: Build `city.js`** as an ES module.
-  - Three.js scene, one world unit per tile. A fixed-angle top-down perspective camera (about 55° pitch): it follows the player on phones, and shows the whole city on the screen. Night palette with warm street lights, neon signs and soft shadows. Cap the device pixel ratio at 2 and keep it under ~150 draw calls (instanced meshes for buildings, windows and road marks) so mid-range phones hold 30+ fps.
+  - Three.js scene, one world unit per tile. A fixed-angle top-down perspective camera (about 55° pitch): it follows the player on phones, and shows the whole city on the screen. Matrix palette (black, green, see below) with soft shadows. Cap the device pixel ratio at 2 and keep it under ~150 draw calls (instanced meshes for buildings, windows and road marks) so mid-range phones hold 30+ fps.
+  - **Matrix look** (spec): a black void and dark glass buildings, with green digital rain scrolling on their faces (one shared canvas texture of glyphs and digits, animated by UV offset), green wireframe edges (`EdgesGeometry`), emissive green avatars in the player colour, hunters as dark suited figures with green outlines, allies in the owner's colour, and parts as small glowing chips (DDR5 gold).
   - Every model is built from primitives (boxes, capsules, spheres, cylinders). Characters are round and chunky. No external models or textures, except the logos as canvas textures.
   - Roads with lane marks, buildings with lit windows (lit count = `substrate.busyWorkers`), the Vault (the Snapshot Storage logo, `/agent-flow/static/` not reused, so copy the needed SVGs), and Dispatch (the kagent logo).
   - Avatars are round 3D figures in the player colour, with HTML nick tags projected above them.
@@ -385,7 +460,7 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
     - suspend-ray tracer
     - "suspended in N ms" and "restored in N ms" floaters from events
     - "it slipped away"
-  - HUD (HTML overlay, not WebGL): wanted stars, mission timer, takedowns, cash and a minimap (a small 2D canvas).
+  - HUD (HTML overlay, not WebGL): health bar, wanted stars, mission timer, takedowns, cash and a minimap (a small 2D canvas). An 8-slot inventory strip shows part icons and tiers. A stash drawer shows counts and a **Build rig** button, enabled when the stash has board, CPU, RAM and drive. It sends `{"t":"build"}`. A "DOWN — respawning" overlay shows while you're down.
   - If WebGL is unavailable, show "this device can't run 3D" with a link to the big screen. No 2D fallback renderer.
 - [ ] **Step 3: Build `phone.html`.**
   - Join flow: reuse the arcade cookie, sending to `/` to join if there's none. Then a **Go solo** button or a **Squad** button (create, showing the code; or join with a 4-letter input), then a level picker (1–3, with locked levels greyed until the previous one is won by this squad).
@@ -413,9 +488,10 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
   - The right column has:
     - the QR card for `https://kubecon.agentpwned.ai/grand-theft-agent` (with `?join=` override, as on Agent Flow)
     - the leaderboard: the top 8 **players by takedowns** ("most agents frozen wins"), each with their squad tag and cash, plus a small squad-totals line
-    - a mission feed of events (frozen, booked, sprung, escaped, slipped, policy)
+    - a mission feed of events (frozen, booked, sprung, escaped, slipped, policy, down, DDR5 drops, rigs deployed)
+    - the leaderboard row also shows each player's best rig tier (DDR1–DDR5) and their live allies
   - Subtle stat lines, as on the Agent Flow header:
-    - "40 workers · N targets · M awake"
+    - "40 workers · N hunters · A allies · M awake"
     - p50 suspend, resume and checkpoint times from `platform.Timings`
     - snapshots in the vault
     - an always-on pod cost estimate using `POD_HOUR_USD`
@@ -436,7 +512,7 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
 
 - [ ] **Step 1: Write `TestBoothLoad`** (`cluster` tag).
   - It joins 24 players through `/api/join` against `ARCADE_URL` and opens 24 WebSockets. 8 solo players and 4 squads of 4 each start a mission at levels 1–3.
-  - Bots walk toward their nearest target and fire, for 5 minutes.
+  - Bots walk toward their nearest target and fire, pick up parts, bank them at the Vault and build a rig whenever they can, for 5 minutes. Also log allies alive and their spawn times.
   - It logs, every 30 s:
     - p50 and p95 freeze and spring times
     - `cap` queue lengths

@@ -146,6 +146,51 @@ Every level is a mission template: timer, target count, and rules. A mission is 
 
 Rival crews: any player or squad can stun or extract any target. A rival's stunned target that isn't extracted within 30 s gets revived by its own crew if any crew member is still free, which pushes players to finish the job or team up.
 
+## Hunters, loot and rigs (agreed 2026-11-02)
+
+The targets fight back, and players loot hardware from them to run agents of their own. This makes Substrate capacity the thing you play for.
+
+**What the user decided:** a 3D **Matrix look**; collected parts let you **deploy your own agents**; and when hunters drop you, you **lose your unextracted loot**. Everything else in this section is my call, and the numbers are starting values to tune in play.
+
+**Hunters.** Every Working target is also a hunter.
+- It shoots the nearest player or ally within 5 tiles: 10 damage per hit, 1.2 s between shots. Frozen, dragged and booked targets don't shoot.
+- Players have 100 health, and it refills at 5 per second after 4 s without being hit.
+- At 0 health you go down. Your unextracted inventory drops as a bag where you fell, which anyone can pick up for 60 s. You respawn at Dispatch after 3 s with full health.
+- Hunter movement and shooting are scripted on the server; the LLM never decides them.
+
+**Loot.** Every confirmed freeze (takedown) drops one part at the target, and a DELETE drops one more. Drop chances:
+
+| Part | Chance | Tiers |
+|------|--------|-------|
+| RAM stick | 50% | DDR1 40%, DDR2 25%, DDR3 18%, DDR4 12%, **DDR5 5%** (rarest) |
+| CPU | 20% | |
+| Hard drive | 20% | |
+| Motherboard | 10% | |
+
+- Parts glow by rarity (DDR5 is gold).
+- You pick a part up by walking over it (0.8 tile).
+- Your inventory has 8 slots; when it's full you can't pick anything up.
+- Walking into the Impound Vault **banks** your whole inventory into your stash. Only the stash is safe, and it lasts until the next redeploy, like scores.
+
+**Rigs and allies (deploy your own agents).**
+- A rig takes one motherboard, one CPU, one RAM stick and one hard drive from your stash. **Build rig** on your phone spends them and deploys an **ally**.
+- An ally is a real kagent session on its own Agent (`sidekick`, in the same `heist` worker pool), so it shows up in the Substrate numbers like any other agent.
+- The ally follows you and shoots hunters within 6 tiles. Its hits count toward freezes, and **a freeze it lands is your takedown**.
+- The RAM's tier sets the ally's level: DDR1 = 1 shot per second, up to DDR5 = 2.2 shots per second and +20% speed.
+- An ally makes one LLM turn when deployed (a greeting line) and one when it is sprung. Otherwise it's scripted.
+- Limits: 2 allies per player and 16 in the whole city. When the city is full, Build rig waits with "no free safehouse".
+- Hunters target allies too. An ally at 0 health is **frozen**, which is a real suspend. You can spring it back with a short ACTION next to it, which is a real resume with its memory intact.
+- Allies are deleted when your mission ends or you leave.
+
+**Matrix look.** It's the 3D city, recoloured:
+- a black void and dark glass buildings, with green digital rain running down their faces (a canvas texture of glyphs and digits)
+- glowing green wireframe edges and emissive green characters
+- hunters as dark figures in suits with green outlines
+- allies in your player colour
+- parts that glow
+
+Everything is original: no film assets, names or logos.
+
 ## Players, squads and controls
 
 - Join with the arcade nickname (existing `platform.Players` cookie), then either **Go solo** or **Join a squad** with a 4-letter code shown on a squadmate's phone. Squads share score and missions.
