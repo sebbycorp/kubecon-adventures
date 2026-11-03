@@ -2,16 +2,40 @@ package duckhunt
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
 )
+
+// staticRE matches a page's links to its own static files.
+var staticRE = regexp.MustCompile(`/duck-hunt/static/[\w.-]+`)
+
+// versioned is page from web with each /duck-hunt/static/<file> link carrying a hash of
+// the file, so Cloudflare (which caches .js for hours) serves every deploy at once.
+func versioned(web fs.FS, page string) []byte {
+	b, err := fs.ReadFile(web, page)
+	if err != nil {
+		panic(err)
+	}
+	return staticRE.ReplaceAllFunc(b, func(link []byte) []byte {
+		f, err := fs.ReadFile(web, strings.TrimPrefix(string(link), "/duck-hunt/static/"))
+		if err != nil {
+			return link
+		}
+		sum := sha256.Sum256(f)
+		return fmt.Appendf(nil, "%s?v=%x", link, sum[:4])
+	})
+}
 
 // maxScreens caps the big-screen and phone event streams at once (the state carries the
 // board and the feed, pushed up to 10 times a second).
@@ -21,9 +45,11 @@ const maxScreens = 64
 // web holds phone.html, screen.html, admin.html and hunt.js.
 func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	page := func(name string) http.HandlerFunc {
+		body := versioned(web, name)
 		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-cache")
-			http.ServeFileFS(w, r, web, name)
+			_, _ = w.Write(body)
 		}
 	}
 	players := g.p.Players

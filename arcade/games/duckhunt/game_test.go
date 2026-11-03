@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
@@ -345,4 +347,15 @@ func waitFor(t *testing.T, ok func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("condition never held")
+}
+
+func TestVersionedPage(t *testing.T) {
+	web := fstest.MapFS{
+		"phone.html": {Data: []byte(`import { startHunt } from "/duck-hunt/static/hunt.js"; <script src="/duck-hunt/static/gone.js"></script>`)},
+		"hunt.js":    {Data: []byte("x")},
+	}
+	got := string(versioned(web, "phone.html"))
+	if !strings.Contains(got, `/duck-hunt/static/hunt.js?v=2d711642"`) || !strings.Contains(got, `/duck-hunt/static/gone.js"`) {
+		t.Fatalf("versioned page = %s", got)
+	}
 }
