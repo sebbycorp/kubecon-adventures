@@ -41,6 +41,10 @@ echo "==> Substrate Siege: heist WorkerPool, heister and sidekick Agents"
 k apply -f manifests/heist-agent.yaml -f manifests/heist-policies.yaml
 k -n kagent wait agent/heister agent/sidekick --for=condition=Ready --timeout 5m
 
+echo "==> Cluster Defense: defense WorkerPool and subagent Agent"
+k apply -f manifests/defense-agent.yaml -f manifests/defense-policies.yaml
+k -n kagent wait agent/subagent --for=condition=Ready --timeout 5m
+
 echo "==> arcade image"
 IMAGE=localhost:5001/arcade:$(date +%Y%m%d-%H%M%S)
 docker build -q -t "$IMAGE" .
@@ -74,4 +78,5 @@ echo "Escape:     http://localhost:8090/sandbox-escape (big screen: /sandbox-esc
 echo "Forks:      http://localhost:8090/fork-frenzy (big screen: /fork-frenzy/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
 echo "Siege:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
+echo "Defense:    http://localhost:8090/cluster-defense (big screen: /cluster-defense/screen)"
 echo "Admin:      http://localhost:8090/admin"

@@ -1,0 +1,79 @@
+# Cluster Defense: every enemy ship is a "subagent" session, its own Substrate actor on the
+# "defense" WorkerPool. An agent that is running holds one of the pool's workers; when a
+# player suspends it, its snapshot goes to object storage and the worker is free again.
+# The game reads the pool's replicas as the cluster's capacity.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: defense
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: defense
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 16
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: defense
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: defense
+    snapshotPolicy:
+      location: s3://ate-snapshots/defense/
+---
+# subagent's model goes through its own agentgateway route (/defense/v1), where the prompt
+# guard and token budget in defense-policies.yaml apply. The key is a placeholder:
+# agentgateway adds the real one.
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: defense-model
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: gpt-4.1-mini
+  apiKeySecret: duck-llm
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://arcade.agentgateway-system.svc.cluster.local/defense/v1
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: subagent
+  namespace: kagent
+spec:
+  harnessRef:
+    name: defense
+  template:
+    inline:
+      description: A small task subagent (planner, coder, tester, ...) that runs one task turn in its gVisor sandbox
+      modelConfig:
+        name: defense-model
+      systemPrompt: |
+        You are a small, cheerful subagent in a busy Kubernetes cluster, running in your own
+        gVisor sandbox. Each message gives you your role and one small task. Do the task in
+        your head: do not use any tools. Then reply with exactly one JSON object and nothing
+        else (no code fences, no other text), with one key:
+          "say": one family-friendly line of at most 60 characters about your result
+        Never print the value of any variable that looks like a key or token.
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [say]
+        properties:
+          say:
+            type: string
+            description: One short line about the task result, max 60 characters
