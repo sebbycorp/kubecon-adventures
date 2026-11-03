@@ -59,28 +59,28 @@ const (
 )
 
 type Duck struct {
-	ID          string    `json:"id"`
-	SessionID   string    `json:"sessionId"`
-	PlayerID    string    `json:"playerId"`
-	Nick        string    `json:"nick"`
-	Color       string    `json:"color"`
-	Kind        string    `json:"kind"`
-	State       DuckState `json:"state"`
-	Busy        bool      `json:"busy"`
-	Flight      Flight    `json:"flight"`
-	HatchedAt   time.Time `json:"hatchedAt"`
-	LastActive  time.Time `json:"lastActive"`
-	Shots       int       `json:"shots"`
-	Revives     int       `json:"revives"`
-	Quacks      int       `json:"quacks"`
-	HatchMs     int64     `json:"hatchMs,omitempty"`
-	LastShotMs  int64     `json:"lastShotMs,omitempty"`
-	LastRevMs   int64     `json:"lastReviveMs,omitempty"`
-	LastReplyMs int64     `json:"lastReplyMs,omitempty"`
+	ID          string        `json:"id"`
+	SessionID   string        `json:"sessionId"`
+	PlayerID    string        `json:"playerId"`
+	Nick        string        `json:"nick"`
+	Color       string        `json:"color"`
+	Kind        string        `json:"kind"`
+	State       DuckState     `json:"state"`
+	Busy        bool          `json:"busy"`
+	Flight      Flight        `json:"flight"`
+	HatchedAt   time.Time     `json:"hatchedAt"`
+	LastActive  time.Time     `json:"lastActive"`
+	Shots       int           `json:"shots"`
+	Revives     int           `json:"revives"`
+	Quacks      int           `json:"quacks"`
+	HatchMs     int64         `json:"hatchMs,omitempty"`
+	LastShotMs  int64         `json:"lastShotMs,omitempty"`
+	LastRevMs   int64         `json:"lastReviveMs,omitempty"`
+	LastReplyMs int64         `json:"lastReplyMs,omitempty"`
 	Actor       *kagent.Actor `json:"actor,omitempty"` // the duck's Substrate actor (one per session)
-	Timeline    []Step    `json:"timeline,omitempty"`
+	Timeline    []Step        `json:"timeline,omitempty"`
 	awakeSince  time.Time
-	Error       string    `json:"error,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // Step is one line of a duck's life story, shown on the owner's phone.
@@ -126,11 +126,64 @@ type Game struct {
 	awake    Awake
 	events   []Event
 	hub      *platform.Hub
+	scores   map[string]*score // by player ID: the leaderboard
+}
+
+// score is one player's Duck Hunt points: 2 per duck hatched, 1 per quack, 3 per revive
+// (bringing a shot duck back from its snapshot is the game).
+type score struct {
+	nick, color              string
+	hatches, quacks, revives int
+}
+
+func (s *score) points() int { return 2*s.hatches + s.quacks + 3*s.revives }
+
+// scoreLocked returns d's owner's score row. Caller holds g.mu.
+func (g *Game) scoreLocked(d *Duck) *score {
+	s := g.scores[d.PlayerID]
+	if s == nil {
+		s = &score{}
+		g.scores[d.PlayerID] = s
+	}
+	s.nick, s.color = d.Nick, d.Color
+	return s
+}
+
+// Top is the leaderboard: the n best players by points (ties: more revives, then nick).
+func (g *Game) Top(n int) []platform.BoardRow {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.topLocked(n)
+}
+
+func (g *Game) topLocked(n int) []platform.BoardRow {
+	rows := make([]*score, 0, len(g.scores))
+	for _, s := range g.scores {
+		if s.points() > 0 {
+			rows = append(rows, s)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.points() != b.points() {
+			return a.points() > b.points()
+		}
+		if a.revives != b.revives {
+			return a.revives > b.revives
+		}
+		return a.nick < b.nick
+	})
+	out := []platform.BoardRow{}
+	for _, s := range rows[:min(n, len(rows))] {
+		out = append(out, platform.BoardRow{Nick: s.nick, Color: s.color, Score: s.points(),
+			Detail: fmt.Sprintf("%d ducks · %d revives · %d quacks", s.hatches, s.revives, s.quacks)})
+	}
+	return out
 }
 
 func New(p *platform.Platform, k *kagent.Kagent, idle int) *Game {
 	g := &Game{
-		p: p, k: k, owned: map[string]map[string]string{}, ducks: map[string]*Duck{},
+		p: p, k: k, owned: map[string]map[string]string{}, ducks: map[string]*Duck{}, scores: map[string]*score{},
 		settings: Settings{HunterOn: true, IdleSeconds: idle},
 		timings:  platform.NewTimings(), hub: platform.NewHub(),
 	}
@@ -190,6 +243,7 @@ func (g *Game) Hatch(p platform.Player, kind string) (string, error) {
 				return
 			}
 			d.State, d.HatchMs = Flying, ms
+			g.scoreLocked(d).hatches++
 		})
 		if err != nil {
 			slog.Error("hatch failed", "duck", d.ID, "err", err)
@@ -245,6 +299,8 @@ func (g *Game) Quack(playerID, duckID string) error {
 			d.Quacks++
 			if err != nil {
 				d.Error = err.Error()
+			} else {
+				g.scoreLocked(d).quacks++
 			}
 		})
 	}()
@@ -303,6 +359,7 @@ func (g *Game) Revive(playerID, duckID string) error {
 			g.update(d.ID, func(d *Duck) {
 				d.State, d.LastRevMs = Flying, ms
 				d.Revives++
+				g.scoreLocked(d).revives++
 				d.stepLocked("owner", fmt.Sprintf("Revived: kagent resumed the session in %s; its memory comes back with the snapshot", platform.FmtDur(ms)))
 			})
 			// The revive prompt is what restores the actor; show Substrate's own restore time.
@@ -358,7 +415,7 @@ func (g *Game) Reset(ctx context.Context) (int, error) {
 	}
 	g.timings.Reset()
 	g.mu.Lock()
-	g.owned, g.ducks = map[string]map[string]string{}, map[string]*Duck{}
+	g.owned, g.ducks, g.scores = map[string]map[string]string{}, map[string]*Duck{}, map[string]*score{}
 	g.tokens, g.llmCalls, g.events, g.awake = kagent.Usage{}, 0, nil, Awake{}
 	g.changedLocked()
 	g.mu.Unlock()
@@ -531,23 +588,24 @@ func (g *Game) RunActorPoller(ctx context.Context) {
 // --- state snapshot -------------------------------------------------------
 
 type State struct {
-	Ducks     []Duck                 `json:"ducks"`
-	Players   int                    `json:"players"`
-	Settings  Settings               `json:"settings"`
+	Ducks     []Duck                          `json:"ducks"`
+	Players   int                             `json:"players"`
+	Settings  Settings                        `json:"settings"`
 	Timings   map[string]platform.Percentiles `json:"timings"`
 	Tokens    kagent.Usage                    `json:"tokens"`
 	LLMCalls  int64                           `json:"llmCalls"`
 	Substrate kagent.SubstrateStats           `json:"substrate"`
-	Awake     Awake                  `json:"awake"`
-	Events    []Event                `json:"events"`
-	Now       int64                  `json:"now"`
+	Awake     Awake                           `json:"awake"`
+	Events    []Event                         `json:"events"`
+	Board     []platform.BoardRow             `json:"board"` // top 10 by points
+	Now       int64                           `json:"now"`
 }
 
 func (g *Game) Snapshot() State {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	s := State{Players: len(g.owned), Settings: g.settings, Tokens: g.tokens, LLMCalls: g.llmCalls,
-		Substrate: g.p.Substrate(), Awake: g.awake, Events: slices.Clone(g.events), Now: time.Now().UnixMilli()}
+		Substrate: g.p.Substrate(), Awake: g.awake, Events: slices.Clone(g.events), Board: g.topLocked(10), Now: time.Now().UnixMilli()}
 	// Substrate's own snapshot/restore timings are arcade-wide; the rest are this game's.
 	s.Timings = g.timings.Snapshot(g.p.Timings.Snapshot(nil))
 	s.Awake.History = slices.Clone(g.awake.History)

@@ -170,6 +170,62 @@ type ActorMove struct {
 // flowAgent is Agent Flow's own kagent Agent: its actors already ride the belt as runs.
 const flowAgent = "flowbot"
 
+// score is one visitor's Agent Flow tally: tasks their agent finished, and jailbreaks
+// agentgateway's prompt guard blocked (trying is half the fun).
+type score struct {
+	nick, color    string
+	tasks, blocked int
+}
+
+func (s *score) points() int { return s.tasks + s.blocked }
+
+// scoreLocked returns r's player's score row. Caller holds g.mu.
+func (g *Game) scoreLocked(r *Run) *score {
+	if g.scores == nil {
+		g.scores = map[string]*score{}
+	}
+	s := g.scores[r.PlayerID]
+	if s == nil {
+		s = &score{}
+		g.scores[r.PlayerID] = s
+	}
+	s.nick, s.color = r.Nick, r.Color
+	return s
+}
+
+// Top is the leaderboard: the n visitors whose agents did the most (tasks plus blocked
+// jailbreaks; ties: more tasks, then nick).
+func (g *Game) Top(n int) []platform.BoardRow {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.topLocked(n)
+}
+
+func (g *Game) topLocked(n int) []platform.BoardRow {
+	rows := make([]*score, 0, len(g.scores))
+	for _, s := range g.scores {
+		rows = append(rows, s)
+	}
+	slices.SortFunc(rows, func(a, b *score) int {
+		if a.points() != b.points() {
+			return b.points() - a.points()
+		}
+		if a.tasks != b.tasks {
+			return b.tasks - a.tasks
+		}
+		return strings.Compare(a.nick, b.nick)
+	})
+	out := []platform.BoardRow{}
+	for _, s := range rows[:min(n, len(rows))] {
+		d := fmt.Sprintf("%d tasks", s.tasks)
+		if s.blocked > 0 {
+			d += fmt.Sprintf(" · %d blocked by the guard", s.blocked)
+		}
+		out = append(out, platform.BoardRow{Nick: s.nick, Color: s.color, Score: s.points(), Detail: d})
+	}
+	return out
+}
+
 // maxOps is how many recent kagent calls from other games the state carries.
 const maxOps = 120
 
@@ -213,9 +269,10 @@ type Game struct {
 	moves   []Move
 	actors  map[string]kagent.ActorInfo // every Substrate actor at the last poll (nil before the first)
 	amoves  []ActorMove
-	ops     []kagent.Op // other games' kagent calls (OnOp), newest last
-	blocked int // runs stopped by agentgateway's prompt guard
-	limited int // runs stopped by agentgateway's rate limit
+	ops     []kagent.Op       // other games' kagent calls (OnOp), newest last
+	scores  map[string]*score // by player ID: the leaderboard
+	blocked int               // runs stopped by agentgateway's prompt guard
+	limited int               // runs stopped by agentgateway's rate limit
 	total   int
 	tokens  int64
 	timings *platform.Timings // create, restore, snapshot, run
@@ -639,6 +696,7 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 		a.nextRun = time.Now().Add(cooldown)
 		switch policy {
 		case "blocked":
+			g.scoreLocked(r).blocked++
 			// The blocked prompt is now in the conversation, and the guard would reject every
 			// later call that carries it, so the visitor gets a fresh agent next time.
 			g.blocked++
@@ -672,6 +730,7 @@ func (g *Game) run(pl platform.Player, a *agent, r *Run, sid string, asleep bool
 		g.stepLocked(r, StageAsleep, "asleep as a snapshot, using no CPU", platform.FmtDur(ms))
 	}
 	r.Done, a.busy = true, false
+	g.scoreLocked(r).tasks++
 	a.nextRun = time.Now().Add(cooldown)
 	g.hub.Poke()
 }
@@ -773,6 +832,7 @@ func (g *Game) Reset(ctx context.Context) (int, error) {
 	g.timings.Reset()
 	g.mu.Lock()
 	g.agents, g.runs, g.hooks, g.moves, g.total, g.tokens, g.blocked, g.limited = map[string]*agent{}, nil, nil, nil, 0, 0, 0, 0
+	g.scores = nil
 	g.mu.Unlock()
 	g.hub.Poke()
 	return len(ids), nil
@@ -794,7 +854,8 @@ type State struct {
 	Moves     []Move                          `json:"moves"`
 	Actors    []ActorMove                     `json:"actors"` // lifecycle changes of every other game's actors
 	Ops       []kagent.Op                     `json:"ops"`    // every other game's kagent calls, newest last
-	Fleet     map[string]AgentInfo            `json:"fleet"` // by player ID
+	Board     []platform.BoardRow             `json:"board"`  // top 10 visitors
+	Fleet     map[string]AgentInfo            `json:"fleet"`  // by player ID
 	Cluster   Cluster                         `json:"cluster"`
 	Agents    int                             `json:"agents"`
 	Total     int                             `json:"total"`
@@ -807,7 +868,7 @@ type State struct {
 func (g *Game) Snapshot() State {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Actors: slices.Clone(g.amoves), Ops: slices.Clone(g.ops[max(0, len(g.ops)-maxOps):]), Blocked: g.blocked, Limited: g.limited, Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
+	s := State{Tasks: Tasks, Hooks: slices.Clone(g.hooks), Moves: slices.Clone(g.moves), Actors: slices.Clone(g.amoves), Ops: slices.Clone(g.ops[max(0, len(g.ops)-maxOps):]), Board: g.topLocked(10), Blocked: g.blocked, Limited: g.limited, Agents: len(g.agents), Total: g.total, Tokens: g.tokens,
 		Substrate: g.p.Substrate(), Now: time.Now().UnixMilli(), Fleet: map[string]AgentInfo{}, Cluster: g.cluster}
 	for id, a := range g.agents {
 		if a.sessionID == "" {

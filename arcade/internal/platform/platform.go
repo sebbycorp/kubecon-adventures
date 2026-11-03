@@ -352,3 +352,12 @@ func (h *Hub) ServeSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// BoardRow is one player on a game's leaderboard, as the arcade-wide GET /api/boards and
+// the games' screens show it: a score in the game's own unit and a short detail line.
+type BoardRow struct {
+	Nick   string `json:"nick"`
+	Color  string `json:"color,omitempty"`
+	Score  int    `json:"score"`
+	Detail string `json:"detail,omitempty"`
+}

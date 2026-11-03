@@ -140,6 +140,11 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		platform.WriteJSON(w, pl)
 	}))
 
+	// Every game's leaderboard, top 5 each, for the arcade home page.
+	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
+		platform.WriteJSON(w, arcadeBoards(5, duck, flw, gta, cd, gd))
+	})
+
 	// Flat numbers for dashboards (Homepage customapi widgets).
 	mux.HandleFunc("GET /api/stats", func(w http.ResponseWriter, r *http.Request) {
 		s := p.Substrate()
@@ -171,4 +176,28 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 	})
 	// Old Duck Hunt stats URL, kept for existing dashboards.
 	mux.HandleFunc("GET /duck-hunt/api/stats", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, duck.Stats()) })
+}
+
+// GameBoard is one game's leaderboard on the arcade home page: Unit names its score.
+type GameBoard struct {
+	Game string              `json:"game"`
+	Path string              `json:"path"`
+	Unit string              `json:"unit"`
+	Rows []platform.BoardRow `json:"rows"`
+}
+
+// topper is a game with a leaderboard.
+type topper interface {
+	Top(n int) []platform.BoardRow
+}
+
+// arcadeBoards is every game's top n, in the home page's order.
+func arcadeBoards(n int, duck, flw, gta, cd, gd topper) []GameBoard {
+	return []GameBoard{
+		{"Substrate Siege", "/substrate-siege", "best run", gta.Top(n)},
+		{"Cluster Defense", "/cluster-defense", "best round", cd.Top(n)},
+		{"Gateway Defense", "/gateway-defense", "points", gd.Top(n)},
+		{"Agent Flow", "/agent-flow", "tasks", flw.Top(n)},
+		{"Duck Hunt", "/duck-hunt", "points", duck.Top(n)},
+	}
 }

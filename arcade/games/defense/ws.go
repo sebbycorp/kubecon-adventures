@@ -15,6 +15,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"math"
 	"net/http"
@@ -591,4 +592,16 @@ func (g *Game) flushInputs(now time.Time) {
 			g.applyInput(c, in)
 		}
 	}
+}
+
+// Top is the all-time leaderboard for the arcade's /api/boards: the n best round scores.
+func (g *Game) Top(n int) []platform.BoardRow {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, all := g.boards()
+	out := []platform.BoardRow{}
+	for _, v := range all[:min(n, len(all))] {
+		out = append(out, platform.BoardRow{Nick: v.Nick, Color: v.Color, Score: v.Best, Detail: fmt.Sprintf("%s · %d suspends", v.Title, v.Total)})
+	}
+	return out
 }

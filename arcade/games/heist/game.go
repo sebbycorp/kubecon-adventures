@@ -6,6 +6,7 @@ package heist
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"math/rand/v2"
@@ -607,4 +608,22 @@ func (g *Game) Stats() map[string]any {
 	return map[string]any{"players": len(g.w.Avatars), "online": online, "targets": len(g.w.Targets),
 		"allies": len(g.w.Allies), "runs": len(g.m.missions), "activeRuns": active,
 		"freezes": takedowns, "paused": g.paused}
+}
+
+// Top is the leaderboard for the arcade's /api/boards: the n best single-run scores.
+func (g *Game) Top(n int) []platform.BoardRow {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := []platform.BoardRow{}
+	for _, r := range g.m.Leaderboard() {
+		if len(out) == n || r.Best == 0 {
+			break
+		}
+		row := platform.BoardRow{Nick: r.Nick, Score: r.Best, Detail: fmt.Sprintf("%d freezes · %d booked", r.Freezes, r.Books)}
+		if a := g.w.Avatars[r.PlayerID]; a != nil {
+			row.Color = a.Color
+		}
+		out = append(out, row)
+	}
+	return out
 }

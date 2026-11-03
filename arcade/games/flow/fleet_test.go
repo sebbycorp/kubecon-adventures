@@ -59,3 +59,19 @@ func TestOnOpSkipsFlowAndCaps(t *testing.T) {
 		}
 	}
 }
+
+func TestTop(t *testing.T) {
+	g := &Game{}
+	ada, linus := &Run{PlayerID: "a", Nick: "Ada", Color: "blue"}, &Run{PlayerID: "l", Nick: "Linus", Color: "red"}
+	g.scoreLocked(ada).tasks += 2
+	g.scoreLocked(linus).tasks++
+	g.scoreLocked(linus).blocked++ // 2 points, fewer tasks: behind Ada
+	got := g.Top(5)
+	want := []platform.BoardRow{
+		{Nick: "Ada", Color: "blue", Score: 2, Detail: "2 tasks"},
+		{Nick: "Linus", Color: "red", Score: 2, Detail: "1 tasks · 1 blocked by the guard"},
+	}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("top = %+v", got)
+	}
+}

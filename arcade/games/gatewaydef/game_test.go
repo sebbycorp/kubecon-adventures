@@ -649,3 +649,17 @@ func TestFinishEndlessAndBoard(t *testing.T) {
 		t.Fatalf("long board: %d rows, me %+v", len(b.Rows), b.Me)
 	}
 }
+
+func TestTopForArcade(t *testing.T) {
+	g, _, _, _ := newTestGame()
+	g.board["a"] = Score{PlayerID: "a", Nick: "Ada", Color: "blue", Score: 900, Wave: 15, Won: true, At: 1}
+	g.board["l"] = Score{PlayerID: "l", Nick: "Linus", Color: "red", Score: 400, Wave: 6, At: 2}
+	got := g.Top(5)
+	if len(got) != 2 || got[0] != (platform.BoardRow{Nick: "Ada", Color: "blue", Score: 900, Detail: "wave 15 · beat the boss"}) ||
+		got[1] != (platform.BoardRow{Nick: "Linus", Color: "red", Score: 400, Detail: "wave 6"}) {
+		t.Fatalf("top = %+v", got)
+	}
+	if len(g.Top(1)) != 1 {
+		t.Fatal("top 1 not capped")
+	}
+}

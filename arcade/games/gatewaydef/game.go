@@ -5,6 +5,7 @@ package gatewaydef
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -398,4 +399,22 @@ func (g *Game) screen(public bool) (func(), bool) {
 	}
 	g.screens++
 	return func() { g.mu.Lock(); g.screens--; g.mu.Unlock() }, true
+}
+
+// Top is the leaderboard for the arcade's /api/boards: the n best runs.
+func (g *Game) Top(n int) []platform.BoardRow {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := []platform.BoardRow{}
+	for _, s := range g.boardLocked() {
+		if len(out) == n {
+			break
+		}
+		d := fmt.Sprintf("wave %d", s.Wave)
+		if s.Won {
+			d += " · beat the boss"
+		}
+		out = append(out, platform.BoardRow{Nick: s.Nick, Color: s.Color, Score: s.Score, Detail: d})
+	}
+	return out
 }
