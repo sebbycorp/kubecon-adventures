@@ -37,6 +37,10 @@ echo "==> Cluster Defense: defense WorkerPool and subagent Agent"
 k apply -f manifests/defense-agent.yaml -f manifests/defense-policies.yaml
 k -n kagent wait agent/subagent --for=condition=Ready --timeout 5m
 
+echo "==> Gateway Defense: gatedef WorkerPool, rogue Agent, guard and limit routes"
+k apply -f manifests/gatedef.yaml
+k -n kagent wait agent/rogue --for=condition=Ready --timeout 5m
+
 echo "==> arcade image"
 IMAGE=localhost:5001/arcade:$(date +%Y%m%d-%H%M%S)
 docker build -q -t "$IMAGE" .
@@ -69,4 +73,5 @@ echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
 echo "Siege:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
 echo "Defense:    http://localhost:8090/cluster-defense (big screen: /cluster-defense/screen)"
+echo "Gateway:    http://localhost:8090/gateway-defense (big screen: /gateway-defense/screen)"
 echo "Admin:      http://localhost:8090/admin"

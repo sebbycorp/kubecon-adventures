@@ -23,6 +23,7 @@ import (
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/defense"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/duckhunt"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/flow"
+	"github.com/sebbycorp/kubecon-adventures/arcade/games/gatewaydef"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/heist"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/platform"
@@ -54,6 +55,9 @@ func main() {
 	gta := heist.New(p, heist.NewKagentOps(agentClient("heister"), agentClient("sidekick"), envOr("HEIST_EXTRACT", "resume-first")),
 		strings.Split(envOr("HEIST_NODES", "kagent-worker,kagent-worker2"), ","))
 	cd := defense.New(p, defense.NewKagentOps(agentClient(defense.AgentName)))
+	gw := envOr("GATEDEF_GATEWAY", "http://arcade.agentgateway-system.svc.cluster.local")
+	gd := gatewaydef.New(p, &gatewaydef.HTTPProber{GuardURL: gw + "/gatedef/guard/v1/chat/completions", LimitURL: gw + "/gatedef/limit",
+		Client: &http.Client{Timeout: 5 * time.Second}}, gatewaydef.NewAgentProber(agentClient("rogue")))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -63,6 +67,7 @@ func main() {
 	flw.Run(ctx)
 	gta.Run(ctx)
 	cd.Run(ctx)
+	gd.Run(ctx)
 
 	web := func(dir string) fs.FS {
 		sub, err := fs.Sub(webFS, path.Join("web", dir))
@@ -76,11 +81,12 @@ func main() {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web(""), "index.html") })
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
-	arcadeAPI(mux, p, duck, flw, gta, cd)
+	arcadeAPI(mux, p, duck, flw, gta, cd, gd)
 	duck.Routes(mux, web("duck-hunt"))
 	flw.Routes(mux, web("agent-flow"))
 	gta.Routes(mux, web("substrate-siege"))
 	cd.Routes(mux, web("cluster-defense"))
+	gd.Routes(mux, web("gateway-defense"))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	go func() {
@@ -113,7 +119,7 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game) {
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -156,6 +162,9 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		}
 		for k, v := range cd.Stats() {
 			out["clusterDefense_"+k] = v
+		}
+		for k, v := range gd.Stats() {
+			out["gatewayDefense_"+k] = v
 		}
 		platform.WriteJSON(w, out)
 	})

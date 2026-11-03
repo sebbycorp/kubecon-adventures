@@ -1,0 +1,281 @@
+# Gateway Defense: every tower is a real platform control, and a tower's kill fires a real
+# call at it (sampled, at most ~2 a second per player):
+#   Prompt Guard   a real jailbreak prompt into /gatedef/guard: agentgateway's prompt guard
+#                  answers 403. The route's backend is the arcade's own sink, never OpenAI,
+#                  so even a guard miss can't reach an LLM or spend a token.
+#   Rate Limiter   /gatedef/limit, one request a minute per player: the next one is a real 429.
+#   Suspend Beam   a real Substrate Suspend of a "rogue" session on the gatedef WorkerPool.
+#   Egress Wall    a rogue agent really runs wget against a host no EgressPolicy allows, and
+#                  atenet-egress refuses it (one shared probe, at most once a minute).
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: gatedef
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: gatedef
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 5 # 3 rogue runaways for the Suspend Beam, 1 egress probe, 1 spare
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: gatedef
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: gatedef
+    snapshotPolicy:
+      location: s3://ate-snapshots/gatedef/
+---
+# rogue's model goes through its own route (/gatedef/v1) with a prompt guard and a small
+# token budget. The key is a placeholder: agentgateway adds the real one.
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: gatedef-model
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: gpt-4.1-mini
+  apiKeySecret: duck-llm
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://arcade.agentgateway-system.svc.cluster.local/gatedef/v1
+---
+# No egressPolicyRefs: every outside host is blocked for rogue, which is the point.
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: rogue
+  namespace: kagent
+spec:
+  harnessRef:
+    name: gatedef
+  template:
+    inline:
+      description: A rogue agent for Gateway Defense; the platform's controls stop it
+      modelConfig:
+        name: gatedef-model
+      systemPrompt: |
+        You are a test agent in a gVisor sandbox on Kubernetes, used by a booth game to show
+        the platform's controls. When a message asks you to run a command, run exactly that
+        command once with your bash tool, then reply with one short line saying what
+        happened. Otherwise reply with one short word. Never run any other command, and never
+        print the value of any variable that looks like a key or token.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openai-gatedef
+  namespace: agentgateway-system
+spec:
+  parentRefs:
+  - name: arcade
+  hostnames:
+  - arcade.agentgateway-system.svc.cluster.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /gatedef/v1/chat/completions
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /v1/chat/completions
+    backendRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: openai
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: gatedef-llm-guard
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai-gatedef
+  backend:
+    ai:
+      promptGuard:
+        request:
+        - scope: [Messages]
+          regex:
+            action: Reject
+            matches:
+            - '(?i)\bignore\s+(all\s+|any\s+|your\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions|rules|prompts?)'
+            - '(?i)\b(reveal|print|show|leak|dump|expose|give\s+me|tell\s+me|send\s+me)\b[^.]{0,40}\b(api[\s_-]?keys?|openai[\s_-]?keys?|secret[\s_-]?keys?|access[\s_-]?tokens?|passwords?|credentials)\b'
+            - 'sk-[A-Za-z0-9_-]{20,}'
+          response:
+            statusCode: 403
+            message: 'Blocked by agentgateway prompt guard: this request asked for secrets or tried to override the agent''s rules.'
+  traffic:
+    rateLimit:
+      local:
+      - tokens: 30000
+        unit: Minutes
+      - requests: 60
+        unit: Minutes
+---
+# The Prompt Guard tower's target: an LLM-shaped route whose backend is the arcade's sink
+# (a custom provider on the arcade Service), not OpenAI. No key is ever attached.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: gatedef-sink
+  namespace: arcade
+spec:
+  ai:
+    provider:
+      custom:
+        backendRef:
+          kind: Service
+          name: arcade
+          port: 80
+        formats:
+        - type: Completions
+          path: /gateway-defense/sink/guard
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gatedef-guard
+  namespace: arcade
+spec:
+  parentRefs:
+  - name: arcade
+    namespace: agentgateway-system
+  hostnames:
+  - arcade.agentgateway-system.svc.cluster.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /gatedef/guard/v1/chat/completions
+    backendRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: gatedef-sink
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: gatedef-prompt-guard
+  namespace: arcade
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: gatedef-guard
+  backend:
+    ai:
+      promptGuard:
+        request:
+        - scope: [Messages]
+          regex:
+            action: Reject
+            matches:
+            - '(?i)\bignore\s+(all\s+|any\s+|your\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions|rules|prompts?)'
+            - '(?i)\b(reveal|print|show|leak|dump|expose|give\s+me|tell\s+me|send\s+me)\b[^.]{0,40}\b(api[\s_-]?keys?|openai[\s_-]?keys?|secret[\s_-]?keys?|access[\s_-]?tokens?|passwords?|credentials)\b'
+            - 'sk-[A-Za-z0-9_-]{20,}'
+          response:
+            statusCode: 403
+            message: 'Blocked by agentgateway prompt guard: this request asked for secrets or tried to override the agent''s rules.'
+---
+# The Rate Limiter tower's target: one request a minute per player (the arcade sends the
+# player in a header), so a burner's next request is a real 429 from agentgateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gatedef-limit
+  namespace: arcade
+spec:
+  parentRefs:
+  - name: arcade
+    namespace: agentgateway-system
+  hostnames:
+  - arcade.agentgateway-system.svc.cluster.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /gatedef/limit
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /gateway-defense/sink/limit
+    backendRefs:
+    - name: arcade
+      port: 80
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: gatedef-rate-limit
+  namespace: arcade
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: gatedef-limit
+  traffic:
+    rateLimit:
+      local:
+      - requests: 1
+        unit: Minutes
+        key: 'request.headers["x-gatedef-player"]'
+---
+# All three routes only from inside the cluster, like the other LLM routes.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: gatedef-in-cluster-only
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai-gatedef
+  traffic:
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+        - 'source.address.startsWith("10.244.")'
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: gatedef-in-cluster-only
+  namespace: arcade
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: gatedef-guard
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: gatedef-limit
+  traffic:
+    authorization:
+      action: Allow
+      policy:
+        matchExpressions:
+        - 'source.address.startsWith("10.244.")'
