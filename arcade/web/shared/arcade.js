@@ -21,6 +21,8 @@
 .ab-score { font-weight: 800; color: var(--ab-accent, #5fd068); text-align: right; }
 .ab-score small { display: block; font-weight: 400; opacity: .62; font-size: .72em; color: inherit; }
 .ab-empty { opacity: .62; padding: 6px 2px; }
+.ab-row.ab-me { outline: 2px solid var(--ab-accent, #5fd068); outline-offset: -2px; }
+.ab-medal { font-size: 1.15em; line-height: 1; }
 .ab-block { margin: 12px 0 4px; }
 .ab-block > .ab-h { font-size: 11px; letter-spacing: .12em; opacity: .7; margin: 0 0 6px; text-transform: uppercase; }
 .ab-block .ab-ctas { margin-top: 2px; }
@@ -49,7 +51,9 @@
 
   // Boards are fetched once for every widget on the page, every 5 s.
   const widgets = [];
-  let last = null, timer = null;
+  let last = null, timer = null, myNick = null;
+  fetch("/api/me").then((r) => (r.ok ? r.json() : null)).then((m) => { myNick = m && m.nick; widgets.forEach(draw); }).catch(() => {});
+  const MEDALS = ["🥇", "🥈", "🥉"];
   async function refresh() {
     try {
       last = await (await fetch("/api/boards", { cache: "no-store" })).json();
@@ -66,15 +70,17 @@
     const rows = (b.rows || []).slice(0, w.n);
     if (!rows.length) { w.el.innerHTML = `<div class="ab-empty">${esc(w.empty)}</div>`; return; }
     w.el.innerHTML = rows.map((r, i) =>
-      `<div class="ab-row${i === 0 ? " ab-top" : ""}"><span class="ab-rank">${i + 1}</span><i class="ab-dot" style="background:${color(r.color)}"></i>` +
+      `<div class="ab-row${i === 0 ? " ab-top" : ""}${myNick && r.nick === myNick ? " ab-me" : ""}"><span class="ab-rank">${w.medals && i < 3 ? `<span class="ab-medal">${MEDALS[i]}</span>` : i + 1}</span><i class="ab-dot" style="background:${color(r.color)}"></i>` +
       `<span class="ab-who"><b>${esc(r.nick)}</b>${w.detail && r.detail ? `<small>${esc(r.detail)}</small>` : ""}</span>` +
       `<span class="ab-score">${Number(r.score).toLocaleString()}${w.unit ? `<small>${esc(b.unit)}</small>` : ""}</span></div>`).join("");
   }
   // board keeps el showing the top n of the game at path ("/duck-hunt"), live.
-  function board(el, path, { n = 5, detail = true, unit = true, empty = "No scores yet. Be the first." } = {}) {
+  function board(el, path, { n = 5, detail = true, unit = true, medals = true, empty = "No scores yet. Be the first." } = {}) {
     if (!el) return;
     el.classList.add("ab-board");
-    const w = { el, path, n, detail, unit, empty };
+    // One widget per element: calling board again on the same element updates it.
+    for (let i = widgets.length - 1; i >= 0; i--) if (widgets[i].el === el) widgets.splice(i, 1);
+    const w = { el, path, n, detail, unit, medals, empty };
     widgets.push(w);
     if (last) draw(w);
     if (!timer) { refresh(); timer = setInterval(refresh, 5000); }
