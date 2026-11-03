@@ -229,7 +229,7 @@ async function poll() {
     $("nRestore").textContent = ms(s.restoreP50Ms);
     $("capDensity").textContent = s.actors && s.workers ? `${(s.actors / s.workers).toFixed(1)} agents per sandbox` : "–";
     const p = players(s);
-    document.querySelectorAll(".now").forEach((el) => {
+    document.querySelectorAll(".now[data-k]").forEach((el) => {
       const n = p[el.dataset.k] || 0;
       el.classList.toggle("on", n > 0);
       el.lastElementChild.textContent = n > 0 ? `${n} playing now` : "be the first to play";
