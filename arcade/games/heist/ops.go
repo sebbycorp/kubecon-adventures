@@ -56,11 +56,13 @@ type job struct {
 
 // Scheduler runs Ops asynchronously under concurrency caps so the game loop never
 // blocks. Steps and resumes (springs, and extracts when ExtractUsesResume) are capped
-// with a FIFO queue per class; freeze, delete and spawn are never capped. At most one
-// op per target is accepted at a time.
+// with a FIFO queue per class; freeze, delete and spawn are never capped. Each target
+// has two lanes, "step" (kind step) and "control" (spawn, freeze, spring, extract,
+// delete), and at most one op per lane per target is accepted at a time, so a freeze
+// can land while a long heist step is still running.
 //
 // Every accepted op that starts running yields exactly one Result (OK=false and Err
-// set on error or timeout). A finished op frees its slot and its target before its
+// set on error or timeout). A finished op frees its slot and its lane before its
 // result is sent, so a slow reader of Results never stalls the caps; instead the
 // finished op's goroutine waits to hand the result over. Nothing is dropped while the
 // scheduler is open, and the wait ends when Close is called.
@@ -77,7 +79,7 @@ type Scheduler struct {
 
 	mu      sync.Mutex
 	closed  bool
-	busy    map[string]bool
+	busy    map[lane]bool
 	running [3]int // by slotClass
 	limit   [3]int
 	queue   [3][]job
@@ -92,7 +94,7 @@ func NewScheduler(ops Ops, maxSteps, maxResumes int) *Scheduler {
 		results: make(chan Result, 256),
 		ctx:     ctx,
 		cancel:  cancel,
-		busy:    map[string]bool{},
+		busy:    map[lane]bool{},
 	}
 	s.limit[classStep] = max(maxSteps, 1)
 	s.limit[classResume] = max(maxResumes, 1)
@@ -116,8 +118,16 @@ func (s *Scheduler) classOf(kind string) slotClass {
 	return classNone
 }
 
-// Submit queues an op. It returns false if target already has an op in flight, the
-// kind is unknown, or the scheduler is closed.
+// lane is one target's step or control lane.
+type lane struct {
+	target string
+	step   bool
+}
+
+func laneOf(kind, target string) lane { return lane{target: target, step: kind == "step"} }
+
+// Submit queues an op. It returns false if target already has an op in flight in the
+// same lane, the kind is unknown, or the scheduler is closed.
 func (s *Scheduler) Submit(kind, target, sessionID string, step, steps int) bool {
 	switch kind {
 	case "spawn", "step", "freeze", "spring", "extract", "delete":
@@ -127,10 +137,11 @@ func (s *Scheduler) Submit(kind, target, sessionID string, step, steps int) bool
 	j := job{kind: kind, target: target, sessionID: sessionID, step: step, steps: steps, class: s.classOf(kind)}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed || s.busy[target] {
+	l := laneOf(kind, target)
+	if s.closed || s.busy[l] {
 		return false
 	}
-	s.busy[target] = true
+	s.busy[l] = true
 	if j.class != classNone && s.running[j.class] >= s.limit[j.class] {
 		s.queue[j.class] = append(s.queue[j.class], j)
 		return true
@@ -153,7 +164,7 @@ func (s *Scheduler) work(j job) {
 	cancel()
 
 	s.mu.Lock()
-	delete(s.busy, j.target)
+	delete(s.busy, laneOf(j.kind, j.target))
 	s.running[j.class]--
 	if !s.closed && len(s.queue[j.class]) > 0 && s.running[j.class] < s.limit[j.class] {
 		next := s.queue[j.class][0]

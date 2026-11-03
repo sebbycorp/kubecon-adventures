@@ -232,21 +232,32 @@ func TestMsFromOpElseWall(t *testing.T) {
 	}
 }
 
-func TestOneOpPerTarget(t *testing.T) {
+func TestStepAndControlLanes(t *testing.T) {
 	f := newFakeOps()
 	s := NewScheduler(f, 24, 8)
 	defer s.Close()
 	if !s.Submit("step", "a", "s", 1, 5) {
-		t.Fatal("first submit refused")
+		t.Fatal("first step refused")
 	}
-	if s.Submit("freeze", "a", "s", 0, 0) {
-		t.Fatal("second submit for a busy target accepted")
+	if s.Submit("step", "a", "s", 2, 5) {
+		t.Fatal("second step for the same target accepted")
 	}
-	c := f.next(t)
-	close(c.release)
-	result(t, s)
 	if !s.Submit("freeze", "a", "s", 0, 0) {
-		t.Fatal("submit after result refused")
+		t.Fatal("freeze refused while a step is in flight")
+	}
+	for _, k := range []string{"spawn", "freeze", "spring", "extract", "delete"} {
+		if s.Submit(k, "a", "s", 0, 0) {
+			t.Fatalf("second control op %s accepted", k)
+		}
+	}
+	calls := f.drain(t, 2)
+	for _, c := range calls {
+		close(c.release)
+	}
+	result(t, s)
+	result(t, s)
+	if !s.Submit("step", "a", "s", 2, 5) || !s.Submit("freeze", "a", "s", 0, 0) {
+		t.Fatal("submit after results refused")
 	}
 }
 
