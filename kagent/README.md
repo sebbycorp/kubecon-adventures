@@ -45,5 +45,5 @@ The cluster comes back, but agent calls can hang: sessions report READY, and eve
 
 ```bash
 kubectl --context kind-kagent -n ate-system rollout restart $(kubectl --context kind-kagent -n ate-system get deploy,ds -o name)
-kubectl --context kind-kagent -n kagent rollout restart deploy/ducks deploy/escape deploy/forks deploy/flow deploy/kagent-default deploy/kagent-controller
+kubectl --context kind-kagent -n kagent rollout restart deploy/ducks deploy/flow deploy/kagent-default deploy/kagent-controller
 ```

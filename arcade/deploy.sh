@@ -25,14 +25,6 @@ echo "==> duck Agent"
 k apply -f manifests/duck-agent.yaml
 k -n kagent wait agent/duck --for=condition=Ready --timeout 5m
 
-echo "==> Sandbox Escape: escape WorkerPool and BYTE Agent"
-k apply -f manifests/escape-agent.yaml
-k -n kagent wait agent/escapee --for=condition=Ready --timeout 5m
-
-echo "==> Fork Frenzy: forks WorkerPool and FORKY Agent"
-k apply -f manifests/fork-agent.yaml
-k -n kagent wait agent/forky --for=condition=Ready --timeout 5m
-
 echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
 k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
@@ -74,8 +66,6 @@ fi
 echo
 echo "Arcade:     http://localhost:8090/"
 echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen)"
-echo "Escape:     http://localhost:8090/sandbox-escape (big screen: /sandbox-escape/screen)"
-echo "Forks:      http://localhost:8090/fork-frenzy (big screen: /fork-frenzy/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
 echo "Siege:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
 echo "Defense:    http://localhost:8090/cluster-defense (big screen: /cluster-defense/screen)"

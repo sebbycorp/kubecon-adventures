@@ -41,8 +41,7 @@ const DONE = new Set(["reply", "snapshot", "asleep", "error"]);
 // the colour their actors get on the map. Agents not listed still show, in grey.
 const GAMES = {
   duck: ["Duck Hunt", "#facc15"], "duck-direct": ["Duck Hunt test", "#a3893a"], "duck-noschema": ["Duck Hunt test", "#a3893a"],
-  "hello-duck": ["kagent demo", "#9ca3af"], escapee: ["Sandbox Escape", "#f87171"], "escape-probe": ["Sandbox Escape test", "#a35a5a"],
-  forky: ["Fork Frenzy", "#a78bfa"], flowbot: ["Agent Flow", "#5fd068"], heister: ["Substrate Siege", "#38bdf8"],
+  "hello-duck": ["kagent demo", "#9ca3af"], flowbot: ["Agent Flow", "#5fd068"], heister: ["Substrate Siege", "#38bdf8"],
   sidekick: ["Substrate Siege ally", "#7dd3fc"], subagent: ["Cluster Defense", "#fb923c"], loadbot: ["load test", "#6b7280"],
 };
 const gameOf = (agent) => GAMES[agent] || [agent, "#9ca3af"];

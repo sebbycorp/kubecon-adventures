@@ -22,44 +22,6 @@
               label: Down
             - field: duckSandboxesAwake
               label: Awake
-    - Sandbox Escape:
-        icon: mdi-robot-angry
-        href: http://172.16.10.135:8090/sandbox-escape/screen
-        description: Big screen · players at /sandbox-escape
-        widget:
-          type: customapi
-          url: http://localhost:8090/api/stats
-          refreshInterval: 3000
-          mappings:
-            - field: sandboxEscape_attempts
-              label: Attempts
-            - field: sandboxEscape_escapes
-              label: Escapes
-            - field: sandboxEscape_stoppedByGvisor
-              label: gVisor
-            - field: sandboxEscape_stoppedByEgress
-              label: Egress
-    - Fork Frenzy:
-        icon: mdi-source-fork
-        href: http://172.16.10.135:8090/fork-frenzy/screen
-        description: Big screen · players at /fork-frenzy
-        widget:
-          type: customapi
-          url: http://localhost:8090/api/stats
-          refreshInterval: 3000
-          mappings:
-            - field: forkFrenzy_families
-              label: Families
-            - field: forkFrenzy_forks
-              label: Forks
-            - field: forkFrenzy_checkpointP50Ms
-              label: Checkpoint
-              format: number
-              suffix: " ms"
-            - field: forkFrenzy_forkP50Ms
-              label: Fork
-              format: number
-              suffix: " ms"
     - kagent UI:
         icon: https://raw.githubusercontent.com/kagent-dev/kagent/main/img/icon-dark.svg
         href: http://172.16.10.135:8080
@@ -125,18 +87,6 @@
         namespace: kagent
         app: duck-pool-gvisor-workers
         podSelector: ate.dev/worker-pool=ducks
-    - Escape pool (gVisor workers):
-        icon: mdi-lock
-        description: WorkerPool escape; every BYTE prisoner is an actor here
-        app: escape-pool
-        namespace: kagent
-        podSelector: ate.dev/worker-pool=escape
-    - Forks pool (gVisor workers):
-        icon: mdi-source-branch
-        description: WorkerPool forks; every FORKY and clone is an actor here
-        app: forks-pool
-        namespace: kagent
-        podSelector: ate.dev/worker-pool=forks
     - Default pool (gVisor workers):
         icon: mdi-server-network
         description: WorkerPool kagent-default; other kagent agents

@@ -377,21 +377,6 @@ func (k *Kagent) ListCheckpointIDs(ctx context.Context, sessionID string) ([]str
 	}
 }
 
-// Fork starts a new session (and Substrate actor) from a checkpoint. The fork shares the
-// conversation up to the checkpoint, then diverges.
-func (k *Kagent) Fork(ctx context.Context, checkpointID, requestID string) (string, error) {
-	var r *apiv1.ForkSessionResponse
-	err := retryBusy(ctx, func() (err error) {
-		r, err = apiv1.NewCheckpointServiceClient(k.conn).ForkSession(k.ctx(ctx), &apiv1.ForkSessionRequest{CheckpointId: checkpointID, RequestId: requestID})
-		return err
-	})
-	if err != nil {
-		return "", err
-	}
-	id := r.GetSession().GetId()
-	return id, k.waitState(ctx, id, apiv1.RuntimeState_RUNTIME_STATE_READY)
-}
-
 // Suspend snapshots the session's actor and frees its sandbox.
 func (k *Kagent) Suspend(ctx context.Context, sessionID string) error {
 	if err := retryBusy(ctx, func() error {
