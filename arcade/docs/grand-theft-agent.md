@@ -69,7 +69,7 @@ Also known from Duck Hunt: Substrate snapshots an idle actor about 1 s after eac
 
 ## The city (big screen and phones)
 
-A top-down pixel city drawn on a `<canvas>`. Every landmark is a real component; this matches Agent Flow's mapping so the two games tell one story.
+A cute top-down 3D city in Three.js. Every landmark is a real component; this matches Agent Flow's mapping so the two games tell one story.
 
 | Landmark | Component | What happens there |
 |----------|-----------|--------------------|
@@ -80,15 +80,15 @@ A top-down pixel city drawn on a `<canvas>`. Every landmark is a real component;
 | Highway checkpoint at the city edge (agentgateway logo) | agentgateway / atenet-egress | Targets that try to reach a blocked site get stopped here, and their wanted level rises |
 | Dispatch radio tower | The LLM route | Lights up when a target makes an LLM call |
 
-Art direction: original 16-bit-style top-down sprites at night (neon, wet roads), with a chunky HUD:
+Art direction (agreed 2026-11-02): a cute top-down 3D look in the spirit of escape-from-duckkov, with round chunky characters and warm lighting, set at night (neon, wet roads). Everything is our own code, with models built from Three.js primitives; that repo has no license, so nothing is copied from it. A chunky HTML HUD sits on top:
 - wanted stars
 - mission timer
 - cash = score
 - a minimap
 
-Everything is CSS and canvas with no build step, like the rest of the arcade. The palette and fonts are in keeping with the arcade; there are no GTA assets.
+Three.js 0.170.0 is vendored as one file, so there is still no build step, like the rest of the arcade. The palette and fonts are in keeping with the arcade; there are no GTA assets.
 
-Phones show a follow-cam on your character, with a virtual joystick (left thumb) and FIRE / ACTION buttons (right thumb). The big screen shows the whole city, the leaderboard, mission feed, Substrate stats, and the QR code.
+Phones show a follow-cam on your character, with a virtual joystick (left thumb) and FIRE / ACTION buttons (right thumb). Laptops use the same on-screen controls with the mouse. There are no keyboard controls (agreed 2026-11-02). The big screen shows the whole city, the leaderboard, mission feed, Substrate stats, and the QR code.
 
 ## Mapping game actions to Substrate
 

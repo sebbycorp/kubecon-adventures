@@ -12,7 +12,7 @@
 
 The pages are plain HTML/canvas/JS under `arcade/web/grand-theft-agent`, like the other games.
 
-**Tech Stack:** Go 1.27.3 (run Go as `mise exec go@1.27.3 -- go …`), `github.com/coder/websocket v1.8.15`, the existing `internal/kagent` and `internal/platform`, kagent `v1alpha3` Agent/Harness/ModelConfig, Substrate `WorkerPool`, agentgateway `AgentgatewayPolicy`, canvas 2D.
+**Tech Stack:** Go 1.27.3 (run Go as `mise exec go@1.27.3 -- go …`), `github.com/coder/websocket v1.8.15`, the existing `internal/kagent` and `internal/platform`, kagent `v1alpha3` Agent/Harness/ModelConfig, Substrate `WorkerPool`, agentgateway `AgentgatewayPolicy`, Three.js `0.170.0` (vendored ES module, no build step).
 
 **Spec:** `arcade/docs/grand-theft-agent.md` (read it first; this plan argues from it)
 
@@ -35,7 +35,9 @@ The pages are plain HTML/canvas/JS under `arcade/web/grand-theft-agent`, like th
 - **Family-friendly:** no gore. The kill action is labelled **DELETE** and the target de-rezzes into pixels. No player-vs-player damage. No player free text reaches the LLM.
 - **Art:** original art only. No Rockstar or GTA names, logos, fonts or assets apart from the parody title "Grand Theft Agent".
 - **Admin routes** live under `/admin/grand-theft-agent/…`; the tunnel already blocks `^/admin`.
-- **Images and dependencies:** pin image versions. New dependencies are limited to `github.com/coder/websocket v1.8.15`.
+- **Images and dependencies:** pin image versions. New dependencies are limited to `github.com/coder/websocket v1.8.15` (Go) and Three.js `0.170.0` vendored at `web/grand-theft-agent/vendor/three.module.min.js` (browser).
+- **Controls:** on-screen joystick + FIRE + ACTION on every device (touch or mouse pointer). **No keyboard controls** (user decision).
+- **Look:** cute top-down 3D in the style of escape-from-duckkov (round characters, warm lighting, here at night with neon), all original code and models built from Three.js primitives. That repo has no license: copy nothing from it.
 - **Secrets:** never print, cat or commit secrets.
 
 ## Review Focus
@@ -61,7 +63,8 @@ The pages are plain HTML/canvas/JS under `arcade/web/grand-theft-agent`, like th
 | `games/heist/ws.go` | WebSocket endpoint: input decode, snapshot fan-out, reconnect |
 | `games/heist/routes.go` | Pages, static files, WebSocket, admin |
 | `games/heist/*_test.go` | Unit tests per file; `cluster_test.go` (build tag `cluster`) for live checks |
-| `web/grand-theft-agent/city.js` | Shared canvas renderer (city, sprites, effects, HUD pieces) |
+| `web/grand-theft-agent/city.js` | Shared Three.js renderer (city, characters, effects) plus the HTML HUD overlay |
+| `web/grand-theft-agent/vendor/three.module.min.js` | Vendored Three.js 0.170.0 |
 | `web/grand-theft-agent/net.js` | WebSocket client, interpolation, reconnect |
 | `web/grand-theft-agent/phone.html` | Phone: join or squad, follow-cam, joystick, FIRE and ACTION |
 | `web/grand-theft-agent/screen.html` | Big screen: whole city, leaderboard, mission feed, Substrate stats, QR, heartbeat |
@@ -345,9 +348,10 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
 - [ ] **Step 2: Run** `go test ./games/heist/ -run 'Parse|Prompt' -v`. Expected: FAIL.
 - [ ] **Step 3: Implement `agentops.go`.**
   - There are three fixed jobs of 4 bash steps each (for example "crack the safe": write `safe.sh`, run it, count the loot with `wc`, `sha256sum` the bag). Each writes in `/data/workspace`.
-  - `Freeze` = `Suspend`, retried on FailedPrecondition the way `suspendSettled` does in `games/flow/game.go`.
+  - `Freeze` = `Suspend`, retried on FailedPrecondition the way `suspendSettled` does in `games/flow/game.go`. Task 1 found that a Prompt right after Resume and a Delete right after a turn can also return FailedPrecondition "not yet settled": retry those the same way (shared helper).
+  - Task 1 found the Agent's `outputSchema` can't use `maxLength` or `minimum` (kagent's portable profile rejects them), so `parseStep` is the only place `say` gets clipped to 60.
   - `Spring` = `Resume`, then one `Prompt` with the sprung line; `node` comes from `ActorStates`.
-  - `Extract` = `Checkpoint` with the last task ID (kept per session in the adapter), then `Delete`, with a resume first in `resume-first` mode.
+  - `Extract` = `Checkpoint` with the last task ID (kept per session in the adapter), then `Delete`. Task 1 measured that checkpointing a SUSPENDED session fails ("cannot checkpoint in state RUNTIME_STATE_SUSPENDED"), so the default mode is `resume-first`: Resume, Checkpoint, Delete. Never call `Checkpoint` on a suspended session, because it retries for 2 minutes.
   - A 403 or 429 from agentgateway is returned as an error whose text starts with `policy:`, so the screen can show it.
 - [ ] **Step 4: Run** `go test ./games/heist/ -v`. Expected: PASS.
 - [ ] **Step 5: Add `TestKagentOpsLifecycle`** (`cluster` tag): Spawn → 2 Steps → Freeze → Spring (`say` is not empty) → Step → Extract → assert the session is gone from `ListSessionIDs`. Run it the same way as Task 1, Step 3. Expected: PASS, with timings logged.
@@ -364,10 +368,12 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
   - `startCity(canvas, {mode:"phone"|"screen", me})`, which returns `{apply(snap), draw()}`.
   - `connect(url, onSnap)`, which returns `{send(obj)}`, reconnects with a 1 s → 8 s backoff, and interpolates positions between the last two snapshots (100 ms delay).
 
-- [ ] **Step 1: Build `city.js`.**
-  - Canvas 2D at 16 px per tile, scaled up to fit, night palette.
+- [ ] **Step 1: Vendor Three.js.** Download `https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js` to `web/grand-theft-agent/vendor/three.module.min.js` and import it with a relative path (no import map, no CDN at runtime).
+- [ ] **Step 2: Build `city.js`** as an ES module.
+  - Three.js scene, one world unit per tile. A fixed-angle top-down perspective camera (about 55° pitch): it follows the player on phones, and shows the whole city on the screen. Night palette with warm street lights, neon signs and soft shadows. Cap the device pixel ratio at 2 and keep it under ~150 draw calls (instanced meshes for buildings, windows and road marks) so mid-range phones hold 30+ fps.
+  - Every model is built from primitives (boxes, capsules, spheres, cylinders). Characters are round and chunky. No external models or textures, except the logos as canvas textures.
   - Roads with lane marks, buildings with lit windows (lit count = `substrate.busyWorkers`), the Vault (the Snapshot Storage logo, `/agent-flow/static/` not reused, so copy the needed SVGs), and Dispatch (the kagent logo).
-  - Avatars are top-down figures in the player colour with nick tags.
+  - Avatars are round 3D figures in the player colour, with HTML nick tags projected above them.
   - Targets, 12 shapes keyed by ID like Agent Flow's `shapeOf`:
     - green **NEW** and blue **RESTORED** tags
     - a progress bar of `step/steps`
@@ -379,18 +385,20 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
     - suspend-ray tracer
     - "suspended in N ms" and "restored in N ms" floaters from events
     - "it slipped away"
-  - HUD: wanted stars, mission timer, cash and a minimap.
-- [ ] **Step 2: Build `phone.html`.**
+  - HUD (HTML overlay, not WebGL): wanted stars, mission timer, takedowns, cash and a minimap (a small 2D canvas).
+  - If WebGL is unavailable, show "this device can't run 3D" with a link to the big screen. No 2D fallback renderer.
+- [ ] **Step 3: Build `phone.html`.**
   - Join flow: reuse the arcade cookie, sending to `/` to join if there's none. Then a **Go solo** button or a **Squad** button (create, showing the code; or join with a 4-letter input), then a level picker (1–3, with locked levels greyed until the previous one is won by this squad).
-  - In game: a follow-cam canvas, a left-thumb joystick (pointer events, a dead zone of 0.15) and right-thumb **FIRE** and **ACTION** buttons (hold ACTION for 1 s to DELETE). Send `in` at 20 Hz while anything is held and once on release.
+  - In game: the follow-cam 3D view, a left-thumb joystick (pointer events, so it works with touch and with a mouse; a dead zone of 0.15) and right-thumb **FIRE** and **ACTION** buttons. No keyboard handlers (hold ACTION for 1 s to DELETE). Send `in` at 20 Hz while anything is held and once on release.
   - Mission banner: "Freeze CRUSHER before the heist finishes", with the timer.
   - "Waiting for a free safehouse" when `Queued`.
   - A link to `/grand-theft-agent/screen`.
-- [ ] **Step 3: Verify in a phone-sized headless browser.** Run `./deploy.sh`, then use Playwright at 390×844 to open `http://localhost:8090/`, join as "Tester", open `/grand-theft-agent`, start Level 1, hold FIRE near the target and take screenshots. Expected:
+- [ ] **Step 4: Verify in a phone-sized headless browser** (run Chromium with `--use-angle=swiftshader` or `--enable-unsafe-swiftshader` so WebGL works headless). Run `./deploy.sh`, then use Playwright at 390×844 to open `http://localhost:8090/`, join as "Tester", open `/grand-theft-agent`, start Level 1, hold FIRE near the target and take screenshots. Expected:
   - the target freezes with a "suspended in … ms" label
   - the console shows no errors
+  - a 60-frame `requestAnimationFrame` timing in the page reports an average frame time (log it in the report; flag it if over 33 ms)
   - `kubectl … get` of the actor (via `/admin/grand-theft-agent/api/state`) shows it SUSPENDED
-- [ ] **Step 4: Commit** `git add web/grand-theft-agent && git commit -m "Grand Theft Agent: phone controller and city renderer"`
+- [ ] **Step 5: Commit** `git add web/grand-theft-agent && git commit -m "Grand Theft Agent: phone controller and city renderer"`
 
 ### Task 9: Big screen
 
@@ -401,7 +409,7 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
 - Consumes: `startCity(canvas, {mode:"screen"})`, `connect("/grand-theft-agent/ws?screen=1", …)`
 
 - [ ] **Step 1: Build `screen.html`.**
-  - The whole city fills the left of the screen.
+  - The whole 3D city fills the left of the screen, from a fixed high camera.
   - The right column has:
     - the QR card for `https://kubecon.agentpwned.ai/grand-theft-agent` (with `?join=` override, as on Agent Flow)
     - the leaderboard: the top 8 **players by takedowns** ("most agents frozen wins"), each with their squad tag and cash, plus a small squad-totals line
@@ -413,7 +421,7 @@ git commit -m "Grand Theft Agent: heist worker pool, agent, LLM route and checkp
     - an always-on pod cost estimate using `POD_HOUR_USD`
   - A compute heartbeat strip along the bottom that spikes on `spawn`, `sprung` and step events (port Agent Flow's `#pulseBox` approach).
   - District labels show real node names.
-  - Static background; no camera motion.
+  - Fixed camera; no camera motion.
 - [ ] **Step 2: Verify** with headless Chromium at 1920×1080 while two Playwright phone sessions play Level 3. Expected:
   - both avatars visible
   - the crew revive shows the RESTORED tag and the sprung bubble
