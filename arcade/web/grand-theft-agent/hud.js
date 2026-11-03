@@ -58,7 +58,7 @@ export function minimap(canvas, city) {
   b.fillStyle = "#000"; b.fillRect(0, 0, base.width, base.height);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const c = tiles[y][x];
-    b.fillStyle = c === "#" ? "#0c3a18" : c === "D" ? "#1e9e4a" : c === "V" ? "#b8901a" : "#010";
+    b.fillStyle = c === "#" ? "#1c2632" : c === "D" ? "#1e9e4a" : c === "V" ? "#b8901a" : "#05070a";
     b.fillRect(x * k, y * k, k, k);
   }
   const g = canvas.getContext("2d");

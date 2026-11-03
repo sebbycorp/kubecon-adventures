@@ -31,41 +31,41 @@ const (
 // playerRadius is the collision radius in tiles.
 const playerRadius = 0.3
 
-// layout is the fixed 48x32 map: a road grid on a 6-tile pitch, the Vault in the
-// bottom-right block and Dispatch in the centre.
-var layout = []string{
-	"................................................",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	"................................................",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	"................................................",
-	".#####.#####.#####.#####.DDDDD.#####.#####.####.",
-	".#####.#####.#####.#####.DDDDD.#####.#####.####.",
-	".#####.#####.#####.#####.DDDDD.#####.#####.####.",
-	".#####.#####.#####.#####.DDDDD.#####.#####.####.",
-	".#####.#####.#####.#####.DDDDD.#####.#####.####.",
-	"................................................",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	".#####.#####.#####.#####.#####.#####.#####.####.",
-	"................................................",
-	".#####.#####.#####.#####.#####.#####.#####.VVVV.",
-	".#####.#####.#####.#####.#####.#####.#####.VVVV.",
-	".#####.#####.#####.#####.#####.#####.#####.VVVV.",
-	".#####.#####.#####.#####.#####.#####.#####.VVVV.",
-	".#####.#####.#####.#####.#####.#####.#####.VVVV.",
-	"................................................",
-	"................................................",
+// Map geometry: 3-tile roads between 5x5 blocks on an 8-tile pitch, roads on every
+// edge, 7 block columns by 4 block rows.
+const (
+	roadWidth = 3
+	blockSize = 5
+	pitch     = roadWidth + blockSize
+	blockCols = 7
+	blockRows = 4
+)
+
+// layout is the fixed 59x35 map. Dispatch takes the block nearest the centre (column 3,
+// row 1; rows 1 and 2 tie and the upper one wins) and the Vault the bottom-right block.
+var layout = buildLayout()
+
+func buildLayout() []string {
+	w, h := roadWidth+blockCols*pitch, roadWidth+blockRows*pitch
+	rows := make([]string, h)
+	for y := range h {
+		row := make([]byte, w)
+		for x := range w {
+			bx, by := x/pitch, y/pitch
+			switch {
+			case x%pitch < roadWidth || y%pitch < roadWidth:
+				row[x] = Road
+			case bx == 3 && by == 1:
+				row[x] = DispatchTile
+			case bx == blockCols-1 && by == blockRows-1:
+				row[x] = VaultTile
+			default:
+				row[x] = Building
+			}
+		}
+		rows[y] = string(row)
+	}
+	return rows
 }
 
 // City is the tile map plus the named regions on it.

@@ -113,7 +113,7 @@ func TestBuildRigSpendsParts(t *testing.T) {
 func TestAllySpawnPlacesAlly(t *testing.T) {
 	x := newMTest(t, 24)
 	a := x.w.Avatars["a"]
-	a.Pos = Vec{20.5, 6.5}
+	a.Pos = Vec{20.5, 1.5}
 	x.w.Stash["a"] = rig("p", 4)
 	in, err := x.w.BuildRig("a")
 	if err != nil {
@@ -315,16 +315,16 @@ func TestHuntersTargetAllies(t *testing.T) {
 }
 
 func TestOwnerSpringsAlly(t *testing.T) {
-	w := testWorld([]string{"red", "blue"}, Vec{20.5, 12.5}, Vec{20.5, 12.5})
+	w := testWorld([]string{"red", "blue"}, Vec{20.5, 9.5}, Vec{20.5, 9.5})
 	a := w.Avatars["a"]
-	al := addAlly(w, "al", "a", 2, Vec{21.5, 12.5})
+	al := addAlly(w, "al", "a", 2, Vec{21.5, 9.5})
 	al.State, al.HP = Frozen, 0
 	if got := tap(w, 0.1, "b"); len(got) != 0 || al.Busy {
 		t.Fatalf("other player's tap: %v", got)
 	}
 	w.Input("b", Input{Action: true}) // another player's hold does nothing either
 	for range 15 {
-		al.Pos = Vec{21.5, 12.5}
+		al.Pos = Vec{21.5, 9.5}
 		if got := w.Tick(0.1); len(got) != 0 {
 			t.Fatalf("other player's hold: %v", got)
 		}

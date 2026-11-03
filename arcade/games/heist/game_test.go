@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -338,7 +339,7 @@ func TestOfflineAvatarEvicted(t *testing.T) {
 	g, f := newManual(t)
 	g.mu.Lock()
 	a := g.w.Avatars["a"]
-	a.Pos = Vec{10.5, 12.5}
+	a.Pos = Vec{10.5, 9.5}
 	addAlly(g.w, "al", "a", 1, Vec{}).SessionID = "s-al"
 	tg := addTarget(g.w, "t1", "", Dragged, a.Pos)
 	a.Dragging = "t1"
@@ -838,13 +839,13 @@ func TestCityAPI(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
 		t.Fatal(err)
 	}
-	if c.W != 48 || c.H != 32 || len(c.Tiles) != c.H || len(c.Tiles[0]) != c.W || c.Tiles[13][25] != DispatchTile {
+	if c.W != 59 || c.H != 35 || len(c.Tiles) != c.H || len(c.Tiles[0]) != c.W || c.Tiles[11][27] != DispatchTile {
 		t.Fatalf("city = %d x %d, %d rows", c.W, c.H, len(c.Tiles))
 	}
-	if c.Vault != (RectView{43, 25, 4, 5}) || c.Dispatch != (RectView{25, 13, 5, 5}) {
+	if c.Vault != (RectView{51, 27, 5, 5}) || c.Dispatch != (RectView{27, 11, 5, 5}) {
 		t.Fatalf("vault %+v dispatch %+v", c.Vault, c.Dispatch)
 	}
-	if len(c.Districts) != 2 || c.Districts["node-2"] != (RectView{24, 0, 24, 32}) {
+	if len(c.Districts) != 2 || c.Districts["node-2"] != (RectView{29, 0, 30, 35}) {
 		t.Fatalf("districts = %+v", c.Districts)
 	}
 }
@@ -862,4 +863,56 @@ func TestSnapHeadScore(t *testing.T) {
 	p.Takedowns, p.Cash = 3, 450
 	s.g.mu.Unlock()
 	snap(t, c, time.Second, func(sn Snap) bool { return sn.Best == 2 && sn.Takedowns == 3 && sn.Cash == 450 })
+}
+
+// TestModuleImportsVersioned: a module's relative imports carry the hash of what is
+// served for them, and a page's link to the module changes when only a dependency does.
+func TestModuleImportsVersioned(t *testing.T) {
+	web := func(dep string) fstest.MapFS {
+		return fstest.MapFS{
+			"phone.html":      {Data: []byte(`<script type="module" src="/grand-theft-agent/static/city.js"></script>`)},
+			"screen.html":     {Data: []byte(`screen`)},
+			"city.js":         {Data: []byte(`import * as T from "./vendor/t.js";` + "\n" + `import { town } from "./town.js";`)},
+			"town.js":         {Data: []byte(dep)},
+			"vendor/t.js":     {Data: []byte(`export const t = 1;`)},
+			"kagent-icon.svg": {Data: []byte(`<svg/>`)},
+		}
+	}
+	get := func(w fstest.MapFS, p string) string {
+		g := New(platform.New(nil), &liveOps{}, nil)
+		mux := http.NewServeMux()
+		g.Routes(mux, w)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		if rec.Code != 200 {
+			t.Fatalf("GET %s = %d", p, rec.Code)
+		}
+		return rec.Body.String()
+	}
+	a, b := web(`export const town = 1;`), web(`export const town = 2;`)
+	js := get(a, "/grand-theft-agent/static/city.js")
+	if !regexp.MustCompile(`from "\./vendor/t\.js\?v=[0-9a-f]{8}"`).MatchString(js) || !regexp.MustCompile(`from "\./town\.js\?v=[0-9a-f]{8}"`).MatchString(js) {
+		t.Fatalf("imports not versioned: %s", js)
+	}
+	if js == get(b, "/grand-theft-agent/static/city.js") {
+		t.Fatal("a changed dependency did not change the importing module")
+	}
+	if get(a, "/grand-theft-agent") == get(b, "/grand-theft-agent") {
+		t.Fatal("a changed dependency did not change the page's link to the module")
+	}
+	if get(a, "/grand-theft-agent/static/town.js") != `export const town = 1;` {
+		t.Fatal("a module without imports must be served as is")
+	}
+}
+
+func TestPingPong(t *testing.T) {
+	s := newServer(t, &liveOps{})
+	pl := s.g.p.Players.Join("Ada")
+	c := s.mustDial(t, &pl, "")
+	send(t, c, map[string]any{"t": "ping", "code": "42"})
+	var id string
+	_ = json.Unmarshal(frame(t, c, "pong", time.Second)["id"], &id)
+	if id != "42" {
+		t.Fatalf("pong id = %q, want 42", id)
+	}
 }

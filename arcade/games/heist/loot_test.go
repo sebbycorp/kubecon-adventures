@@ -210,7 +210,7 @@ func TestDownDropsBagAndRespawns(t *testing.T) {
 
 func TestFreezeAndDeleteDropLoot(t *testing.T) {
 	w := seeded(testWorld([]string{"red"}, Vec{1.5, 0.5}))
-	tg := addTarget(w, "t1", "red", Working, Vec{20.5, 6.5})
+	tg := addTarget(w, "t1", "red", Working, Vec{20.5, 1.5})
 	tg.Busy, tg.opBy = true, "a"
 	w.Resolve("t1", "freeze", false, 1)
 	if len(w.Drops) != 0 {

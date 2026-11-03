@@ -2,13 +2,14 @@
 //
 // Client to server: {"t":"in","mx","my","fire","act"} (at most ~20 Hz, extra frames are
 // dropped), {"t":"squad","op":"solo"|"create"|"join","code"}, {"t":"start","level"},
-// {"t":"build"}. Unknown or malformed frames are ignored; a frame over 4 KiB closes
-// the connection. A screen spectator (?screen=1) has no avatar and its frames are
-// ignored.
+// {"t":"build"} and {"t":"ping","code"}. Unknown or malformed frames are ignored; a
+// frame over 4 KiB closes the connection. A screen spectator (?screen=1) has no avatar
+// and its frames are ignored.
 //
 // Server to client: {"t":"snap",...} at 15 Hz (see Snap), {"t":"squad","code"},
-// {"t":"err","msg"}, and {"t":"full"} before closing when 48 players are online in the
-// city (or 8 screens are watching). start, build and squad frames are limited to 5/s.
+// {"t":"pong","id"} (the answer to a ping), {"t":"err","msg"}, and {"t":"full"} before
+// closing when 48 players are online in the city (or 8 screens are watching). start,
+// build, squad and ping frames share a limit of 5/s.
 package heist
 
 import (
@@ -449,10 +450,14 @@ func (g *Game) handle(c *client, b []byte) {
 		return
 	}
 	switch m.T {
-	case "squad", "start", "build":
+	case "squad", "start", "build", "ping":
 		if !c.allowCmd(time.Now()) {
 			return
 		}
+	}
+	if m.T == "ping" { // round-trip probe for the phone's debug overlay; touches no state
+		c.reply(map[string]string{"t": "pong", "id": m.Code})
+		return
 	}
 	clamp := func(f float64) float64 { return max(-1, min(1, f)) }
 	var err error

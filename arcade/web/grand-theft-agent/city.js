@@ -6,12 +6,14 @@
 // HP, positions) comes from entity fields; events only add floaters and tracers, so a
 // dropped snapshot never leaves the picture wrong.
 //
-// The look: a black void, dark glass blocks with green digital rain on their faces (one
-// shared canvas texture scrolled by UV offset), green wireframe edges, glowing players in
-// their colour, dark suited hunters with green outlines and shades, cyan ice for frozen
-// targets and glowing chips for loot. Every model is built from primitives. Characters
-// and props are instanced, so the whole city is a few dozen draw calls.
+// The look: a neon night city with Matrix accents. town.js builds the static city (glass
+// towers, windows, neon, road markings, a little digital rain). This file adds the green
+// landmarks (Dispatch, the Vault), glowing players in their colour, dark suited hunters
+// with green outlines and shades, cyan ice for frozen targets and glowing chips for loot.
+// Every model is built from primitives, and characters and props are instanced, so the
+// whole city is a few dozen draw calls.
 import * as THREE from "./vendor/three.module.min.js";
+import { buildTown, rand } from "./town.js";
 
 export const PLAYER_COLORS = { green: "#2bff6a", blue: "#3dd6ff", red: "#ff4d5e", purple: "#b98cff", gold: "#ffd23d", pink: "#ff5ad1" };
 export const colorOf = (name) => PLAYER_COLORS[name] || name || "#2bff6a";
@@ -19,7 +21,7 @@ const RAM_COLORS = ["#c8d6cc", "#c8d6cc", "#2bff6a", "#4aa8ff", "#c77dff", "#ffd
 const PART_COLORS = { cpu: "#5ef0ff", drive: "#ff9f43", board: "#19e6b0" };
 export const partColor = (p) => (p.kind === "ram" ? RAM_COLORS[p.tier] || RAM_COLORS[1] : PART_COLORS[p.kind] || "#9dffb0");
 
-const PITCH = (55 * Math.PI) / 180; // camera angle below the horizon
+const PITCH = (58 * Math.PI) / 180; // camera angle below the horizon
 const FIRE_RANGE = 6, FIRE_CD = 0.25, SPEED = 5;
 const CAP = { people: 96, hunters: 128, ice: 160, drops: 128, tracers: 96, bits: 400 };
 const GREEN = 0x2bff6a;
@@ -40,38 +42,6 @@ export function webglOK() {
 }
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-// rand is a small deterministic generator, so every phone draws the same city.
-function rand(seed) {
-  let s = seed >>> 0 || 1;
-  return () => ((s = (s * 16807) % 2147483647) / 2147483647);
-}
-
-// rainTexture draws columns of glyphs and digits that fade upward from a bright head.
-function rainTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256; c.height = 512;
-  const g = c.getContext("2d");
-  g.fillStyle = "#010a03"; g.fillRect(0, 0, 256, 512);
-  const glyphs = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ0123456789<>/{}=+*";
-  const r = rand(7);
-  g.font = "bold 13px monospace";
-  for (let x = 2; x < 256; x += 12) {
-    const head = Math.floor(r() * 512), len = 90 + r() * 260;
-    for (let y = 0; y < 512; y += 14) {
-      const d = (head - y + 512) % 512;
-      if (d > len || r() < 0.08) continue;
-      const a = 1 - d / len;
-      g.fillStyle = d < 16 ? `rgba(225,255,230,${a})` : `rgba(43,255,106,${a * 0.8})`;
-      g.fillText(glyphs[Math.floor(r() * glyphs.length)], x, y);
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
 
 // staticTexture is the TV static inside ice blocks, with a bright frame for edges.
 function staticTexture() {
@@ -108,68 +78,6 @@ function glowByColor(mat, k) {
   return mat;
 }
 
-// rectsOf finds the solid rectangles of tile ch (city blocks are rectangles).
-function rectsOf(tiles, ch) {
-  const H = tiles.length, W = tiles[0].length, seen = new Set(), out = [];
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    if (tiles[y][x] !== ch || seen.has(y * W + x)) continue;
-    let w = 0, h = 0;
-    while (x + w < W && tiles[y][x + w] === ch) w++;
-    while (y + h < H && tiles[y + h].slice(x, x + w) === ch.repeat(w)) h++;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) seen.add((y + j) * W + x + i);
-    out.push({ x, y, w, h });
-  }
-  return out;
-}
-
-// Geo collects flat-shaded quads into one BufferGeometry.
-class Geo {
-  constructor() { this.p = []; this.n = []; this.uv = []; }
-  quad(a, b, c, d, n, uv) {
-    for (const i of [0, 1, 2, 0, 2, 3]) {
-      this.p.push(...[a, b, c, d][i]); this.n.push(...n); this.uv.push(...uv[i]);
-    }
-  }
-  build(groups) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(this.p, 3));
-    g.setAttribute("normal", new THREE.Float32BufferAttribute(this.n, 3));
-    g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uv, 2));
-    for (const [start, count, m] of groups || []) g.addGroup(start, count, m);
-    return g;
-  }
-}
-
-// buildingGeometry merges every building: sides (group 0, digital rain, UVs in world
-// units so the glyphs keep their size) and roofs (group 1). It also returns the edges.
-function buildingGeometry(boxes) {
-  const sides = new Geo(), roofs = new Geo(), edges = [];
-  const S = 2.6; // world units per texture repeat
-  for (const { x0, z0, x1, z1, h, v } of boxes) {
-    const uvs = (u0, u1) => [[u0 / S, v], [u1 / S, v], [u1 / S, v + h / S], [u0 / S, v + h / S]];
-    sides.quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1], [0, 0, 1], uvs(x0, x1));
-    sides.quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0], [0, 0, -1], uvs(x1, x0));
-    sides.quad([x1, 0, z1], [x1, 0, z0], [x1, h, z0], [x1, h, z1], [1, 0, 0], uvs(z1, z0));
-    sides.quad([x0, 0, z0], [x0, 0, z1], [x0, h, z1], [x0, h, z0], [-1, 0, 0], uvs(z0, z1));
-    roofs.quad([x0, h, z1], [x1, h, z1], [x1, h, z0], [x0, h, z0], [0, 1, 0], [[x0 / S, -z1 / S + v], [x1 / S, -z1 / S + v], [x1 / S, -z0 / S + v], [x0 / S, -z0 / S + v]]);
-    const c = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
-    for (let i = 0; i < 4; i++) {
-      const [ax, az] = c[i], [bx, bz] = c[(i + 1) % 4];
-      edges.push(ax, 0.01, az, bx, 0.01, bz, ax, h, az, bx, h, bz, ax, 0, az, ax, h, az);
-    }
-  }
-  const ns = sides.p.length / 3;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute([...sides.p, ...roofs.p], 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute([...sides.n, ...roofs.n], 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute([...sides.uv, ...roofs.uv], 2));
-  g.addGroup(0, ns, 0);
-  g.addGroup(ns, roofs.p.length / 3, 1);
-  const e = new THREE.BufferGeometry();
-  e.setAttribute("position", new THREE.Float32BufferAttribute(edges, 3));
-  return { geo: g, edges: e };
-}
-
 // inst is an InstancedMesh that is redrawn every frame.
 function inst(geo, mat, cap, { shadow = true, color = false } = {}) {
   const m = new THREE.InstancedMesh(geo, mat, cap);
@@ -197,125 +105,34 @@ export function startCity(canvas, opts) {
   const W = city.w, H = city.h, tiles = city.tiles;
   const phone = mode === "phone";
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.shadowMap.enabled = true;
+  // Phones (touch, coarse pointer) render without antialiasing, at a pixel ratio of at
+  // most 1.5 and without shadow maps (blob shadows instead): measured, that is where
+  // their frame time goes. Laptops and the big screen get the full picture.
+  const lowPower = phone && ((window.matchMedia && matchMedia("(pointer: coarse)").matches) || navigator.maxTouchPoints > 0);
+  const dpr = window.devicePixelRatio || 1;
+  const QUALITY = { high: { ratio: Math.min(dpr, lowPower ? 1.5 : 2), shadows: !lowPower }, low: { ratio: Math.min(dpr, lowPower ? 1 : 1.25), shadows: false } };
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowPower, powerPreference: "high-performance" });
+  renderer.setPixelRatio(QUALITY.high.ratio);
+  renderer.shadowMap.enabled = QUALITY.high.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000300);
+  scene.background = new THREE.Color(0x04060b);
   const cam = new THREE.PerspectiveCamera(42, 1, 0.5, 400);
 
-  scene.add(new THREE.AmbientLight(0x2a5a35, 1.6));
-  const sun = new THREE.DirectionalLight(0xbfffd0, 1.6);
-  sun.castShadow = true;
+  // Night, but readable: a cool sky fill, a warm bounce from the street lights, and a
+  // pale moon for shading (and shadows on laptops).
+  scene.add(new THREE.HemisphereLight(0x9fb0d8, 0x5a4630, 1.6), new THREE.AmbientLight(0x404860, 0.8));
+  const sun = new THREE.DirectionalLight(0xdfe6ff, 1.7);
+  sun.castShadow = QUALITY.high.shadows;
   sun.shadow.mapSize.set(phone ? 1024 : 2048, phone ? 1024 : 2048);
   sun.shadow.bias = -0.0008;
   sun.shadow.radius = 3;
   scene.add(sun, sun.target);
 
   // ---- the static city ----
-  const rain = rainTexture(), staticTex = staticTexture(), glowTex = glowTexture();
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 60, H + 60),
-    new THREE.MeshStandardMaterial({ color: 0x020a04, roughness: 0.35, metalness: 0.6 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.set(W / 2, 0, H / 2);
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  const r = rand(11), boxes = [];
-  for (const b of rectsOf(tiles, "#")) {
-    const parts = [];
-    const k = r();
-    if (b.w >= 4 && b.h >= 4 && k < 0.35) { // four towers
-      const sx = 2 + (r() < 0.5 ? 0 : 1), sy = 2 + (r() < 0.5 ? 0 : 1);
-      parts.push([0, 0, sx, sy], [sx, 0, b.w, sy], [0, sy, sx, b.h], [sx, sy, b.w, b.h]);
-    } else if (k < 0.7) { // two slabs
-      const s = 2 + Math.floor(r() * 2);
-      parts.push(...(r() < 0.5 ? [[0, 0, s, b.h], [s, 0, b.w, b.h]] : [[0, 0, b.w, s], [0, s, b.w, b.h]]));
-    } else parts.push([0, 0, b.w, b.h]);
-    for (const [a, c, d, e] of parts) {
-      boxes.push({ x0: b.x + a, z0: b.y + c, x1: b.x + d, z1: b.y + e, h: 0.8 + r() * 1.8, v: r() * 4 });
-    }
-  }
-  const bg = buildingGeometry(boxes);
-  const glass = new THREE.MeshStandardMaterial({ color: 0x031208, emissive: 0xffffff, emissiveMap: rain, emissiveIntensity: 0.85, roughness: 0.25, metalness: 0.8 });
-  // Roofs show the same rain, dimmer, so the top-down view still reads as the Matrix.
-  const roof = new THREE.MeshStandardMaterial({ color: 0x03140a, emissive: 0x2a8a4a, emissiveMap: rain, emissiveIntensity: 0.35, roughness: 0.4, metalness: 0.7 });
-  const blocks = new THREE.Mesh(bg.geo, [glass, roof]);
-  blocks.castShadow = blocks.receiveShadow = true;
-  scene.add(blocks, new THREE.LineSegments(bg.edges, new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.8 })));
-
-  // Lit windows: one per busy worker (an awake gVisor sandbox), spread over the city.
-  const slots = [];
-  {
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
-    for (const b of boxes) {
-      for (let y = 0.4; y < b.h - 0.2; y += 0.45) {
-        for (let x = b.x0 + 0.35; x < b.x1 - 0.2; x += 0.55) slots.push(m.clone().compose(new THREE.Vector3(x, y, b.z1 + 0.012), q.identity(), one));
-        for (let z = b.z0 + 0.35; z < b.z1 - 0.2; z += 0.55) {
-          slots.push(m.clone().compose(new THREE.Vector3(b.x1 + 0.012, y, z), q.setFromAxisAngle(up, Math.PI / 2), one));
-          slots.push(m.clone().compose(new THREE.Vector3(b.x0 - 0.012, y, z), q.setFromAxisAngle(up, -Math.PI / 2), one));
-        }
-      }
-    }
-    const sr = rand(5);
-    for (let i = slots.length - 1; i > 0; i--) { const j = Math.floor(sr() * (i + 1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
-  }
-  const windows = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.26, 0.18), new THREE.MeshBasicMaterial({ color: 0xeaffd8 }), Math.min(slots.length, 400));
-  windows.count = 0;
-  scene.add(windows);
-  let litWindows = -1;
-  function setWindows(n) {
-    n = Math.min(n, windows.instanceMatrix.count);
-    if (n === litWindows) return;
-    for (let i = 0; i < n; i++) windows.setMatrixAt(i, slots[i]);
-    windows.count = n; litWindows = n;
-    windows.instanceMatrix.needsUpdate = true;
-  }
-
-  // Lane marks: dashes along the centre line of every road run, whatever its width (a
-  // road is a run of '.' at most MAX_ROAD tiles across that is longer than it is wide),
-  // and none across junctions.
-  {
-    const MAX_ROAD = 4, road = (x, y) => x >= 0 && y >= 0 && x < W && y < H && tiles[y][x] === ".";
-    const run = (x, y, dx, dy) => { // [first, length] of the road run through (x, y) along (dx, dy)
-      let a = 0, b = 0;
-      while (road(x - (a + 1) * dx, y - (a + 1) * dy)) a++;
-      while (road(x + (b + 1) * dx, y + (b + 1) * dy)) b++;
-      return [-a, a + b + 1];
-    };
-    const dash = [], done = new Set();
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      if (!road(x, y)) continue;
-      for (const [vertical, cx, cy] of [[false, 0, 1], [true, 1, 0]]) {
-        const [off, across] = run(x, y, cx, cy); // the road's width at this tile
-        if (across > MAX_ROAD || run(x, y, cy, cx)[1] <= across + 1) continue; // open area or junction
-        const c = vertical ? x + off + across / 2 : y + off + across / 2;
-        const key = vertical ? `v${y},${c}` : `h${x},${c}`;
-        if (done.has(key)) continue;
-        done.add(key);
-        dash.push(vertical ? [c, y + 0.5, 1] : [x + 0.5, c, 0]);
-      }
-    }
-    const lm = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.42, 0.05).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: GREEN, transparent: true, opacity: 0.45 }), Math.max(dash.length, 1));
-    lm.count = dash.length;
-    const m = new THREE.Matrix4();
-    dash.forEach(([x, z, v], i) => lm.setMatrixAt(i, m.makeRotationY(v ? Math.PI / 2 : 0).setPosition(x, 0.015, z)));
-    scene.add(lm);
-  }
-
-  // District borders: a faint line where one node's blocks end and the next begin.
-  const districts = Object.entries(city.districts || {}).sort((a, b) => a[1].x - b[1].x);
-  {
-    const pts = [];
-    for (const [, d] of districts.slice(1)) pts.push(d.x + 0.5, 0.02, 0, d.x + 0.5, 0.02, H);
-    if (pts.length) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-      scene.add(new THREE.LineSegments(g, new THREE.LineDashedMaterial({ color: 0x5ef0ff, dashSize: 0.3, gapSize: 0.3, transparent: true, opacity: 0.5 })).computeLineDistances());
-    }
-  }
+  const staticTex = staticTexture(), glowTex = glowTexture();
+  const town = buildTown(scene, city);
+  const districts = town.districts;
 
   // Dispatch: a landing pad with the kagent logo and a radio tower (the LLM route).
   const D = city.dispatch, dc = new THREE.Vector3(D.x + D.w / 2, 0, D.y + D.h / 2);
@@ -439,7 +256,12 @@ export function startCity(canvas, opts) {
   const tracers = inst(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), CAP.tracers, { shadow: false, color: true });
   const bits = inst(new THREE.BoxGeometry(0.09, 0.09, 0.09), new THREE.MeshBasicMaterial(), CAP.bits, { shadow: false, color: true });
 
-  for (const m of [...Object.values(P), PX, ...Object.values(T), TX, ice, freezing, chips, glows, tracers, bits]) scene.add(m);
+  // Blob shadows: a soft dark spot under every character when shadow maps are off.
+  const blobs = inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: glowTex, color: 0x000000, transparent: true, opacity: 0.75, depthWrite: false }), CAP.people + CAP.hunters, { shadow: false });
+  const blob = [];
+
+  for (const m of [...Object.values(P), PX, ...Object.values(T), TX, ice, freezing, chips, glows, tracers, bits, blobs]) scene.add(m);
 
   // ---- HTML labels over the canvas ----
   const overlay = opts.overlay || (() => {
@@ -462,7 +284,7 @@ export function startCity(canvas, opts) {
 .gl-bar b{display:block;height:100%;background:#ffd23d}
 .gl-bub{max-width:200px;white-space:normal;background:rgba(0,20,6,.88);border:1px solid #2bff6a;border-radius:8px;padding:3px 7px;color:#d8ffe0;font-size:11px;box-shadow:0 0 10px #2bff6a55}
 .gl-float{font-weight:700;font-size:12px;transition:none}
-.gl-place{font-size:10px;letter-spacing:.18em;color:#5bff8a;opacity:.85}
+.gl-place{font-size:10px;letter-spacing:.18em;color:#5bff8a;opacity:.85}.gl-gold{color:#ffd23d}
 .gl-chip{font-size:10px;font-weight:700}`;
     document.head.appendChild(st);
   }
@@ -535,11 +357,11 @@ export function startCity(canvas, opts) {
     snap = s; snapAt = performance.now();
     if (s.me) me = s.me;
     if (prev && s.now < prev.now - 0.5) { booked.clear(); seen.clear(); } // admin reset
-    setWindows(s.substrate ? s.substrate.busyWorkers : 0);
+    town.setAwake(s.substrate ? s.substrate.busyWorkers : 0);
     for (const t of s.targets) {
       const o = seen.get(t.id);
       if (o) {
-        if (t.state === "Deleted" && o.state !== "Deleted") burst(t.x, t.y, GREEN, 60);
+        if (t.state === "Deleted" && o.state !== "Deleted") burst(t.x, t.y, 0xbfefff, 60);
         if (t.state === "Booked" && o.state !== "Booked") burst(t.x, t.y, 0xffd23d, 24);
         if (t.hits > o.hits && t.state === "Working") {
           const shooter = nearestShooter(s, t);
@@ -610,8 +432,8 @@ export function startCity(canvas, opts) {
     cam.updateProjectionMatrix();
     const vf = (cam.fov * Math.PI) / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * cam.aspect);
     if (phone) {
-      // About 12 tiles across a portrait phone, 14 deep on a laptop; capped by the city size.
-      dist = Math.max(Math.min(12, W) / (2 * Math.tan(hf / 2)), Math.min(14, H) / (2 * Math.tan(vf / 2)));
+      // About 14 tiles across a portrait phone, 16 deep on a laptop; capped by the city size.
+      dist = Math.max(Math.min(14, W) / (2 * Math.tan(hf / 2)), Math.min(16, H) / (2 * Math.tan(vf / 2)));
     } else {
       // The whole city: the smallest distance at which every corner is on screen.
       let lo = 5, hi = 300;
@@ -686,7 +508,6 @@ export function startCity(canvas, opts) {
   function draw() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, 0.1);
     last = now; clock += dt;
-    rain.offset.y += dt * 0.12;
     staticTex.offset.set(Math.random(), Math.random());
     freezing.material.opacity = 0.12 + Math.random() * 0.3;
     towerFlash = Math.max(0, towerFlash - dt * 1.5);
@@ -696,6 +517,7 @@ export function startCity(canvas, opts) {
     for (const l of labels.values()) l.used = false;
     const s = snap;
     let np = 0, nh = 0, ni = 0, nf = 0, nd = 0, ng = 0, nt = 0;
+    blob.length = 0;
 
     if (s) {
       // Players.
@@ -710,6 +532,7 @@ export function startCity(canvas, opts) {
         put(P.ring, np, p.x, p.y, 0, a.id === me ? 1.12 : 1);
         P.body.setColorAt(np, col); P.head.setColorAt(np, col); P.ring.setColorAt(np, a.down ? C.set("#ff4d5e") : col);
         np++;
+        blob.push(p.x, p.y, 1);
         const tag = a.id === me ? `<b style="color:#fff">${esc(a.nick)}</b>` : esc(a.nick);
         label("e:a" + a.id, tag, p.x, a.down ? 0.9 : 1.62, p.y, "gl-nick");
         labels.get("e:a" + a.id).el.style.color = colorOf(a.color);
@@ -729,6 +552,7 @@ export function startCity(canvas, opts) {
         put(P.ring, np, p.x, p.y, 0, 0.72);
         P.body.setColorAt(np, col); P.head.setColorAt(np, col); P.ring.setColorAt(np, col);
         np++;
+        blob.push(p.x, p.y, 0.75);
         if (frozen && ni < CAP.ice) put(ice, ni++, p.x, p.y, 0, 0.75);
         const abub = al.say && (allySay.get(al.id) || {}).until > now ? `<span class="gl-bub">“${esc(al.say)}”</span>` : "";
         label("e:l" + al.id, `${abub}<span>ally · DDR${al.tier}</span>`, p.x, 1.25, p.y, "gl-name");
@@ -753,10 +577,13 @@ export function startCity(canvas, opts) {
         putS(T.tip, nh, p.x, p.y, yaw, hat >= 2 ? sc : none, hat === 2 ? -0.06 : 0);
         const flick = going && Math.random() < 0.5;
         const suit = frozen ? "#123c44" : t.state === "Escaped" ? "#2a0d10" : flick ? "#1d5560" : "#0b120c";
+        // Green is kept for the shades; the outline is a quiet slate so it reads on asphalt.
         const edge = frozen || flick ? "#9fffff" : t.state === "Escaped" ? "#ff4d5e" : "#2bff6a";
+        const hull = frozen || flick ? "#9fffff" : t.state === "Escaped" ? "#ff4d5e" : "#6a7590";
         T.body.setColorAt(nh, C.set(suit)); T.head.setColorAt(nh, C.set(suit));
-        T.hull.setColorAt(nh, C.set(edge)); T.shades.setColorAt(nh, C.set(edge)); T.ring.setColorAt(nh, C.set(edge));
+        T.hull.setColorAt(nh, C.set(hull)); T.shades.setColorAt(nh, C.set(edge)); T.ring.setColorAt(nh, C.set(hull));
         nh++;
+        blob.push(p.x, p.y, 1.1);
         if (frozen && ni < CAP.ice) putS(ice, ni++, p.x, p.y, 0, sc);
         if (going && nf < CAP.ice) putS(freezing, nf++, p.x, p.y, 0, sc.map((v) => v * (0.9 + Math.random() * 0.15)));
         const o = seen.get(t.id) || {};
@@ -832,7 +659,11 @@ export function startCity(canvas, opts) {
       bits.setColorAt(nb++, b.color);
     }
 
-    const counts = [[P.body, np], [P.head, np], [P.visor, np], [P.ring, np], [PX, np], [ice, ni], [freezing, nf], [chips, nd], [glows, ng], [tracers, nt], [bits, nb], [TX, nh]];
+    let nbl = 0;
+    if (!renderer.shadowMap.enabled) {
+      for (let i = 0; i < blob.length && nbl < blobs.instanceMatrix.count; i += 3) putS(blobs, nbl++, blob[i], blob[i + 1], 0, [blob[i + 2], 1, blob[i + 2]], 0.02);
+    }
+    const counts = [[blobs, nbl], [P.body, np], [P.head, np], [P.visor, np], [P.ring, np], [PX, np], [ice, ni], [freezing, nf], [chips, nd], [glows, ng], [tracers, nt], [bits, nb], [TX, nh]];
     for (const k in T) counts.push([T[k], nh]);
     for (const [m, n] of counts) {
       m.count = n;
@@ -852,7 +683,7 @@ export function startCity(canvas, opts) {
     }
     // Place labels.
     label("dispatch", "DISPATCH · kagent", dc.x, 0.3, D.y + D.h - 0.2, "gl-place");
-    label("vault", "SNAPSHOT VAULT", V.x + V.w / 2, vh + 0.5, V.y + V.h / 2, "gl-place");
+    label("vault", "SNAPSHOT VAULT", V.x + V.w / 2, vh + 0.5, V.y + V.h / 2, "gl-place gl-gold");
     if (!phone) for (const [name, d] of districts) label("n" + name, name, d.x + d.w / 2, 0.05, -0.3, "gl-place");
     for (const [k, l] of labels) {
       if (!l.used) {
@@ -865,15 +696,16 @@ export function startCity(canvas, opts) {
     frameMs += performance.now() - now;
   }
 
-  // setLowQuality trades looks for speed on slow phones: pixel ratio 1.25 and no shadows.
-  // (Antialiasing is fixed when the context is made, so it stays as it was.)
+  // setLowQuality trades looks for speed (QUALITY.low: a lower pixel ratio, no shadows).
+  // Antialiasing is fixed when the context is made, so it stays as it was.
   let low = false;
   function setLowQuality(on) {
     if (on === low) return;
     low = on;
-    renderer.setPixelRatio(on ? Math.min(window.devicePixelRatio || 1, 1.25) : Math.min(window.devicePixelRatio || 1, 2));
-    renderer.shadowMap.enabled = !on;
-    sun.castShadow = !on;
+    const q = on ? QUALITY.low : QUALITY.high;
+    renderer.setPixelRatio(q.ratio);
+    renderer.shadowMap.enabled = q.shadows;
+    sun.castShadow = q.shadows;
     scene.traverse((o) => { for (const m of [].concat(o.material || [])) m.needsUpdate = true; }); // shadow defines changed
     resize();
   }

@@ -86,6 +86,8 @@ Art direction (agreed 2026-11-02): a cute top-down 3D look in the spirit of esca
 - cash = score
 - a minimap
 
+The map (decided 2026-11-02): 3-tile-wide roads between 5×5 blocks on an 8-tile pitch, with roads on every edge, so 7 × 4 blocks on a 59 × 35 tile map. Dispatch takes the block nearest the centre (column 3, row 1) and the Impound Vault the bottom-right block. The server's `city.go` is the only copy of the layout; clients fetch it from `GET /grand-theft-agent/api/city` and draw whatever it says.
+
 Three.js 0.170.0 is vendored as one file, so there is still no build step, like the rest of the arcade. The palette and fonts are in keeping with the arcade; there are no GTA assets.
 
 Phones show a follow-cam on your character, with a virtual joystick (left thumb) and FIRE / ACTION buttons (right thumb). Laptops use the same on-screen controls with the mouse. There are no keyboard controls (agreed 2026-11-02). The big screen shows the whole city, the leaderboard, mission feed, Substrate stats, and the QR code.
@@ -182,12 +184,14 @@ The targets fight back, and players loot hardware from them to run agents of the
 - Hunters target allies too. An ally at 0 health is **frozen**, which is a real suspend. You can spring it back with a short ACTION next to it, which is a real resume with its memory intact.
 - Allies are deleted when your mission ends or you leave.
 
-**Matrix look.** It's the 3D city, recoloured:
-- a black void and dark glass buildings, with green digital rain running down their faces (a canvas texture of glyphs and digits)
-- glowing green wireframe edges and emissive green characters
-- hunters as dark figures in suits with green outlines
-- allies in your player colour
-- parts that glow
+**Look: a stylised night city** (2026-11-02: the user found the all-green first build "maybe too much matrix looking", then, after playing on a phone, asked for "like a city", not Matrix buildings):
+- towers (2.2–3.5), mid-rises (1.2–2.2) and low shops (0.6–0.9, with awnings) in natural facade colours (concrete, brick, sand, glass), set back on raised sidewalks with curbs
+- windows lit warm and cool; the brightest panes are the awake workers
+- rooftop clutter (AC units, water tanks, antennas), a few neon signs in cyan, magenta and amber, and street lights with warm pools of light on every block corner
+- dark asphalt with yellow centre dashes, white edge lines and white zebra crossings at junctions; no digital rain
+- green stays only in the HUD, at Dispatch and on the hunters' shades; hunters are dark figures in suits with a quiet slate outline
+- players glow in their own colour, allies in their owner's colour, and parts glow by rarity (DDR5 gold)
+- phones render without antialiasing, at a pixel ratio of at most 1.5 and with blob shadows instead of shadow maps
 
 Everything is original: no film assets, names or logos.
 

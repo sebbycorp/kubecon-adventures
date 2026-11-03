@@ -99,6 +99,8 @@
   #down h1 { margin: 0; color: #ffd0d4; font-size: 26px; letter-spacing: .12em; text-shadow: 0 0 18px var(--red); }
   #toast { position: fixed; left: 50%; top: calc(140px + var(--st)); transform: translateX(-50%); z-index: 6; padding: 8px 14px; color: #fff; border-color: var(--gold); pointer-events: none; text-align: center; max-width: calc(100% - 32px); }
   #status { position: fixed; left: 50%; top: 45%; transform: translateX(-50%); z-index: 6; padding: 10px 16px; text-align: center; }
+  #debug { position: fixed; left: 8px; top: calc(110px + var(--st)); z-index: 7; padding: 6px 8px; font-size: 10px; line-height: 1.45; white-space: pre; pointer-events: none; color: #d8ffe0; }
+  #debug b { color: #ffd23d; font-weight: 700; }
   #nogl { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; z-index: 9; }
   #nogl h1 { color: #fff; font-size: 18px; margin: 0; }
 
@@ -186,6 +188,7 @@
 <div id="down" class="hidden"><h1>DOWN — RESPAWNING</h1><div>Your unbanked loot dropped where you fell.</div></div>
 <div id="toast" class="panel hidden"></div>
 <div id="status" class="panel hidden"></div>
+<div id="debug" class="panel hidden"></div>
 <div id="nogl" class="hidden"><h1>This device can't run 3D.</h1><p>Watch the city on the big screen instead.</p><a href="/grand-theft-agent/screen">Open the big screen</a></div>
 
 <script type="module">
@@ -197,6 +200,9 @@ const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const SHEETS = ["squad", "levels", "result", "stash", "menu"];
 const sheet = (id) => { for (const s of SHEETS) show(s, s === id); };
+
+// ?debug=1 shows frame and network timing (see the bottom of this script).
+const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
 
 // ---- join, map, socket ----
 const halt = () => new Promise(() => {}); // stop this module without an error
@@ -237,6 +243,7 @@ const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${locati
   if (first) onFirstSnap();
   syncMission();
 }, {
+  ping: DEBUG ? 2000 : 0,
   onMsg(m) {
     if (m.t === "squad") onSquad(m.code);
     if (m.t === "err") onErr(m.msg);
@@ -542,9 +549,29 @@ function probeFrame(now) {
 }
 
 // ---- frame loop ----
+// Debug overlay: frame rate and time, snapshot arrival gaps, the interpolation buffer
+// (snapshots still ahead of the drawn time, and the adaptive delay) and the ping.
+const frameTimes = [];
+let lastFrame = 0, lastDebug = 0;
+function debug(now) {
+  if (lastFrame) { frameTimes.push(now - lastFrame); if (frameTimes.length > 120) frameTimes.shift(); }
+  lastFrame = now;
+  if (!DEBUG || now - lastDebug < 250) return;
+  lastDebug = now;
+  const n = frameTimes.length || 1, avg = frameTimes.reduce((a, b) => a + b, 0) / n, max = Math.max(0, ...frameTimes);
+  const ns = net.stats(), vs = view.stats(), f = (v) => v.toFixed(1);
+  $("debug").innerHTML = `<b>${f(1000 / avg)} fps</b>  frame ${f(avg)} ms (max ${f(max)})\n` +
+    `snap gap ${f(ns.gapAvg)} avg · ${f(ns.gapP95)} p95 · ${f(ns.gapMax)} max ms\n` +
+    `buffer ${ns.depth} ahead · delay ${f(ns.delay)} ms${ns.dry ? " · <b>DRY</b>" : ""}\n` +
+    `ping ${ns.rtt ? f(ns.rtt) + " ms" : "…"}\n` +
+    `draw calls ${vs.calls} · ratio ${vs.pixelRatio} · shadows ${vs.shadows ? "on" : "off"}`;
+}
+show("debug", DEBUG);
+
 function frame(now) {
   view.draw();
   probeFrame(now);
+  debug(now);
   if (ctl.act) {
     const p = Math.min(1, (now - ctl.actAt) / 1000);
     $("actRing").setAttribute("stroke-dasharray", `${(p * 100).toFixed(1)} 100`);
@@ -559,6 +586,8 @@ requestAnimationFrame(frame);
 window.gta = {
   stats: () => view.stats(),
   snap: () => snap,
+  net: () => net.stats(),
+  frames: () => { const n = frameTimes.length || 1; return { avg: frameTimes.reduce((a, b) => a + b, 0) / n, max: Math.max(0, ...frameTimes), n: frameTimes.length }; },
   probe,
   release: releaseAll,
   city,

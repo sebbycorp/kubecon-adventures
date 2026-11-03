@@ -31,9 +31,9 @@ func tap(w *World, dt float64, ids ...string) []Intent {
 }
 
 func TestThreeHitsFreeze(t *testing.T) {
-	w := testWorld([]string{"red", "red"}, Vec{10.5, 12.5}, Vec{10.5, 12.5})
-	tg := addTarget(w, "t1", "red", Working, Vec{14.5, 12.5})
-	far := addTarget(w, "t2", "red", Working, Vec{3.5, 12.5}) // 7 tiles: out of range
+	w := testWorld([]string{"red", "red"}, Vec{10.5, 9.5}, Vec{10.5, 9.5})
+	tg := addTarget(w, "t1", "red", Working, Vec{14.5, 9.5})
+	far := addTarget(w, "t2", "red", Working, Vec{3.5, 9.5}) // 7 tiles: out of range
 
 	var got []Intent
 	w.Input("a", Input{Fire: true})
@@ -79,8 +79,8 @@ func TestThreeHitsFreeze(t *testing.T) {
 }
 
 func TestFreezeFailureThaws(t *testing.T) {
-	w := testWorld([]string{"red"}, Vec{10.5, 12.5})
-	tg := addTarget(w, "t1", "red", Working, Vec{14.5, 12.5})
+	w := testWorld([]string{"red"}, Vec{10.5, 9.5})
+	tg := addTarget(w, "t1", "red", Working, Vec{14.5, 9.5})
 	w.Input("a", Input{Fire: true})
 	var got []Intent
 	for i := 0; i < 3; i++ {
@@ -100,9 +100,9 @@ func TestFreezeFailureThaws(t *testing.T) {
 }
 
 func TestDragAndBook(t *testing.T) {
-	w := testWorld([]string{"red"}, Vec{44.5, 24.5})
+	w := testWorld([]string{"red"}, Vec{52.5, 26.5})
 	a := w.Avatars["a"]
-	tg := addTarget(w, "t1", "red", Frozen, Vec{45.5, 24.5})
+	tg := addTarget(w, "t1", "red", Frozen, Vec{53.5, 26.5})
 	if got := tap(w, 0.1, "a"); len(got) != 0 {
 		t.Fatalf("own-squad tap gave intents %v (should drag, not spring)", got)
 	}
@@ -139,8 +139,8 @@ func TestDragAndBook(t *testing.T) {
 }
 
 func TestDropOnShortPress(t *testing.T) {
-	w := testWorld([]string{"red"}, Vec{44.5, 24.5})
-	tg := addTarget(w, "t1", "red", Frozen, Vec{45.5, 24.5})
+	w := testWorld([]string{"red"}, Vec{52.5, 26.5})
+	tg := addTarget(w, "t1", "red", Frozen, Vec{53.5, 26.5})
 	tap(w, 0.1, "a")
 	tap(w, 0.1, "a")
 	if tg.State != Frozen || w.Avatars["a"].Dragging != "" {
@@ -150,16 +150,16 @@ func TestDropOnShortPress(t *testing.T) {
 
 func TestDoubleActionOneWinner(t *testing.T) {
 	// Two drags on one target: the lower player ID wins.
-	w := testWorld([]string{"red", "red"}, Vec{20.5, 12.5}, Vec{22.5, 12.5})
-	tg := addTarget(w, "t1", "red", Frozen, Vec{21.5, 12.5})
+	w := testWorld([]string{"red", "red"}, Vec{20.5, 9.5}, Vec{22.5, 9.5})
+	tg := addTarget(w, "t1", "red", Frozen, Vec{21.5, 9.5})
 	tap(w, 0.1, "b", "a")
 	if tg.State != Dragged || w.Avatars["a"].Dragging != "t1" || w.Avatars["b"].Dragging != "" {
 		t.Fatalf("drag winner: a=%q b=%q", w.Avatars["a"].Dragging, w.Avatars["b"].Dragging)
 	}
 
 	// Spring (a is a rival) and drag (b owns it) in the same tick: the drag wins.
-	w = testWorld([]string{"blue", "red"}, Vec{20.5, 12.5}, Vec{22.5, 12.5})
-	tg = addTarget(w, "t1", "red", Frozen, Vec{21.5, 12.5})
+	w = testWorld([]string{"blue", "red"}, Vec{20.5, 9.5}, Vec{22.5, 9.5})
+	tg = addTarget(w, "t1", "red", Frozen, Vec{21.5, 9.5})
 	if got := tap(w, 0.1, "a", "b"); len(got) != 0 {
 		t.Fatalf("spring should lose to drag, got %v", got)
 	}
@@ -168,8 +168,8 @@ func TestDoubleActionOneWinner(t *testing.T) {
 	}
 
 	// A busy target yields nothing to taps or holds.
-	w = testWorld([]string{"blue", "red"}, Vec{20.5, 12.5}, Vec{22.5, 12.5})
-	tg = addTarget(w, "t1", "red", Frozen, Vec{21.5, 12.5})
+	w = testWorld([]string{"blue", "red"}, Vec{20.5, 9.5}, Vec{22.5, 9.5})
+	tg = addTarget(w, "t1", "red", Frozen, Vec{21.5, 9.5})
 	tg.Busy = true
 	if got := tap(w, 0.1, "a", "b"); len(got) != 0 || tg.State != Frozen {
 		t.Fatalf("busy target: intents %v state %v", got, tg.State)
@@ -183,8 +183,8 @@ func TestDoubleActionOneWinner(t *testing.T) {
 }
 
 func TestHoldDeletes(t *testing.T) {
-	w := testWorld([]string{"blue"}, Vec{20.5, 12.5})
-	tg := addTarget(w, "t1", "red", Frozen, Vec{21.5, 12.5})
+	w := testWorld([]string{"blue"}, Vec{20.5, 9.5})
+	tg := addTarget(w, "t1", "red", Frozen, Vec{21.5, 9.5})
 	w.Input("a", Input{Action: true})
 	var got []Intent
 	for i := 0; i < 9; i++ {
@@ -209,8 +209,8 @@ func TestHoldDeletes(t *testing.T) {
 }
 
 func TestDisconnectDropsDrag(t *testing.T) {
-	w := testWorld([]string{"red"}, Vec{20.5, 12.5})
-	tg := addTarget(w, "t1", "red", Frozen, Vec{21.5, 12.5})
+	w := testWorld([]string{"red"}, Vec{20.5, 9.5})
+	tg := addTarget(w, "t1", "red", Frozen, Vec{21.5, 9.5})
 	tap(w, 0.1, "a")
 	w.Input("a", Input{Move: Vec{-1, 0}})
 	for i := 0; i < 5; i++ {
@@ -225,9 +225,9 @@ func TestDisconnectDropsDrag(t *testing.T) {
 }
 
 func TestSpringCooldown(t *testing.T) {
-	w := testWorld([]string{"blue"}, Vec{20.5, 12.5})
+	w := testWorld([]string{"blue"}, Vec{20.5, 9.5})
 	a := w.Avatars["a"]
-	t1 := addTarget(w, "t1", "red", Frozen, Vec{21.5, 12.5})
+	t1 := addTarget(w, "t1", "red", Frozen, Vec{21.5, 9.5})
 	got := tap(w, 0.1, "a")
 	if len(got) != 1 || got[0] != (Intent{Kind: "spring", Target: "t1", Player: "a"}) {
 		t.Fatalf("intents = %v", got)
@@ -235,7 +235,7 @@ func TestSpringCooldown(t *testing.T) {
 	if a.SpringCD != 20 || !t1.Busy {
 		t.Fatalf("SpringCD=%v busy=%v", a.SpringCD, t1.Busy)
 	}
-	t2 := addTarget(w, "t2", "red", Frozen, Vec{19.5, 12.5})
+	t2 := addTarget(w, "t2", "red", Frozen, Vec{19.5, 9.5})
 	for i := 0; i < 10; i++ {
 		w.Tick(1)
 	}
@@ -249,11 +249,11 @@ func TestSpringCooldown(t *testing.T) {
 }
 
 func TestTargetsFlee(t *testing.T) {
-	w := testWorld([]string{"red"}, Vec{20.5, 12.5})
-	tg := addTarget(w, "t1", "red", Working, Vec{22.5, 12.5})
+	w := testWorld([]string{"red"}, Vec{18.5, 8.5})
+	tg := addTarget(w, "t1", "red", Working, Vec{20.5, 8.5})
 	// A second target hemmed against a building corner still never enters it.
-	t2 := addTarget(w, "t2", "red", Working, Vec{18.5, 11.5})
-	d0 := math.Hypot(tg.Pos.X-20.5, tg.Pos.Y-12.5)
+	t2 := addTarget(w, "t2", "red", Working, Vec{16.5, 7.5})
+	d0 := math.Hypot(tg.Pos.X-18.5, tg.Pos.Y-8.5)
 	for i := 0; i < 20; i++ {
 		w.Tick(0.1)
 		for _, x := range []*Target{tg, t2} {
@@ -262,12 +262,12 @@ func TestTargetsFlee(t *testing.T) {
 			}
 		}
 	}
-	if d := math.Hypot(tg.Pos.X-20.5, tg.Pos.Y-12.5); d <= d0 || d < 5 {
+	if d := math.Hypot(tg.Pos.X-18.5, tg.Pos.Y-8.5); d <= d0 || d < 5 {
 		t.Fatalf("target did not flee: distance %v (was %v)", d, d0)
 	}
-	far := addTarget(w, "t3", "red", Working, Vec{40.5, 12.5})
+	far := addTarget(w, "t3", "red", Working, Vec{38.5, 8.5})
 	w.Tick(0.1)
-	if far.Pos != (Vec{40.5, 12.5}) {
+	if far.Pos != (Vec{38.5, 8.5}) {
 		t.Fatalf("target beyond 5 tiles moved: %+v", far.Pos)
 	}
 }

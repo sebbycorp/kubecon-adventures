@@ -1,6 +1,7 @@
 package heist
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 
@@ -20,14 +22,15 @@ const staticPrefix = "/grand-theft-agent/static/"
 const resetTimeout = 2 * opTimeout
 
 // versioned rewrites a page's /grand-theft-agent/static/<file> links to carry a hash of
-// each file, so Cloudflare (which caches .js for hours) serves every deploy at once.
+// each file as served, so Cloudflare (which caches .js for hours) serves every deploy at
+// once.
 func versioned(web fs.FS, page string) []byte {
 	b, err := fs.ReadFile(web, page)
 	if err != nil {
 		panic(err)
 	}
 	return staticRE.ReplaceAllFunc(b, func(link []byte) []byte {
-		f, err := fs.ReadFile(web, strings.TrimPrefix(string(link), staticPrefix))
+		f, err := served(web, strings.TrimPrefix(string(link), staticPrefix), 0)
 		if err != nil {
 			return link
 		}
@@ -36,7 +39,55 @@ func versioned(web fs.FS, page string) []byte {
 	})
 }
 
-var staticRE = regexp.MustCompile(`/grand-theft-agent/static/[\w./-]+`)
+var (
+	staticRE = regexp.MustCompile(`/grand-theft-agent/static/[\w./-]+`)
+	importRE = regexp.MustCompile(`((?:from|import)\s*)"(\./[\w./-]+\.js)"`)
+)
+
+// served is a static file as it goes out. A JavaScript module's relative imports
+// ("./x.js") get ?v=<hash of what is served for x.js>, so a change anywhere in a module
+// graph changes every module above it, up to the page's link. depth guards a cycle.
+func served(web fs.FS, name string, depth int) ([]byte, error) {
+	b, err := fs.ReadFile(web, name)
+	if err != nil || !strings.HasSuffix(name, ".js") || depth > 8 || !importRE.Match(b) {
+		return b, err
+	}
+	dir := path.Dir(name)
+	return importRE.ReplaceAllFunc(b, func(m []byte) []byte {
+		sub := importRE.FindSubmatch(m)
+		dep, err := served(web, path.Join(dir, string(sub[2])), depth+1)
+		if err != nil {
+			return m
+		}
+		sum := sha256.Sum256(dep)
+		return fmt.Appendf(nil, `%s"%s?v=%x"`, sub[1], sub[2], sum[:4])
+	}), nil
+}
+
+// staticFiles serves /grand-theft-agent/static/: modules with relative imports from
+// memory (rewritten once at start), everything else from web.
+func staticFiles(web fs.FS) http.Handler {
+	files := http.StripPrefix(staticPrefix, http.FileServerFS(web))
+	mods := map[string][]byte{}
+	_ = fs.WalkDir(web, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".js") {
+			return nil
+		}
+		raw, _ := fs.ReadFile(web, p)
+		if b, err := served(web, p, 0); err == nil && !bytes.Equal(b, raw) {
+			mods[p] = b
+		}
+		return nil
+	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if b, ok := mods[strings.TrimPrefix(r.URL.Path, staticPrefix)]; ok {
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+			_, _ = w.Write(b)
+			return
+		}
+		files.ServeHTTP(w, r)
+	})
+}
 
 // Routes mounts Grand Theft Agent under /grand-theft-agent and its admin under
 // /admin/grand-theft-agent.
@@ -51,7 +102,7 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 	}
 	mux.HandleFunc("GET /grand-theft-agent", page("phone.html"))
 	mux.HandleFunc("GET /grand-theft-agent/screen", page("screen.html"))
-	mux.Handle("GET "+staticPrefix, http.StripPrefix(staticPrefix, http.FileServerFS(web)))
+	mux.Handle("GET "+staticPrefix, staticFiles(web))
 	mux.HandleFunc("GET /grand-theft-agent/ws", g.serveWS)
 	city := g.city.View()
 	mux.HandleFunc("GET /grand-theft-agent/api/city", func(w http.ResponseWriter, r *http.Request) {
