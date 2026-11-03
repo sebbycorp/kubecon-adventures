@@ -51,23 +51,22 @@
   #feed b { font-weight: 600; }
   #feed span { color: var(--mute); overflow: hidden; text-overflow: ellipsis; }
   @keyframes in { from { opacity: 0; transform: translateY(8px); } }
-  /* Right: the games, three tiles a page, turning every 10 s. */
+  /* Right: all six games at once, two columns of three, each with a QR code you can scan
+     from a few metres. */
   .right { display: grid; grid-template-rows: auto 1fr; gap: 14px; min-height: 0; }
-  .rhead { display: flex; justify-content: space-between; align-items: center; }
-  .rhead h2 { margin: 0; font-size: 28px; font-weight: 800; }
-  .rhead .pg { display: flex; align-items: center; gap: 12px; color: var(--mute); font-size: 16px; }
-  .rhead .bar { width: 120px; height: 6px; border-radius: 3px; background: #22262a; overflow: hidden; }
-  .rhead .bar i { display: block; height: 100%; width: 0; background: var(--green); }
-  .tiles { display: grid; grid-template-rows: repeat(3, 1fr); gap: 16px; min-height: 0; }
-  .tile { --c: var(--green); display: grid; grid-template-columns: 300px 1fr 220px; gap: 18px; align-items: center; padding: 14px; border-radius: 18px;
-    border: 1px solid color-mix(in srgb, var(--c) 45%, #2a2d30); background: #101311f2; box-shadow: 0 0 40px color-mix(in srgb, var(--c) 10%, transparent); min-height: 0; animation: in .5s ease-out; }
-  .tile .shot { width: 300px; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; border: 1px solid #2a2d30; display: block; }
-  .tile h3 { margin: 0; font-size: 27px; font-weight: 800; color: var(--c); line-height: 1.1; }
-  .tile p { margin: 6px 0 10px; font-size: 17px; color: #c9ccce; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .tile .top { font-size: 17px; --ab-accent: var(--c); }
-  .tile .top .ab-row { padding: 3px 10px; }
-  .tile .qr { text-align: center; font-size: 15px; color: var(--mute); }
-  .tile .qr .code { background: #fff; border-radius: 12px; padding: 10px; margin-bottom: 6px; aspect-ratio: 1; display: grid; place-items: center; color: #111; font-size: 14px; word-break: break-all; }
+  .rhead { display: flex; justify-content: space-between; align-items: baseline; }
+  .rhead h2 { margin: 0; font-size: 30px; font-weight: 800; }
+  .rhead span { color: var(--mute); font-size: 17px; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); gap: 14px; min-height: 0; }
+  .tile { --c: var(--green); display: grid; grid-template-columns: 1fr 176px; gap: 12px; padding: 12px; border-radius: 18px; min-height: 0; overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--c) 45%, #2a2d30); background: #101311f2; box-shadow: 0 0 40px color-mix(in srgb, var(--c) 10%, transparent); }
+  .tile .info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .tile .shot { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 10px; border: 1px solid #2a2d30; display: block; }
+  .tile h3 { margin: 2px 0 0; font-size: 22px; font-weight: 800; color: var(--c); line-height: 1.1; }
+  .tile .top { font-size: 15px; --ab-accent: var(--c); }
+  .tile .top .ab-row { padding: 2px 8px; }
+  .tile .qr { display: flex; flex-direction: column; justify-content: center; text-align: center; font-size: 14px; color: var(--mute); }
+  .tile .qr .code { background: #fff; border-radius: 12px; padding: 8px; margin-bottom: 4px; aspect-ratio: 1; display: grid; place-items: center; color: #111; font-size: 13px; word-break: break-all; }
   .tile .qr svg { display: block; width: 100%; height: 100%; }
 </style>
 </head>
@@ -96,7 +95,7 @@
   </section>
 
   <section class="right">
-    <div class="rhead"><h2>Scan a code to play</h2><div class="pg"><span id="pageNo"></span><div class="bar"><i id="bar"></i></div></div></div>
+    <div class="rhead"><h2>Scan a code to play</h2><span>6 games · every character is a real agent</span></div>
     <div class="tiles" id="tiles"></div>
   </section>
 </div>
@@ -162,32 +161,21 @@ const TILES = [
   { path: MISSIONS, name: "AI agentgateway missions", color: "#a78bfa", unit: "Top players", ext: true, img: "agentgateway-missions",
     pitch: "Configure a real agentgateway, take contracts, stack points and dodge the cops." },
 ];
-const PER = 3, TURN = 10000;
-let page = 0, turnAt = performance.now();
 function tile(g) {
   const url = g.ext ? g.path : SITE + g.path, img = g.img || g.path.slice(1);
   return `<div class="tile" style="--c:${g.color}">
-    <img class="shot" src="/static/shots/${img}.webp?v=4" alt="${esc(g.name)} screenshot">
-    <div><h3>${esc(g.name)}</h3><p>${esc(g.pitch)}</p>
+    <div class="info"><img class="shot" src="/static/shots/${img}.webp?v=4" alt="${esc(g.name)} screenshot"><h3>${esc(g.name)}</h3>
       <div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div></div>
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;
 }
-function showPage() {
-  const n = Math.ceil(TILES.length / PER);
-  page %= n;
-  $("tiles").innerHTML = TILES.slice(page * PER, page * PER + PER).map(tile).join("");
-  $("tiles").querySelectorAll("[data-url]").forEach((el) => qr(el, el.dataset.url, 5));
-  $("tiles").querySelectorAll("[data-board]").forEach((el) => Arcade.board(el, el.dataset.board, { n: 3, detail: false, empty: el.dataset.empty }));
-  $("pageNo").textContent = `${page + 1} / ${n}`;
-  turnAt = performance.now();
+// Every game at once; the QR codes are drawn once and the boards refresh every 10 s.
+$("tiles").innerHTML = TILES.map(tile).join("");
+$("tiles").querySelectorAll("[data-url]").forEach((el) => qr(el, el.dataset.url, 5));
+function boards() {
+  $("tiles").querySelectorAll("[data-board]").forEach((el) => Arcade.board(el, el.dataset.board, { n: 2, detail: false, empty: el.dataset.empty }));
 }
-showPage();
-(function tick(now) {
-  const f = (now - turnAt) / TURN;
-  if (f >= 1) { page++; showPage(); }
-  $("bar").style.width = Math.min(100, f * 100) + "%";
-  requestAnimationFrame(tick);
-})(performance.now());
+boards();
+setInterval(boards, 10000);
 
 // ---- live numbers ----
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
