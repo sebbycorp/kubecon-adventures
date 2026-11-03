@@ -151,9 +151,16 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		platform.WriteJSON(w, pl)
 	}))
 
-	// Every game's leaderboard, top 5 each, for the arcade home page.
+	// Every game's leaderboard, top 5 each, after the arcade-wide one (path "/", top 10):
+	// every player's best score in each of our games, in arcade points (overall.go).
 	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
-		platform.WriteJSON(w, arcadeBoards(5, duck, flw, gta, cd, gd, fl, missions))
+		all := arcadeBoards(1000, duck, flw, gta, cd, gd, fl, missions)
+		out := []GameBoard{{Game: "All games", Path: "/", Unit: "arcade pts", Rows: overallBoard(10, all)}}
+		for _, g := range all {
+			g.Rows = g.Rows[:min(5, len(g.Rows))]
+			out = append(out, g)
+		}
+		platform.WriteJSON(w, out)
 	})
 
 	// Flat numbers for dashboards (Homepage customapi widgets).

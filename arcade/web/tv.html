@@ -57,6 +57,7 @@
   #lb .r:first-child { background: #ffffff12; font-size: 24px; }
   #lb .r .m { text-align: center; font-weight: 800; color: var(--mute); }
   #lb .r .n { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lb .r .n .d { display: block; font-size: 14px; font-weight: 400; color: var(--mute); }
   #lb .r .s { font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; }
   #lb .empty { font-size: 19px; color: var(--mute); padding: 8px 4px 10px; }
   #lb .dots { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
@@ -178,7 +179,7 @@ $("tiles").querySelectorAll("[data-board]").forEach((el) => Arcade.board(el, el.
 
 // ---- the big rotating leaderboard ----
 const MEDALS = ["🥇", "🥈", "🥉"];
-let lbData = [], lbI = 0, lbAt = 0, lbTops = null, lbHtml = "";
+let lbData = [], lbI = 0, lbAt = 0, lbTops = null, lbHtml = "", lbGame = 0; // lbGame: the last game shown
 function lbShow(i, flash) {
   if (!lbData.length) return;
   const next = (i + lbData.length) % lbData.length;
@@ -186,10 +187,10 @@ function lbShow(i, flash) {
   lbI = next;
   const b = lbData[lbI], tile = TILES.find((t) => t.path === b.path) || {}, el = $("lb");
   el.style.setProperty("--c", tile.color || "#5fd068");
-  $("lbGame").textContent = b.game;
+  $("lbGame").textContent = b.path === "/" ? "All games · arcade points" : b.game;
   const rows = (b.rows || []).slice(0, 5);
   const html = rows.length
-    ? rows.map((r, k) => `<div class="r" style="animation-delay:${k * 60}ms"><span class="m">${k < 3 ? MEDALS[k] : k + 1}</span><span class="n">${esc(r.nick)}</span><span class="s">${Number(r.score).toLocaleString()}</span></div>`).join("")
+    ? rows.map((r, k) => `<div class="r" style="animation-delay:${k * 60}ms"><span class="m">${k < 3 ? MEDALS[k] : k + 1}</span><span class="n">${esc(r.nick)}${b.path === "/" && r.detail ? `<small class="d">${esc(r.detail)}</small>` : ""}</span><span class="s">${Number(r.score).toLocaleString()}</span></div>`).join("")
     : `<div class="empty">${b.external ? "Leaderboard in game. Scan to play." : "No scores yet. Scan a code and be the first."}</div>`;
   if (html !== lbHtml) { $("lbRows").innerHTML = html; lbHtml = html; }
   $("lbDots").innerHTML = lbData.map((_, k) => `<i class="${k === lbI ? "on" : ""}"></i>`).join("");
@@ -201,11 +202,16 @@ async function lbPoll() {
   const changed = lbTops ? tops.findIndex((t, k) => t && t !== lbTops[k]) : -1;
   lbTops = tops;
   if (changed >= 0) lbShow(changed, true);
-  else if (!lbAt || Date.now() - lbAt >= 8000) {
-    // Next game, preferring ones with scores.
-    let n = lbI + (lbAt ? 1 : 0);
-    for (let k = 0; k < lbData.length && lbAt; k++, n++) if ((lbData[n % lbData.length].rows || []).length || !lbData.some((b) => (b.rows || []).length)) break;
-    lbShow(n, false);
+  else if (!lbAt || Date.now() - lbAt >= (lbI === 0 ? 12000 : 8000)) {
+    // The all-games board (index 0) comes back between games; games with scores first.
+    if (!lbAt || lbI !== 0) { lbShow(0, false); return; }
+    let n = lbGame + 1;
+    for (let k = 1; k < lbData.length; k++, n++) {
+      const g = 1 + ((n - 1) % (lbData.length - 1));
+      if ((lbData[g].rows || []).length || !lbData.slice(1).some((b) => (b.rows || []).length)) { n = g; break; }
+    }
+    lbGame = 1 + ((n - 1) % (lbData.length - 1));
+    lbShow(lbGame, false);
   } else lbShow(lbI, $("lb").classList.contains("flash") && Date.now() - lbAt < 6000);
 }
 lbPoll();
