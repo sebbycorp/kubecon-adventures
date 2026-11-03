@@ -6,14 +6,16 @@
 // HP, positions) comes from entity fields; events only add floaters and tracers, so a
 // dropped snapshot never leaves the picture wrong.
 //
-// The look: a neon night city with Matrix accents. town.js builds the static city (glass
-// towers, windows, neon, road markings, a little digital rain). This file adds the green
-// landmarks (Dispatch, the Vault), glowing players in their colour, dark suited hunters
-// with green outlines and shades, cyan ice for frozen targets and glowing chips for loot.
-// Every model is built from primitives, and characters and props are instanced, so the
-// whole city is a few dozen draw calls.
+// The look: a stylised night city. town.js builds the static city (towers, mid-rises and
+// shops in natural colours, warm and cool windows, rooftops, a few neon signs, sidewalks,
+// street lights and lane markings). This file adds the landmarks (Dispatch in green, the
+// gold Vault), players glowing in their colour, dark suited hunters with green shades and
+// a slate outline, cyan ice for frozen targets and glowing chips for loot. On the phone,
+// buildings between the camera and the player turn see-through. Every model is built
+// from primitives, and characters and props are instanced, so the whole city is a few
+// dozen draw calls.
 import * as THREE from "./vendor/three.module.min.js";
-import { buildTown, rand } from "./town.js";
+import { buildTown, rand, fadeUniforms } from "./town.js";
 
 export const PLAYER_COLORS = { green: "#2bff6a", blue: "#3dd6ff", red: "#ff4d5e", purple: "#b98cff", gold: "#ffd23d", pink: "#ff5ad1" };
 export const colorOf = (name) => PLAYER_COLORS[name] || name || "#2bff6a";
@@ -131,7 +133,8 @@ export function startCity(canvas, opts) {
 
   // ---- the static city ----
   const staticTex = staticTexture(), glowTex = glowTexture();
-  const town = buildTown(scene, city);
+  const fade = fadeUniforms();
+  const town = buildTown(scene, city, { fade, maxHeight: phone ? 2.5 : Infinity });
   const districts = town.districts;
 
   // Dispatch: a landing pad with the kagent logo and a radio tower (the LLM route).
@@ -220,7 +223,7 @@ export function startCity(canvas, opts) {
     m.renderOrder = 5;
     return m;
   };
-  const PX = xray(P.body);
+  const PX = xray(P.body, 0xe8ecf4); // a white ghost of a player hidden behind a building
 
   // Hunters (targets): dark suits, green inverted-hull outlines and shades; 12 shapes
   // from 3 builds x 4 hats.
@@ -236,7 +239,8 @@ export function startCity(canvas, opts) {
     tip: inst(new THREE.SphereGeometry(0.06, 8, 6).translate(0, 1.56, 0), new THREE.MeshBasicMaterial({ color: GREEN }), CAP.hunters, { shadow: false }),
     ring: inst(ringGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }), CAP.hunters, { shadow: false, color: true }),
   };
-  const TX = xray(T.body, GREEN);
+  const TX = xray(T.body, 0x6a7590); // a slate ghost for hunters
+  const none = [0, 0, 0];
   const BUILDS = [[1, 1, 1], [1.22, 0.9, 1.22], [0.88, 1.14, 0.88]];
 
   // Ice: frozen targets and allies sit in a cyan block of static; a target whose freeze
@@ -259,7 +263,7 @@ export function startCity(canvas, opts) {
   // Blob shadows: a soft dark spot under every character when shadow maps are off.
   const blobs = inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ map: glowTex, color: 0x000000, transparent: true, opacity: 0.75, depthWrite: false }), CAP.people + CAP.hunters, { shadow: false });
-  const blob = [];
+  const blob = [], blobScale = [1, 1, 1]; // reused every frame
 
   for (const m of [...Object.values(P), PX, ...Object.values(T), TX, ice, freezing, chips, glows, tracers, bits, blobs]) scene.add(m);
 
@@ -570,7 +574,6 @@ export function startCity(canvas, opts) {
         for (const k of ["body", "head", "hull", "shades", "ring"]) putS(T[k], nh, p.x, p.y, yaw, sc);
         // Hats: 0 bare, 1 top hat, 2 flat cap with an antenna, 3 antenna. Unused parts
         // are scaled to nothing so every hunter keeps one slot in each mesh.
-        const none = [0, 0, 0];
         putS(T.crown, nh, p.x, p.y, yaw, hat === 1 ? sc : none);
         putS(T.brim, nh, p.x, p.y, yaw, hat === 1 || hat === 2 ? sc : none);
         putS(T.stick, nh, p.x, p.y, yaw, hat >= 2 ? sc : none, hat === 2 ? -0.06 : 0);
@@ -624,6 +627,10 @@ export function startCity(canvas, opts) {
         focus.x += (mp.x - focus.x) * k;
         focus.z += (mp.y - focus.z) * k;
         place(focus);
+        // See-through tube from the camera to the player's chest.
+        fade.uFadeCam.value.copy(cam.position);
+        fade.uFadeAt.value.set(mp.x, 0.7, mp.y);
+        fade.uFadeR.value = 1.3;
       }
     }
 
@@ -661,7 +668,10 @@ export function startCity(canvas, opts) {
 
     let nbl = 0;
     if (!renderer.shadowMap.enabled) {
-      for (let i = 0; i < blob.length && nbl < blobs.instanceMatrix.count; i += 3) putS(blobs, nbl++, blob[i], blob[i + 1], 0, [blob[i + 2], 1, blob[i + 2]], 0.02);
+      for (let i = 0; i < blob.length && nbl < blobs.instanceMatrix.count; i += 3) {
+        blobScale[0] = blobScale[2] = blob[i + 2];
+        putS(blobs, nbl++, blob[i], blob[i + 1], 0, blobScale, 0.02);
+      }
     }
     const counts = [[blobs, nbl], [P.body, np], [P.head, np], [P.visor, np], [P.ring, np], [PX, np], [ice, ni], [freezing, nf], [chips, nd], [glows, ng], [tracers, nt], [bits, nb], [TX, nh]];
     for (const k in T) counts.push([T[k], nh]);

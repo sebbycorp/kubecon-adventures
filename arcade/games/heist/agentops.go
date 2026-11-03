@@ -26,6 +26,7 @@ type agentAPI interface {
 	Checkpoint(ctx context.Context, sessionID, headTaskID string) (string, error)
 	Delete(ctx context.Context, sessionID string) error
 	ActorStates(ctx context.Context) (map[string]kagent.Actor, error)
+	ListSessionIDs(ctx context.Context) ([]string, error)
 }
 
 // heistJob is one fixed heist: four bash steps, all under /data/workspace.
@@ -419,6 +420,19 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (int64, error) {
 }
 
 // Delete removes the session and forgets it.
+// ListSessions lists the sessions of both agents (heister, then sidekick). If one list
+// fails, the other's sessions still come back, with the error.
+func (o *agentOps) ListSessions(ctx context.Context) ([]string, error) {
+	var ids []string
+	var errs []error
+	for _, k := range []agentAPI{o.heister, o.sidekick} {
+		got, err := k.ListSessionIDs(ctx)
+		ids = append(ids, got...)
+		errs = append(errs, err)
+	}
+	return ids, errors.Join(errs...)
+}
+
 func (o *agentOps) Delete(ctx context.Context, sid string) error {
 	k := o.client(sid)
 	if err := settle(ctx, func() error { return k.Delete(ctx, sid) }); err != nil {

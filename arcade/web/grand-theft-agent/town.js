@@ -116,10 +116,45 @@ function glowSpot() {
   return new THREE.CanvasTexture(c);
 }
 
+// fadeUniforms is shared by every material that fade() patches: the camera, the point
+// to keep visible (the local player) and the radius of the see-through tube between
+// them (0 turns fading off).
+export const fadeUniforms = () => ({ uFadeCam: { value: new THREE.Vector3() }, uFadeAt: { value: new THREE.Vector3() }, uFadeR: { value: 0 } });
+
+// fade patches mat so any part of it inside the tube from the camera to the player is
+// drawn as a sparse screen door (3 pixels in 4 dropped): a building in front of you
+// turns see-through, and the opaque pass needs no sorting.
+export function fade(mat, u) {
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vFadeW;")
+      .replace("#include <project_vertex>", `#include <project_vertex>
+vec4 fadeW = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+fadeW = instanceMatrix * fadeW;
+#endif
+vFadeW = (modelMatrix * fadeW).xyz;`);
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>
+uniform vec3 uFadeCam; uniform vec3 uFadeAt; uniform float uFadeR; varying vec3 vFadeW;
+bool fadedOut() {
+  if (uFadeR <= 0.0) return false;
+  vec3 d = uFadeAt - uFadeCam; float len = length(d); vec3 n = d / len;
+  float t = dot(vFadeW - uFadeCam, n);
+  if (t <= 0.0 || t >= len - 0.5 || length(vFadeW - uFadeCam - n * t) > uFadeR) return false;
+  vec2 q = mod(floor(gl_FragCoord.xy), 2.0);
+  return q.x + q.y > 0.0;
+}`).replace("void main() {", "void main() {\n  if (fadedOut()) discard;");
+  };
+  mat.customProgramCacheKey = () => "fade";
+  return mat;
+}
+
 // buildTown adds the static city to scene and returns {setAwake(n), districts}.
 // setAwake lights n bright windows, one per busy worker (an awake gVisor sandbox).
-export function buildTown(scene, city) {
-  const W = city.w, H = city.h, tiles = city.tiles, r = rand(11);
+// opts.fade: fadeUniforms() for see-through buildings; opts.maxHeight caps the towers
+// (the phone's follow-cam uses 2.5 so players on near lanes stay visible).
+export function buildTown(scene, city, { fade: fu = fadeUniforms(), maxHeight = Infinity } = {}) {
+  const W = city.w, H = city.h, tiles = city.tiles, r = rand(11), F = (m) => fade(m, fu);
   const spot = glowSpot(), additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false };
 
   // Asphalt everywhere; every block is a raised sidewalk whose edge is the curb.
@@ -151,7 +186,7 @@ export function buildTown(scene, city) {
       boxes.push({
         x0: b.x + a + (a === 0 ? inset : 0.04), z0: b.y + c + (c === 0 ? inset : 0.04),
         x1: b.x + d - (d === b.w ? inset : 0.04), z1: b.y + e - (e === b.h ? inset : 0.04),
-        h: shop ? 0.6 + r() * 0.3 : tower ? 2.2 + r() * 1.3 : 1.2 + r() * 1.0, shop,
+        h: Math.min(maxHeight, shop ? 0.6 + r() * 0.3 : tower ? 2.2 + r() * 1.3 : 1.2 + r() * 1.0), shop,
         color: FACADES[Math.floor(r() * FACADES.length)], roof: ROOFS[Math.floor(r() * ROOFS.length)],
         // Pane offsets are whole panes, so the windows stay on one world grid.
         ou: Math.floor(r() * 5) / 5, ov: Math.floor(r() * 6) / 6,
@@ -161,8 +196,8 @@ export function buildTown(scene, city) {
   }
   const tex = facadeTextures();
   const towers = new THREE.Mesh(buildingGeometry(boxes), [
-    new THREE.MeshStandardMaterial({ vertexColors: true, map: tex.map, emissive: 0xffffff, emissiveMap: tex.glow, emissiveIntensity: 1.1, roughness: 0.75, metalness: 0.1 }),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
+    F(new THREE.MeshStandardMaterial({ vertexColors: true, map: tex.map, emissive: 0xffffff, emissiveMap: tex.glow, emissiveIntensity: 1.1, roughness: 0.75, metalness: 0.1 })),
+    F(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })),
   ]);
   towers.castShadow = towers.receiveShadow = true;
   scene.add(towers);
@@ -183,12 +218,12 @@ export function buildTown(scene, city) {
       else masts.push([mtx(x, b.h + 0.3, z)]);
     }
   }
-  const grey = new THREE.MeshStandardMaterial({ color: 0x767b84, roughness: 0.7 });
+  const grey = F(new THREE.MeshStandardMaterial({ color: 0x767b84, roughness: 0.7 }));
   scene.add(instanced(new THREE.BoxGeometry(0.34, 0.2, 0.28), grey, ac));
-  scene.add(instanced(new THREE.CylinderGeometry(0.2, 0.2, 0.4, 10), new THREE.MeshStandardMaterial({ color: 0x6a4a34, roughness: 0.8 }), tanks));
+  scene.add(instanced(new THREE.CylinderGeometry(0.2, 0.2, 0.4, 10), F(new THREE.MeshStandardMaterial({ color: 0x6a4a34, roughness: 0.8 })), tanks));
   scene.add(instanced(new THREE.CylinderGeometry(0.015, 0.025, 0.6, 4), grey, masts));
-  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.6 }), awnings));
-  scene.add(instanced(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ toneMapped: false }), shopGlow));
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshStandardMaterial({ roughness: 0.6 })), awnings));
+  scene.add(instanced(new THREE.PlaneGeometry(1, 1), F(new THREE.MeshBasicMaterial({ toneMapped: false })), shopGlow));
 
   // Neon: a sign bar high on the south face, or a blade on a corner, with a soft halo.
   const signs = [], halos = [];
@@ -204,7 +239,7 @@ export function buildTown(scene, city) {
       halos.push([mtx(b.x1 + 0.02, y, b.z1 + 0.18, Math.PI / 2, 0.9, hh + 0.6, 1), b.neon]);
     }
   }
-  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ toneMapped: false }), signs));
+  scene.add(instanced(new THREE.BoxGeometry(1, 1, 1), F(new THREE.MeshBasicMaterial({ toneMapped: false })), signs));
   scene.add(instanced(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: spot, ...additive }), halos));
 
   // Street lights on every block corner, with a warm pool of light on the road.
@@ -235,7 +270,7 @@ export function buildTown(scene, city) {
   }
   const sr = rand(5);
   for (let i = slots.length - 1; i > 0; i--) { const j = Math.floor(sr() * (i + 1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
-  const awake = instanced(new THREE.PlaneGeometry(PANE_W * 0.6, PANE_H * 0.55), new THREE.MeshBasicMaterial({ toneMapped: false }),
+  const awake = instanced(new THREE.PlaneGeometry(PANE_W * 0.6, PANE_H * 0.55), F(new THREE.MeshBasicMaterial({ toneMapped: false })),
     slots.slice(0, 400).map((m, i) => [m, i % 3 === 0 ? COOL : WARM]));
   awake.count = 0;
   scene.add(awake);

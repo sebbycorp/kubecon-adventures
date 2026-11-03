@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,8 @@ type fakeAgent struct {
 	promptErr   error
 	tasks       int
 	nextSession int
+	listed      []string // what ListSessionIDs returns
+	listErr     error
 }
 
 func (f *fakeAgent) note(s string) {
@@ -122,6 +125,14 @@ func (f *fakeAgent) ActorStates(ctx context.Context) (map[string]kagent.Actor, e
 		out[id] = kagent.Actor{Name: "session-" + id, State: "RUNNING", Node: "kagent-worker2"}
 	}
 	return out, nil
+}
+
+func (f *fakeAgent) ListSessionIDs(ctx context.Context) ([]string, error) {
+	f.note("list")
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return f.listed, nil
 }
 
 func newFakes() (*fakeAgent, *fakeAgent) {
@@ -533,5 +544,21 @@ func TestFailedPromptIsNotCheckpointHead(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(h.calls(), "|"), "checkpoint "+sid+" task-1|") {
 		t.Fatalf("checkpoint head is not the last successful task: %v", h.calls())
+	}
+}
+
+func TestListSessionsBothAgents(t *testing.T) {
+	h, sk := newFakes()
+	h.listed, sk.listed = []string{"h1", "h2"}, []string{"s1"}
+	o := newAgentOps(h, sk, "")
+	got, err := o.ListSessions(context.Background())
+	if err != nil || !slices.Equal(got, []string{"h1", "h2", "s1"}) {
+		t.Fatalf("ListSessions = %v, %v", got, err)
+	}
+	// One agent failing still returns the other's sessions, with the error.
+	sk.listErr = errors.New("sidekick down")
+	got, err = o.ListSessions(context.Background())
+	if err == nil || !slices.Equal(got, []string{"h1", "h2"}) {
+		t.Fatalf("ListSessions with a failing agent = %v, %v", got, err)
 	}
 }

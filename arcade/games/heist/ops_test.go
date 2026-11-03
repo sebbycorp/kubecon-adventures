@@ -39,6 +39,8 @@ func (f *fakeOps) block(ctx context.Context, kind, id string) error {
 	}
 }
 
+func (f *fakeOps) ListSessions(ctx context.Context) ([]string, error) { return nil, nil }
+
 func (f *fakeOps) Spawn(ctx context.Context, name string) (string, string, error) {
 	err := f.block(ctx, "spawn", name)
 	return "sess-" + name, "node-1", err

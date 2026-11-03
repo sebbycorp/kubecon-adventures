@@ -3,6 +3,7 @@ package heist
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -23,9 +24,18 @@ import (
 // liveOps answers every call at once, except kinds in block, which wait for ctx. It
 // records every call as "kind arg".
 type liveOps struct {
-	mu    sync.Mutex
-	calls []string
-	block map[string]bool
+	mu       sync.Mutex
+	calls    []string
+	block    map[string]bool
+	sessions []string // what ListSessions returns (the startup sweep's orphans)
+	listErr  error
+}
+
+func (o *liveOps) ListSessions(ctx context.Context) ([]string, error) {
+	if err := o.do(ctx, "list", ""); err != nil {
+		return nil, err
+	}
+	return o.sessions, o.listErr
 }
 
 func (o *liveOps) do(ctx context.Context, kind, arg string) error {
@@ -915,4 +925,59 @@ func TestPingPong(t *testing.T) {
 	if id != "42" {
 		t.Fatalf("pong id = %q, want 42", id)
 	}
+}
+
+// TestStartupSweep: Run deletes every session the agents have (orphans of an earlier
+// process), off the tick loop.
+func TestStartupSweep(t *testing.T) {
+	ops := &liveOps{sessions: []string{"orphan-1", "orphan-2", "orphan-3"}}
+	s := newServer(t, ops)
+	deadline := time.Now().Add(3 * time.Second)
+	for len(ops.called("delete")) < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("deleted %v, want the 3 orphans", ops.called("delete"))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := ops.called("delete"); !slices.Equal(slices.Sorted(slices.Values(got)), []string{"orphan-1", "orphan-2", "orphan-3"}) {
+		t.Fatalf("deleted %v", got)
+	}
+	// The game ticks on and plays as usual.
+	pl := s.g.p.Players.Join("Ada")
+	c := s.mustDial(t, &pl, "")
+	send(t, c, map[string]any{"t": "start", "level": 1})
+	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
+}
+
+// TestStartupSweepListError: a failed list is logged and the game still runs.
+func TestStartupSweepListError(t *testing.T) {
+	ops := &liveOps{listErr: errors.New("kagent down")}
+	s := newServer(t, ops)
+	pl := s.g.p.Players.Join("Ada")
+	c := s.mustDial(t, &pl, "")
+	send(t, c, map[string]any{"t": "start", "level": 1})
+	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
+	if got := ops.called("delete"); len(got) != 0 {
+		t.Fatalf("deleted %v after a failed list", got)
+	}
+}
+
+// TestStartupSweepGatesStarts: while the sweep is still listing, missions and rigs wait
+// (a session spawned now could be listed and deleted as an orphan).
+func TestStartupSweepGatesStarts(t *testing.T) {
+	defer func(d time.Duration) { sweepListTimeout = d }(sweepListTimeout)
+	sweepListTimeout = 300 * time.Millisecond
+	ops := &liveOps{block: map[string]bool{"list": true}}
+	s := newServer(t, ops)
+	pl := s.g.p.Players.Join("Ada")
+	c := s.mustDial(t, &pl, "")
+	send(t, c, map[string]any{"t": "start", "level": 1})
+	var msg string
+	_ = json.Unmarshal(frame(t, c, "err", time.Second)["msg"], &msg)
+	if msg != "starting up, try again" {
+		t.Fatalf("err = %q", msg)
+	}
+	time.Sleep(400 * time.Millisecond) // the list times out; play opens
+	send(t, c, map[string]any{"t": "start", "level": 1})
+	snap(t, c, time.Second, func(sn Snap) bool { return len(sn.Missions) == 1 })
 }

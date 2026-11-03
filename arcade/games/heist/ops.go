@@ -21,6 +21,9 @@ type Ops interface {
 	// SpawnAlly starts a player's ally session (the sidekick Agent) and returns its
 	// greeting line.
 	SpawnAlly(ctx context.Context, name string) (sessionID, node, say string, err error)
+	// ListSessions lists every session of the game's agents (targets and allies), for
+	// the startup sweep of sessions an earlier process left behind.
+	ListSessions(ctx context.Context) ([]string, error)
 }
 
 // StepResult is what one agent step reports.

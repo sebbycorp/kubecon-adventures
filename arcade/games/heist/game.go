@@ -60,6 +60,7 @@ type Game struct {
 	clients  map[*client]bool
 	booked   map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
 	paused   bool
+	listing  bool             // the startup sweep is still listing sessions; no spawns yet
 	timings  map[string]int64 // p50 ms, refreshed once a second
 	ticks    int
 	done     chan struct{} // closed when Run stops
@@ -92,9 +93,13 @@ func (g *Game) fresh() {
 	g.ended, g.cleaned, g.offline = map[*Mission]float64{}, map[*Mission]bool{}, map[string]float64{}
 }
 
-// Run starts the tick loop. It stops, closing every client and the scheduler, when ctx
-// ends.
+// Run starts the tick loop and the startup sweep of orphaned sessions (sweep.go). It
+// stops, closing every client and the scheduler, when ctx ends.
 func (g *Game) Run(ctx context.Context) {
+	g.mu.Lock()
+	g.listing = true
+	g.mu.Unlock()
+	go g.sweep(ctx)
 	go func() {
 		t := time.NewTicker(g.every)
 		defer t.Stop()
@@ -380,6 +385,8 @@ func (g *Game) start(playerID string, level int) (*Mission, error) {
 	switch {
 	case g.paused:
 		return nil, errors.New("paused")
+	case g.listing:
+		return nil, errStartingUp
 	case a == nil:
 		return nil, errors.New("not in the city")
 	}
@@ -388,6 +395,9 @@ func (g *Game) start(playerID string, level int) (*Mission, error) {
 
 // build spends a rig from the player's stash and spawns the ally. g.mu is held.
 func (g *Game) build(playerID string) error {
+	if g.listing {
+		return errStartingUp
+	}
 	in, err := g.w.BuildRig(playerID)
 	if err != nil {
 		return err
