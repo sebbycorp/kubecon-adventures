@@ -28,6 +28,7 @@ const TAU = Math.PI * 2;
 export function startSpace(canvas, opts) {
   const ctx = canvas.getContext("2d");
   const phone = opts.mode === "phone";
+  const K = phone ? 1 : 1.4; // sprites read bigger on the whole-arena big screen
   const pos = opts.pos || (() => null), input = opts.input || (() => ({ mx: 0, my: 0, fire: false }));
   let snap = null, snapAt = 0, me = opts.me || "";
   let W = 160, H = 100, CL = { x: 80, y: 50 }, ST = { x: 146, y: 88 };
@@ -246,7 +247,7 @@ export function startSpace(canvas, opts) {
 
   // A subagent: a round little bot in its role's colour with big eyes and its icon.
   function drawAgent(a, p, t) {
-    const R = roleOf(a.role), u = scale, x = sx(p.x), y = sy(p.y), r = 2.0 * u;
+    const R = roleOf(a.role), u = scale * K, x = sx(p.x), y = sy(p.y), r = 2.0 * u;
     if (a.state === "suspended") {
       glow(x, y, 3 * u, "rgba(120,240,255,0.5)");
       ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 2 + p.x) * 0.3);
@@ -301,7 +302,7 @@ export function startSpace(canvas, opts) {
 
   // A ship: a rounded rocket in the player's colour, nose along its heading.
   function drawShip(s, p, h, mine, t) {
-    const c = shipColor(s.color), u = scale * (mine ? 1.15 : 1), x = sx(p.x), y = sy(p.y);
+    const c = shipColor(s.color), u = scale * K * (mine ? 1.15 : 1), x = sx(p.x), y = sy(p.y);
     const moving = Math.hypot(s.vx, s.vy) > 2 || (mine && Math.hypot(input().mx || 0, input().my || 0) > 0.12);
     ctx.save(); ctx.translate(x, y); ctx.rotate(h);
     if (!s.online) ctx.globalAlpha = 0.35;

@@ -65,7 +65,7 @@ const (
 	spawnFloor    = 0.6  // ... falling to this
 	spawnRamp     = 100  // seconds for the gap to shrink by e
 	playerBoost   = 0.35 // each extra online player spawns 35% more
-	spawnMin      = 0.3  // never faster than this
+	spawnMin      = 0.7  // never faster than this: ~85 task turns a minute, about the 100k token budget
 	waveEvery     = 30.0 // a wave of several agents at once
 	abandonAfter  = 30.0 // a live round with nobody online ends
 	overMin       = 3.0  // PLAY can restart this long after a round ends
