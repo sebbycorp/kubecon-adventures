@@ -399,7 +399,7 @@ func (a *AgentProber) runProbe() {
 // cached is last again, for a kill that made no call of its own.
 func (a *AgentProber) cached(tower string, last Outcome, why string) Outcome {
 	if last.At == 0 {
-		return Outcome{Tower: tower, Label: why, At: time.Now().UnixMilli()}
+		return Outcome{Tower: tower, Label: "blocked", Detail: why, At: time.Now().UnixMilli()}
 	}
 	last.Real, last.Cached = false, true
 	return last

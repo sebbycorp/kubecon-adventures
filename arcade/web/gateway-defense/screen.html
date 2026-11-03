@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Gateway Defense · big screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0d1626; --panel: #121f35; --line: #24385a; --fg: #e8eefb; --mute: #8fa3c7; --gold: #fde68a; --green: #5fd068; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: radial-gradient(1200px 700px at 50% -10%, #1c3358, var(--bg)); color: var(--fg); font: 16px/1.4 Inter, system-ui, sans-serif; overflow: hidden; }
+  main { display: grid; grid-template-columns: 420px 1fr 420px; gap: 24px; height: 100vh; padding: 28px; }
+  .panel { background: #121f35d9; border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px; }
+  h1 { margin: 0; font-size: 40px; letter-spacing: -.02em; line-height: 1.05; }
+  .tag { font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #9fc4ff; }
+  .lead { color: var(--mute); margin: 10px 0 18px; font-size: 15px; }
+  h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .14em; color: var(--mute); font-weight: 800; display: flex; justify-content: space-between; }
+  h2 b { color: var(--fg); letter-spacing: 0; }
+  #left { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+  .tw { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #1b2c48; }
+  .tw:first-of-type { border-top: 0; }
+  .tw .i { font-size: 28px; text-align: center; }
+  .tw b { display: block; font-size: 15px; }
+  .tw small { color: var(--mute); font-size: 12px; }
+  .tw .n { text-align: right; font: 700 20px "JetBrains Mono", monospace; }
+  .tw .n small { display: block; font: 600 11px Inter, sans-serif; color: var(--mute); }
+  #qr { display: flex; gap: 16px; align-items: center; margin-top: auto; }
+  #qr .code { background: #fff; padding: 10px; border-radius: 14px; width: 150px; height: 150px; flex: none; }
+  #qr .code svg { width: 100%; height: 100%; display: block; }
+  #qr b { font-size: 20px; display: block; }
+  #qr span { color: var(--mute); font-size: 14px; }
+  #center { display: flex; flex-direction: column; min-height: 0; }
+  #feed { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .ev { display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; padding: 12px 16px; border-radius: 16px; background: #13223a; border-left: 5px solid; animation: in .5s ease-out; }
+  .ev .i { font-size: 30px; text-align: center; }
+  .ev .w { font-size: 15px; } .ev .w b { font-size: 17px; }
+  .ev .w small { display: block; color: var(--mute); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 640px; }
+  .ev .r { text-align: right; font: 700 22px "JetBrains Mono", monospace; white-space: nowrap; }
+  .ev .r small { display: block; font: 600 12px Inter, sans-serif; color: var(--mute); }
+  .ev.miss { background: #2a1219; }
+  @keyframes in { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
+  #empty { color: var(--mute); text-align: center; margin-top: 30%; font-size: 18px; }
+  .lb { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid #1b2c48; font-size: 17px; }
+  .lb:first-of-type { border-top: 0; }
+  .lb .r { font-weight: 800; color: var(--mute); }
+  .lb:nth-of-type(1) .r { color: var(--gold); }
+  .lb .s { font: 700 19px "JetBrains Mono", monospace; text-align: right; }
+  .lb .s small { display: block; font: 600 11px Inter, sans-serif; color: var(--mute); }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  #stats { display: flex; gap: 10px; margin-bottom: 14px; }
+  #stats div { flex: 1; text-align: center; background: #13223a; border-radius: 14px; padding: 10px; }
+  #stats b { display: block; font: 700 26px "JetBrains Mono", monospace; }
+  #stats small { color: var(--mute); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+<main>
+  <section id="left">
+    <div class="panel">
+      <span class="tag">KAGENT · AGENTGATEWAY · SUBSTRATE</span>
+      <h1>Gateway Defense</h1>
+      <p class="lead">Rogue agent traffic marches on the cluster. The towers are the platform's real controls, and every block below is a real call, with its real timing.</p>
+      <h2>THE CONTROLS<b id="totalReal"></b></h2>
+      <div id="towers"></div>
+    </div>
+    <div id="qr" class="panel"><div class="code" id="qrcode"></div><div><b>Scan to defend</b><span id="joinUrl"></span></div></div>
+  </section>
+  <section id="center" class="panel">
+    <div id="stats"><div><b id="sPlaying">0</b><small>PLAYING NOW</small></div><div><b id="sRuns">0</b><small>RUNS</small></div><div><b id="sBlocked">0</b><small>REAL BLOCKS</small></div></div>
+    <h2>LIVE · REAL BLOCKS</h2>
+    <div id="feed"><div id="empty">Waiting for the first tower to fire…</div></div>
+  </section>
+  <section class="panel">
+    <h2>TOP DEFENDERS</h2>
+    <div id="board"></div>
+  </section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ICON = { guard: "🛡️", limit: "⏱️", egress: "🧱", suspend: "❄️" };
+const CREEP = { jailbreak: "a jailbreaker", burner: "a token-burner", escaper: "an escaper", runaway: "a runaway", boss: "the Rogue Orchestrator" };
+const COLORS = { green: "#5fd068", blue: "#60a5fa", red: "#f87171", purple: "#a78bfa", gold: "#fbbf24", pink: "#f472b6" };
+const ms = (v) => (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms");
+
+// The QR code points phones at /gateway-defense; a screen on localhost points at the public domain.
+const params = new URLSearchParams(location.search);
+const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+const joinUrl = params.get("join") || (local ? "https://kubecon.agentpwned.ai/gateway-defense" : location.origin + "/gateway-defense");
+$("joinUrl").textContent = joinUrl.replace(/^https?:\/\//, "");
+try { const qr = qrcode(0, "M"); qr.addData(joinUrl); qr.make(); $("qrcode").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); }
+catch { $("qrcode").style.display = "none"; }
+
+let seen = 0;
+function apply(s) {
+  const totals = s.totals || {}, misses = s.misses || {}, t = s.timings || {};
+  let all = 0;
+  $("towers").innerHTML = (s.towers || []).map((tw) => {
+    const n = totals[tw.id] || 0, p = t[tw.id];
+    all += n;
+    return `<div class="tw"><div class="i">${ICON[tw.id]}</div><div><b style="color:${tw.color}">${esc(tw.name)}</b><small>${esc(tw.control)}</small></div>
+      <div class="n">${n.toLocaleString()}<small>${p && p.count ? "p50 " + ms(p.p50) : "real calls"}${misses[tw.id] ? ` · ${misses[tw.id]} missed` : ""}</small></div></div>`;
+  }).join("");
+  $("totalReal").textContent = all ? all.toLocaleString() + " real calls" : "";
+  $("sPlaying").textContent = s.playing || 0;
+  $("sRuns").textContent = (s.runs || 0).toLocaleString();
+  $("sBlocked").textContent = all.toLocaleString();
+  const rows = s.board || [];
+  $("board").innerHTML = rows.length ? rows.map((r, i) => `<div class="lb"><span class="r">#${i + 1}</span><span><span class="dot" style="background:${COLORS[r.color] || "#8a8f94"}"></span>${esc(r.nick)}${r.won ? " 🏆" : ""}</span>
+    <span class="s">${r.score.toLocaleString()}<small>${r.won ? "cluster saved" : "wave " + r.wave}</small></span></div>`).join("")
+    : `<div style="color:var(--mute)">No finished runs yet.</div>`;
+  // New feed items slide in at the top; the newest 8 stay.
+  const items = (s.feed || []).filter((f) => f.at > seen);
+  if (items.length) $("empty")?.remove();
+  for (const f of items) {
+    seen = Math.max(seen, f.at);
+    const tw = (s.towers || []).find((x) => x.id === f.tower) || {};
+    const d = document.createElement("div");
+    d.className = "ev" + (f.ok ? "" : " miss");
+    d.style.borderColor = tw.color || "#888";
+    d.innerHTML = `<div class="i">${ICON[f.tower] || "•"}</div><div class="w"><b>${esc(f.nick)}</b>'s ${esc(tw.name || f.tower)} stopped ${esc(CREEP[f.creep] || f.creep)}
+      <small>${esc(f.detail || tw.control || "")}</small></div><div class="r" style="color:${f.ok ? tw.color : "#f87171"}">${esc(f.label)}<small>${ms(f.ms)}</small></div>`;
+    $("feed").prepend(d);
+  }
+  while ($("feed").children.length > 8) $("feed").lastChild.remove();
+}
+
+(function connect() {
+  const es = new EventSource("/gateway-defense/api/events");
+  es.onmessage = (m) => apply(JSON.parse(m.data));
+  es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+})();
+</script>
+</body>
+</html>

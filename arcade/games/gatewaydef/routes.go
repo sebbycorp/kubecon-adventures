@@ -96,7 +96,9 @@ func (g *Game) Routes(mux *http.ServeMux, web fs.FS) {
 			return
 		}
 		_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, 4096))
-		g.Sink(kind)
+		if r.Header.Get("cf-connecting-ip") == "" { // only what came through the in-cluster routes
+			g.Sink(kind)
+		}
 		platform.WriteJSON(w, map[string]any{"object": "chat.completion", "model": "sink",
 			"choices": []map[string]any{{"index": 0, "finish_reason": "stop", "message": map[string]string{"role": "assistant", "content": "sink: there is no LLM here"}}}})
 	}

@@ -65,6 +65,7 @@ type Rules struct {
 	UpRange    float64    `json:"upRange"`    // range multiplier per upgrade level
 	UpCost     float64    `json:"upCost"`     // upgrade cost as a fraction of the base cost, per level
 	SellBack   float64    `json:"sellBack"`   // fraction of money spent returned on a sale
+	FastSpeed  float64    `json:"fastSpeed"`  // the phone's fast-forward multiplier
 	Map        Map        `json:"map"`
 }
 
@@ -114,7 +115,7 @@ var TheRules = Rules{
 		{10, "Rogue Orchestrator", []string{"jailbreak", "burner", "escaper", "runaway"}, 20, 0.6, 2.7, true},
 	},
 	Lives: 20, Money: 140, ClearBonus: 15, LifeBonus: 25, WeakMult: 3,
-	UpDamage: 1.5, UpRange: 1.1, UpCost: 0.8, SellBack: 0.7,
+	UpDamage: 1.5, UpRange: 1.1, UpCost: 0.8, SellBack: 0.7, FastSpeed: 2,
 	Map: Map{
 		W: 9, H: 15,
 		// Entry at the top, winding down to the cluster at the bottom.
@@ -181,30 +182,15 @@ func (r Rules) MaxScore(wave int) int {
 }
 
 // MinSeconds is the shortest time a run can take to reach wave: every earlier wave's
-// creeps spawned (Gap apart) and walked the lane at their top speed.
+// creeps spawned, Gap apart, on fast-forward. (A wave can end as its last creep spawns,
+// if the towers kill it at the entry.)
 func (r Rules) MinSeconds(wave int) float64 {
-	lane := 0.0
-	for i := 1; i < len(r.Map.Path); i++ {
-		a, b := r.Map.Path[i-1], r.Map.Path[i]
-		lane += abs(float64(b[0]-a[0])) + abs(float64(b[1]-a[1]))
-	}
-	fastest := r.Boss.Speed
-	for _, c := range r.Creeps {
-		fastest = max(fastest, c.Speed)
-	}
 	secs := 0.0
 	for _, w := range r.Waves {
 		if w.N >= wave {
 			break
 		}
-		secs += float64(w.Count-1)*w.Gap + lane/fastest
+		secs += float64(w.Count-1) * w.Gap
 	}
-	return secs
-}
-
-func abs(f float64) float64 {
-	if f < 0 {
-		return -f
-	}
-	return f
+	return secs / max(1, r.FastSpeed)
 }

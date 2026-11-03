@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d1626">
+<link rel="icon" href="data:,">
+<title>Gateway Defense</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0d1626; --panel: rgba(13, 22, 38, .92); --line: #2b4166; --fg: #e8eefb; --mute: #8fa3c7; --gold: #fde68a; --green: #5fd068; --red: #f87171;
+    --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 14px/1.4 Inter, system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+  #board { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+
+  #top { position: fixed; top: calc(8px + var(--st)); left: 8px; right: 8px; display: flex; gap: 6px; align-items: stretch; z-index: 2; }
+  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  .chip small { font-size: 9.5px; letter-spacing: .1em; color: var(--mute); font-weight: 700; }
+  .chip b { font-size: 17px; font-weight: 800; line-height: 1.15; }
+  #lives b { color: #fda4af; } #money b { color: var(--gold); }
+  #waveChip { flex: 1; } #waveChip b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  #menuBtn { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; font-weight: 800; font-size: 18px; }
+  #lives.hit { animation: hit .5s; }
+  @keyframes hit { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+  #bottom { position: fixed; left: 8px; right: 8px; bottom: calc(10px + var(--sb)); display: flex; gap: 8px; z-index: 2; }
+  #next { flex: 1; padding: 13px; border-radius: 14px; background: linear-gradient(180deg, #3ddc84, #23a35a); color: #04230f; font-weight: 800; font-size: 15px; letter-spacing: .03em; box-shadow: 0 4px 18px #23a35a55; }
+  #next:disabled { background: #1c2b45; color: var(--mute); box-shadow: none; }
+  #fast { padding: 0 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-weight: 800; }
+  #fast.on { border-color: var(--gold); color: var(--gold); }
+
+  .sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + var(--sb)); width: min(460px, calc(100% - 16px)); z-index: 5;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 14px; box-shadow: 0 10px 40px #000a; backdrop-filter: blur(6px); }
+  .sheet h2 { margin: 0 0 4px; font-size: 17px; }
+  .sheet p { margin: 0 0 10px; color: var(--mute); font-size: 13px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card { text-align: left; padding: 10px; border-radius: 14px; background: #13223a; border: 1.5px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+  .card .t { font-weight: 800; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .card .t span { font-size: 20px; }
+  .card .c { color: var(--gold); font-weight: 800; font-size: 13px; }
+  .card .d { color: var(--mute); font-size: 11.5px; line-height: 1.3; }
+  .card .w { font-size: 11px; font-weight: 700; }
+  .card:disabled { opacity: .45; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .big { flex: 1; padding: 13px; border-radius: 14px; background: linear-gradient(180deg, #3ddc84, #23a35a); color: #04230f; font-weight: 800; font-size: 15px; }
+  .big.gold { background: linear-gradient(180deg, #fde68a, #f59e0b); color: #3a2300; }
+  .big.ghost { background: #13223a; color: var(--fg); border: 1px solid var(--line); }
+  .big:disabled { opacity: .45; }
+  #start { top: 50%; bottom: auto; transform: translate(-50%, -50%); text-align: center; padding: 20px 16px; }
+  #start h1 { margin: 2px 0 6px; font-size: 26px; letter-spacing: -.01em; }
+  #start .tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .12em; color: #9fc4ff; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0 14px; text-align: left; }
+  .legend div { background: #13223a; border-radius: 12px; padding: 7px 9px; font-size: 11.5px; color: var(--mute); }
+  .legend b { color: var(--fg); display: block; font-size: 12.5px; }
+  #end .score { font-size: 40px; font-weight: 800; text-align: center; margin: 4px 0; }
+  #end .meta { text-align: center; color: var(--mute); font-size: 13px; }
+  #end .beat { text-align: center; margin-top: 8px; color: var(--gold); font-weight: 700; font-size: 13.5px; min-height: 1.4em; }
+  #toast { position: fixed; left: 50%; top: calc(66px + var(--st)); transform: translateX(-50%); z-index: 6; width: min(440px, calc(100% - 24px));
+    background: #2a0f16f2; border: 1px solid #f87171; color: #ffe1e4; border-radius: 14px; padding: 9px 12px; font-size: 13px; text-align: center; transition: opacity .3s; }
+  #toast.good { background: #0f2a18f2; border-color: var(--green); color: #d9ffe0; }
+  #toast b { display: block; font-size: 12px; letter-spacing: .08em; }
+  #banner { position: fixed; left: 0; right: 0; top: 40%; text-align: center; z-index: 4; pointer-events: none; }
+  #banner div { display: inline-block; padding: 10px 22px; border-radius: 16px; background: #0b1424e6; border: 1px solid #9fc4ff; font-weight: 800; font-size: 20px; animation: pop 2.2s forwards; }
+  #banner small { display: block; font-size: 12px; color: var(--mute); font-weight: 600; }
+  @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 12% { transform: scale(1.06); opacity: 1; } 20% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+  #nojs { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+<canvas id="board"></canvas>
+
+<div id="top" class="hidden">
+  <div class="chip" id="lives"><small>LIVES</small><b id="livesV">20</b></div>
+  <div class="chip" id="money"><small>MONEY</small><b id="moneyV">$0</b></div>
+  <div class="chip" id="waveChip"><small id="waveK">WAVE 0/10</small><b id="waveV">Build your defenses</b></div>
+  <div class="chip"><small>SCORE</small><b id="scoreV">0</b></div>
+  <button id="menuBtn" aria-label="Menu">☰</button>
+</div>
+<div id="bottom" class="hidden">
+  <button id="next">▶ SEND WAVE 1</button>
+  <button id="fast" aria-label="Fast forward">2×</button>
+</div>
+
+<div id="start" class="sheet">
+  <span class="tag">KAGENT · AGENTGATEWAY · SUBSTRATE</span>
+  <h1>Gateway Defense</h1>
+  <p>Rogue agent traffic is heading for your cluster. Build the platform's <b style="color:#fff">real</b> controls to stop it: every block you see is a real call.</p>
+  <div class="legend" id="legend"></div>
+  <button class="big" id="play">PLAY</button>
+</div>
+
+<div id="build" class="sheet hidden">
+  <h2>Build a control</h2>
+  <p>Each one triples its damage on the traffic it was made for.</p>
+  <div class="cards" id="cards"></div>
+  <div class="row"><button class="big ghost" id="buildClose">Cancel</button></div>
+</div>
+
+<div id="towerSheet" class="sheet hidden">
+  <h2 id="tName"></h2>
+  <p id="tInfo"></p>
+  <div class="row"><button class="big gold" id="upBtn"></button><button class="big ghost" id="sellBtn"></button></div>
+  <div class="row"><button class="big ghost" id="towerClose">Close</button></div>
+</div>
+
+<div id="menu" class="sheet hidden">
+  <h2>Menu</h2>
+  <div class="row"><button class="big ghost" id="soundBtn">Sound: on</button></div>
+  <div class="row"><button class="big ghost" id="restartBtn">Restart run</button></div>
+  <div class="row"><button class="big ghost" id="screenBtn">Big screen ↗</button><button class="big ghost" id="arcadeBtn">Arcade</button></div>
+  <div class="row"><button class="big" id="menuClose">Back to the game</button></div>
+</div>
+
+<div id="end" class="sheet hidden">
+  <h2 id="endTitle" style="text-align:center"></h2>
+  <div class="score" id="endScore"></div>
+  <div class="meta" id="endMeta"></div>
+  <div class="beat" id="endBeat"></div>
+  <div class="row"><button class="big" id="again">PLAY AGAIN</button></div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<div id="banner"></div>
+
+<script type="module">
+import { startGame } from "/gateway-defense/static/td.js";
+
+const $ = (id) => document.getElementById(id);
+const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// Join the arcade first (the cookie names the player).
+const meR = await fetch("/api/me").catch(() => null);
+if (meR && meR.status === 401) { location.replace("/?next=/gateway-defense"); await new Promise(() => {}); }
+const rules = await (await fetch("/gateway-defense/api/rules")).json();
+const towerById = Object.fromEntries(rules.towers.map((t) => [t.id, t]));
+const creepById = Object.fromEntries([...rules.creeps, rules.boss].map((c) => [c.id, c]));
+const ICON = { guard: "🛡️", limit: "⏱️", egress: "🧱", suspend: "❄️" };
+const weakFor = (tid) => rules.creeps.filter((c) => c.weak === tid).map((c) => c.name).join(", ");
+
+// ---- sound: a tiny WebAudio synth, no files; vibration on Android ----
+let soundOn = true, actx = null, lastShot = 0;
+try { soundOn = localStorage.getItem("gatedef-sound") !== "off"; } catch {}
+addEventListener("pointerdown", () => { if (!actx && soundOn) try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }, { capture: true });
+const TONES = { // [wave, from Hz, to Hz, seconds, volume]
+  "shot-guard": ["triangle", 900, 500, 0.06, 0.025], "shot-limit": ["sine", 300, 200, 0.12, 0.03],
+  "shot-egress": ["square", 220, 140, 0.06, 0.02], "shot-suspend": ["sawtooth", 1200, 300, 0.12, 0.02],
+  kill: ["triangle", 520, 1040, 0.09, 0.06], boss: ["sawtooth", 200, 900, 0.6, 0.09], leak: ["sawtooth", 180, 60, 0.3, 0.09],
+  build: ["square", 330, 660, 0.1, 0.05], upgrade: ["triangle", 440, 1320, 0.2, 0.06], sell: ["sine", 600, 300, 0.12, 0.05],
+  wave: ["triangle", 392, 784, 0.25, 0.06], clear: ["sine", 660, 990, 0.3, 0.07], real: ["sine", 1320, 1760, 0.07, 0.04],
+};
+function sfx(kind) {
+  if (!soundOn || !actx) return;
+  if (kind.startsWith("shot-")) { const n = performance.now(); if (n - lastShot < 70) return; lastShot = n; }
+  const t = TONES[kind];
+  if (!t) return;
+  if (actx.state === "suspended") actx.resume();
+  const [wave, f0, f1, dur, vol] = t, t0 = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = wave;
+  o.frequency.setValueAtTime(f0, t0);
+  o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(t0); o.stop(t0 + dur + 0.02);
+}
+const buzz = (ms) => { if (soundOn && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
+const soundLabel = () => { $("soundBtn").textContent = "Sound: " + (soundOn ? "on" : "off"); };
+soundLabel();
+$("soundBtn").onclick = () => { soundOn = !soundOn; soundLabel(); try { localStorage.setItem("gatedef-sound", soundOn ? "on" : "off"); } catch {} };
+
+// ---- the start sheet ----
+$("legend").innerHTML = rules.towers.map((t) => `<div><b>${ICON[t.id]} ${esc(t.name)}</b>${esc(t.control)} · stops ${esc(weakFor(t.id))}</div>`).join("");
+
+// ---- the game ----
+let run = null, ended = false, hudState = {};
+const game = startGame($("board"), rules, {
+  onHud: hud,
+  onKill: queueKill,
+  onLeak(c, lost) {
+    $("lives").classList.remove("hit"); void $("lives").offsetWidth; $("lives").classList.add("hit");
+    toast(`<b>${esc(c.name.toUpperCase())} GOT THROUGH · −${lost} ${lost > 1 ? "LIVES" : "LIFE"}</b>${esc(c.leak)}`);
+    buzz(60);
+  },
+  onWave(n, cleared) {
+    const w = rules.waves[n - 1];
+    if (!cleared) banner(`WAVE ${n}${w.boss ? " · BOSS" : ""}`, w.name);
+    else if (n < rules.waves.length) banner(`WAVE ${n} CLEARED`, `+${rules.clearBonus * n} score · +$${20 + 5 * n}`);
+  },
+  onEnd: finish,
+  onPad(i) { closeSheets(); if (i >= 0 && game.phase() !== "over") openBuild(i); },
+  onTower(i) { closeSheets(); openTower(i); },
+  sfx,
+});
+function layout() {
+  const top = $("top").getBoundingClientRect().bottom || 60, bottom = innerHeight - ($("bottom").getBoundingClientRect().top || innerHeight - 70);
+  game.layout(top + 4, bottom + 6);
+}
+addEventListener("resize", layout);
+
+function hud(h) {
+  hudState = h;
+  $("livesV").textContent = h.lives;
+  $("moneyV").textContent = "$" + h.money;
+  $("scoreV").textContent = h.score.toLocaleString();
+  $("waveK").textContent = `WAVE ${h.wave}/${h.waves}`;
+  $("waveV").textContent = h.phase === "wave" ? h.waveName : h.wave ? "Build, then send the next wave" : "Tap a + to build";
+  const nb = $("next");
+  nb.disabled = h.phase !== "build";
+  nb.textContent = h.phase === "wave" ? "Wave in progress…" : h.phase === "over" ? "Run over" : h.wave
+    ? `▶ SEND WAVE ${h.wave + 1}${h.auto > 0 ? ` (${h.auto})` : ""}` : "▶ SEND WAVE 1";
+  $("fast").classList.toggle("on", h.fast);
+  if (!$("build").classList.contains("hidden")) refreshCards();
+}
+$("next").onclick = () => game.startWave();
+$("fast").onclick = () => game.setFast(!hudState.fast);
+
+// ---- building ----
+let buildPad = -1, towerIdx = -1;
+function closeSheets() { for (const id of ["build", "towerSheet", "menu"]) show(id, false); }
+function openBuild(pad) {
+  buildPad = pad;
+  $("cards").innerHTML = rules.towers.map((t) => `<button class="card" data-t="${t.id}" style="border-color:${t.color}66">
+    <span class="t">${esc(t.name)}<span>${ICON[t.id]}</span></span><span class="c">$${t.cost}</span>
+    <span class="d">${esc(t.blurb)}</span><span class="w" style="color:${t.color}">×${rules.weakMult} vs ${esc(weakFor(t.id))}</span></button>`).join("");
+  for (const b of $("cards").querySelectorAll(".card")) b.onclick = () => { if (game.build(buildPad, b.dataset.t)) { show("build", false); game.deselect(); } };
+  refreshCards();
+  show("build");
+}
+function refreshCards() {
+  for (const b of $("cards").querySelectorAll(".card")) b.disabled = game.money() < towerById[b.dataset.t].cost;
+}
+$("buildClose").onclick = () => { show("build", false); game.deselect(); };
+function openTower(i) {
+  towerIdx = i;
+  const t = game.tower(i);
+  if (!t) return;
+  $("tName").textContent = `${ICON[t.id]} ${t.name} · level ${t.level}`;
+  $("tInfo").textContent = `${t.control}. ${t.blurb}`;
+  $("upBtn").textContent = t.upCost ? `UPGRADE $${t.upCost}` : "MAX LEVEL";
+  $("upBtn").disabled = !t.upCost || game.money() < t.upCost;
+  $("sellBtn").textContent = `SELL +$${t.sell}`;
+  show("towerSheet");
+}
+$("upBtn").onclick = () => { if (game.upgrade(towerIdx)) openTower(towerIdx); };
+$("sellBtn").onclick = () => { game.sell(towerIdx); show("towerSheet", false); };
+$("towerClose").onclick = () => { show("towerSheet", false); game.deselect(); };
+
+// ---- menu ----
+$("menuBtn").onclick = () => { closeSheets(); game.setPaused(true); show("menu"); };
+$("menuClose").onclick = () => { show("menu", false); game.setPaused(false); };
+$("restartBtn").onclick = () => { show("menu", false); game.setPaused(false); begin(); };
+$("screenBtn").onclick = () => window.open("/gateway-defense/screen", "_blank");
+$("arcadeBtn").onclick = () => { location.href = "/"; };
+
+// ---- the real calls: a tower's kill asks the server to make one, at most 2 a second;
+// kills waiting longer than 3 s just show that they were blocked ----
+const pending = [];
+function queueKill(k) {
+  if (!run) return;
+  k.at = performance.now();
+  if (pending.length >= 6) pending.shift();
+  pending.push(k);
+}
+setInterval(async () => {
+  while (pending.length && performance.now() - pending[0].at > 3000) {
+    const k = pending.shift();
+    game.floater("✓ blocked", k.x, k.y, towerById[k.tower].color, 1.1);
+  }
+  const k = pending.shift();
+  if (!k || !run) return;
+  try {
+    const r = await fetch("/gateway-defense/api/block", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run, tower: k.tower, creep: k.creep }) });
+    if (!r.ok) return;
+    const o = await r.json();
+    const color = o.ok === false && o.real ? "#f87171" : towerById[k.tower].color;
+    let text = o.label;
+    if (o.real && o.ms) text += ` · ${o.ms < 1000 ? o.ms + " ms" : (o.ms / 1000).toFixed(1) + " s"}`;
+    if (o.cached) text += " · last real call";
+    game.floater(text, k.x, k.y, color, o.real ? 2.4 : 1.6);
+    if (o.real) sfx("real");
+  } catch {}
+}, 500);
+
+// ---- runs ----
+function banner(title, sub) { $("banner").innerHTML = `<div>${esc(title)}<small>${esc(sub || "")}</small></div>`; }
+let toastT = 0;
+function toast(html, good) {
+  $("toast").innerHTML = html;
+  $("toast").classList.toggle("good", !!good);
+  show("toast");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => show("toast", false), 3600);
+}
+async function begin() {
+  closeSheets(); show("end", false); show("start", false);
+  show("top"); show("bottom");
+  ended = false;
+  pending.length = 0;
+  game.reset();
+  layout();
+  run = null;
+  const r = await fetch("/gateway-defense/api/start", { method: "POST" }).catch(() => null);
+  if (r && r.ok) run = (await r.json()).run;
+  else toast("<b>THE ARCADE IS BUSY</b>Your run still plays; it just won't make real calls or reach the leaderboard.");
+}
+async function finish(res) {
+  if (ended) return;
+  ended = true;
+  $("endTitle").textContent = res.won ? "🏆 CLUSTER SAVED" : `CLUSTER DOWN ON WAVE ${res.wave}`;
+  $("endScore").textContent = res.score.toLocaleString();
+  $("endMeta").textContent = `${res.kills} blocked · ${res.leaks} got through${res.won ? ` · ${res.lives} lives left` : ""}`;
+  $("endBeat").textContent = "";
+  show("end");
+  sfx(res.won ? "clear" : "leak");
+  if (!run) return;
+  const r = await fetch("/gateway-defense/api/finish", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run, wave: res.wave, score: res.score, lives: res.lives, won: res.won }) }).catch(() => null);
+  run = null;
+  if (!r || !r.ok) return;
+  const f = await r.json();
+  if (!f.accepted) { $("endBeat").textContent = "That score didn't add up, so it isn't on the board."; return; }
+  $("endBeat").textContent = f.rank === 1 ? `#1 on the big screen · best ${f.best.toLocaleString()}`
+    : `#${f.rank} · best ${f.best.toLocaleString()}` + (f.beat ? ` · beat ${f.beat.nick} (${f.beat.score.toLocaleString()}) for #${f.rank - 1}` : "");
+}
+$("play").onclick = begin;
+$("again").onclick = begin;
+layout();
+// For the headless screenshot script.
+window.gatedef = { game, rules, begin };
+</script>
+</body>
+</html>
