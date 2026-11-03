@@ -508,3 +508,20 @@ func TestRoutes(t *testing.T) {
 		t.Fatal("LAN screen refused")
 	}
 }
+
+func TestSettleRetriesUnsettled(t *testing.T) {
+	n := 0
+	err := settle(context.Background(), func() error {
+		if n++; n < 3 {
+			return errors.New("rpc error: code = FailedPrecondition desc = runtime cleanup or lifecycle work is not yet settled")
+		}
+		return nil
+	})
+	if err != nil || n != 3 {
+		t.Fatalf("settle: err=%v after %d calls", err, n)
+	}
+	n = 0
+	if err := settle(context.Background(), func() error { n++; return errors.New("boom") }); err == nil || n != 1 {
+		t.Fatalf("other errors: err=%v after %d calls", err, n)
+	}
+}

@@ -274,7 +274,7 @@ func (a *AgentProber) Suspend(ctx context.Context) Outcome {
 
 	c, cancel := context.WithTimeout(ctx, opTimeout)
 	t0 := time.Now()
-	err := a.ops.Suspend(c, r.id)
+	err := settle(c, func() error { return a.ops.Suspend(c, r.id) })
 	cancel()
 	o := Outcome{Tower: "suspend", Real: true, Ms: time.Since(t0).Milliseconds(), At: time.Now().UnixMilli()}
 	a.mu.Lock()
@@ -304,7 +304,7 @@ func (a *AgentProber) resume(r *runaway) {
 	r.state = "resuming"
 	a.mu.Unlock()
 	c, cancel := context.WithTimeout(context.Background(), opTimeout)
-	err := a.ops.Resume(c, r.id)
+	err := settle(c, func() error { return a.ops.Resume(c, r.id) })
 	cancel()
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -391,8 +391,27 @@ func (a *AgentProber) runProbe() {
 	a.mu.Unlock()
 	sc, cancel2 := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel2()
-	if err := a.ops.Suspend(sc, id); err != nil {
+	if err := settle(sc, func() error { return a.ops.Suspend(sc, id) }); err != nil {
 		slog.Warn("gateway defense: suspend probe", "err", err)
+	}
+}
+
+// settle runs call, retrying with backoff (100 ms up to 500 ms) while kagent is still
+// settling the session's last turn ("not yet settled", "active task or checkpoint"),
+// until ctx ends, as heist and defense do.
+func settle(ctx context.Context, call func() error) error {
+	wait := 100 * time.Millisecond
+	for {
+		err := call()
+		if err == nil || !(strings.Contains(err.Error(), "not yet settled") || strings.Contains(err.Error(), "active task or checkpoint")) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(wait):
+		}
+		wait = min(2*wait, 500*time.Millisecond)
 	}
 }
 
