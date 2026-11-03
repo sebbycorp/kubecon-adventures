@@ -27,6 +27,7 @@ type fakeAgent struct {
 	prompts     []string
 	reply       string
 	settleFails int
+	busyFails   int // the next N Suspend/Delete calls answer Aborted (a turn in flight)
 	invalid     int // the next N prompts end in output_validation_failed
 	promptErr   error
 	tasks       int
@@ -47,6 +48,17 @@ func (f *fakeAgent) unsettled() error {
 	if f.settleFails > 0 {
 		f.settleFails--
 		return status.Error(codes.FailedPrecondition, "runtime cleanup or lifecycle work is not yet settled")
+	}
+	return nil
+}
+
+// busy is kagent's answer to Suspend or Delete while an A2A turn is in flight.
+func (f *fakeAgent) busy() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.busyFails > 0 {
+		f.busyFails--
+		return status.Error(codes.Aborted, "begin Session operation: session has an active task or checkpoint: resource conflict")
 	}
 	return nil
 }
@@ -93,6 +105,10 @@ func (f *fakeAgent) Suspend(ctx context.Context, sid string) error {
 		f.note("suspend-unsettled " + sid)
 		return err
 	}
+	if err := f.busy(); err != nil {
+		f.note("suspend-busy " + sid)
+		return err
+	}
 	f.note("suspend " + sid)
 	return nil
 }
@@ -110,6 +126,10 @@ func (f *fakeAgent) Checkpoint(ctx context.Context, sid, head string) (string, e
 func (f *fakeAgent) Delete(ctx context.Context, sid string) error {
 	if err := f.unsettled(); err != nil {
 		f.note("delete-unsettled " + sid)
+		return err
+	}
+	if err := f.busy(); err != nil {
+		f.note("delete-busy " + sid)
 		return err
 	}
 	f.note("delete " + sid)
@@ -297,13 +317,23 @@ func TestExtractResumeFirst(t *testing.T) {
 	if _, err := o.Freeze(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := o.Extract(ctx, sid); err != nil {
+	h.reply = `{"say":"Locked up, but I'll be back for the loot!","step_done":true,"loot":0}`
+	say, ms, err := o.Extract(ctx, sid)
+	if err != nil {
 		t.Fatal(err)
 	}
+	// A suspend changes the snapshot, so the pre-freeze head (task-1) can't be tagged:
+	// the booked line's turn (task-2) is the fresh head that is checkpointed.
 	got := strings.Join(h.calls(), "|")
-	want := "create gta-m1-1|prompt " + sid + "|suspend " + sid + "|resume " + sid + "|checkpoint " + sid + " task-1|delete " + sid
+	want := "create gta-m1-1|prompt " + sid + "|suspend " + sid + "|resume " + sid + "|prompt " + sid + "|checkpoint " + sid + " task-2|delete " + sid
 	if got != want {
 		t.Fatalf("calls\n got %s\nwant %s", got, want)
+	}
+	if h.prompts[1] != bookedLine {
+		t.Fatalf("booked prompt %q", h.prompts[1])
+	}
+	if say != "Locked up, but I'll be back for the loot!" || ms < 1 {
+		t.Fatalf("say %q ms %d", say, ms)
 	}
 	if !o.ExtractUsesResume() {
 		t.Fatal("resume-first must take a resume slot")
@@ -316,7 +346,7 @@ func TestExtractDirect(t *testing.T) {
 	ctx := context.Background()
 	sid, _, _ := o.Spawn(ctx, "m1-1")
 	_, _ = o.Step(ctx, sid, 1, 4)
-	if _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(h.calls()[2:], "|"); got != "checkpoint "+sid+" task-1|delete "+sid {
@@ -330,7 +360,7 @@ func TestExtractDirect(t *testing.T) {
 	_, _ = o.Step(ctx, sid, 1, 4)
 	_, _ = o.Freeze(ctx, sid)
 	n := len(h.calls())
-	if _, err := o.Extract(ctx, sid); err == nil {
+	if _, _, err := o.Extract(ctx, sid); err == nil {
 		t.Fatal("direct extract of a suspended session: want error")
 	}
 	if extra := h.calls()[n:]; len(extra) != 0 {
@@ -345,7 +375,7 @@ func TestExtractRunningSessionSkipsResume(t *testing.T) {
 	sid, _, _ := o.Spawn(ctx, "m1-1")
 	_, _ = o.Step(ctx, sid, 1, 4)
 	_, _ = o.Step(ctx, sid, 2, 4)
-	if _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	got := strings.Join(h.calls()[3:], "|")
@@ -539,7 +569,7 @@ func TestFailedPromptIsNotCheckpointHead(t *testing.T) {
 		t.Fatal("want step error")
 	}
 	h.promptErr = nil
-	if _, err := o.Extract(ctx, sid); err != nil {
+	if _, _, err := o.Extract(ctx, sid); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(strings.Join(h.calls(), "|"), "checkpoint "+sid+" task-1|") {
@@ -560,5 +590,150 @@ func TestListSessionsBothAgents(t *testing.T) {
 	got, err = o.ListSessions(context.Background())
 	if err == nil || !slices.Equal(got, []string{"h1", "h2"}) {
 		t.Fatalf("ListSessions with a failing agent = %v, %v", got, err)
+	}
+}
+
+func TestExtractFrozenClipsAndFallsBack(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.reply = `{"say":"` + strings.Repeat("é", 80) + `"}`
+	say, _, err := o.Extract(ctx, sid)
+	if err != nil || utf8.RuneCountInString(say) != maxSay {
+		t.Fatalf("say %q (%d runes), %v", say, utf8.RuneCountInString(say), err)
+	}
+	// An unreadable line still completed a turn: it is checkpointed, with the fallback.
+	sid, _, _ = o.Spawn(ctx, "m1-2")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.reply = `not json`
+	say, _, err = o.Extract(ctx, sid)
+	if err != nil || say != bookedFallback {
+		t.Fatalf("fallback: say %q, %v", say, err)
+	}
+	if !slices.Contains(h.calls(), "checkpoint "+sid+" task-4") {
+		t.Fatalf("fallback turn not checkpointed: %v", h.calls())
+	}
+}
+
+func TestExtractFrozenLineFailsNoCheckpoint(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
+	n := len(h.calls())
+	if _, _, err := o.Extract(ctx, sid); err == nil || !strings.Contains(err.Error(), "booked line") {
+		t.Fatalf("want booked line error, got %v", err)
+	}
+	// The stale head is never checkpointed (it would fail "snapshot changed") and the
+	// session is not deleted: it stays in the game, awake, to be booked again.
+	for _, c := range h.calls()[n:] {
+		if strings.HasPrefix(c, "checkpoint") || strings.HasPrefix(c, "delete") {
+			t.Fatalf("failed booked line went on to %q: %v", c, h.calls()[n:])
+		}
+	}
+	h.promptErr = nil
+	if _, _, err := o.Extract(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.calls()[len(h.calls())-3:], "|"); got != "prompt "+sid+"|checkpoint "+sid+" task-3|delete "+sid {
+		t.Fatalf("retry after resume: %s", got)
+	}
+}
+
+func TestSettlingClassification(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{nil, false},
+		{status.Error(codes.FailedPrecondition, "runtime cleanup or lifecycle work is not yet settled"), true},
+		// Suspend mid-turn, as captured on the cluster.
+		{status.Error(codes.Aborted, "begin Session operation: session has an active task or checkpoint: resource conflict"), true},
+		{errors.New("send: session has an active task or checkpoint: resource conflict"), true},
+		{errors.New("send failed: runtime cleanup or lifecycle work is not yet settled"), true},
+		{status.Error(codes.NotFound, "session not found"), false},
+		{status.Error(codes.Unknown, `checkpoint failed: reason:"SnapshotTagFailed" message:"snapshot changed"`), false},
+		{errors.New("boom"), false},
+	} {
+		if got := settling(c.err); got != c.want {
+			t.Errorf("settling(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}
+
+func TestFreezeWaitsForTurnToEnd(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	h.busyFails = 3
+	if _, err := o.Freeze(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(h.calls()[1:], "|")
+	want := strings.Repeat("suspend-busy "+sid+"|", 3) + "suspend " + sid
+	if got != want {
+		t.Fatalf("calls\n got %s\nwant %s", got, want)
+	}
+	// A turn that never ends: Freeze gives up with the op's context, with kagent's error.
+	sid, _, _ = o.Spawn(ctx, "m1-2")
+	h.busyFails = 1 << 30
+	short, c2 := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer c2()
+	if _, err := o.Freeze(short, sid); status.Code(err) != codes.Aborted {
+		t.Fatalf("want Aborted after ctx ends, got %v", err)
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.sessions[sid].suspended {
+		t.Fatal("failed freeze marked the session suspended")
+	}
+}
+
+func TestSchedulerCarriesBookedLine(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.reply = `{"say":"See you in the vault"}`
+	sc := NewScheduler(o, 4, 4)
+	defer sc.Close()
+	sc.Submit("extract", "t1", sid, 0, 0)
+	r := result(t, sc)
+	if !r.OK || r.Step.Say != "See you in the vault" {
+		t.Fatalf("extract result %+v", r)
+	}
+}
+
+func TestExtractAfterFailedSpringLinePromptsFresh(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
+	if _, say, _, err := o.Spring(ctx, sid); err != nil || say != sprungFallback {
+		t.Fatalf("spring: %q %v", say, err)
+	}
+	h.promptErr = nil
+	n := len(h.calls())
+	if _, _, err := o.Extract(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	// Awake, but its head is still the pre-freeze turn: no resume, a fresh line, then
+	// the checkpoint of that line's task.
+	if got := strings.Join(h.calls()[n:], "|"); got != "prompt "+sid+"|checkpoint "+sid+" task-3|delete "+sid {
+		t.Fatalf("calls: %s", got)
 	}
 }

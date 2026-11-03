@@ -321,6 +321,17 @@ func TestLevel2NeedsBooking(t *testing.T) {
 	if r := x.row("a"); r.Cash != 700 || r.Level != 2 {
 		t.Fatalf("row a = %+v", r)
 	}
+	// fakeOps' booked line is shown on the target and as an event.
+	if tg.Say != "booked!" {
+		t.Fatalf("booked target says %q", tg.Say)
+	}
+	found := false
+	for _, e := range x.w.Events {
+		found = found || (e.Kind == "booked-line" && e.Target == tg.ID && e.Text == "booked!")
+	}
+	if !found {
+		t.Fatalf("no booked-line event: %+v", x.w.Events)
+	}
 }
 
 func TestCrewRevivesAfter30s(t *testing.T) {

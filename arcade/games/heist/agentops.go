@@ -65,6 +65,12 @@ const (
 	sprungLine   = "You were frozen by the cops and just got sprung. React, then continue your heist."
 	allyGreeting = "You just booted up to protect your crew. Greet them in one line."
 	allySprung   = "You were frozen protecting your crew and just got rebooted. React in one line."
+	// bookedLine is Extract's post-resume prompt: it gives the checkpoint a fresh head
+	// (a suspend changes the snapshot, so the pre-freeze head can't be tagged).
+	bookedLine = "You just got booked into the Snapshot Vault. React in one line."
+	// bookedFallback is Extract's line when the booked reply can't be parsed (the turn
+	// itself completed, so it is still the checkpoint's head).
+	bookedFallback = "Booked. I'll be back."
 	// Spring's line when the post-resume prompt fails (the resume itself worked).
 	sprungFallback = "I'm out! Back to the heist."
 	allyFallback   = "Rebooted and back on duty!"
@@ -132,12 +138,25 @@ func clipRunes(s string, n int) string {
 	return string([]rune(s)[:n])
 }
 
-// settling reports kagent's short "not yet settled" window after a turn or a resume.
+// settling reports errors that mean "wait and retry": kagent's short "not yet settled"
+// window after a turn or a resume (FailedPrecondition), and a session that still has an
+// A2A turn or checkpoint in flight (Aborted, "session has an active task or checkpoint:
+// resource conflict", which Suspend answers mid-turn). Retrying the latter is what makes
+// a freeze land when the turn ends.
 func settling(err error) bool {
-	return err != nil && (status.Code(err) == codes.FailedPrecondition || strings.Contains(err.Error(), "not yet settled"))
+	if err == nil {
+		return false
+	}
+	switch status.Code(err) {
+	case codes.FailedPrecondition, codes.Aborted:
+		return true
+	}
+	e := err.Error()
+	return strings.Contains(e, "not yet settled") || strings.Contains(e, "active task or checkpoint")
 }
 
-// settle runs call, retrying with backoff while kagent is still settling, until ctx ends.
+// settle runs call, retrying with backoff (100 ms up to 500 ms, so a freeze lands soon
+// after the turn ends) while kagent is still settling, until ctx ends.
 func settle(ctx context.Context, call func() error) error {
 	wait := 100 * time.Millisecond
 	for {
@@ -150,7 +169,7 @@ func settle(ctx context.Context, call func() error) error {
 			return err
 		case <-time.After(wait):
 		}
-		wait = min(2*wait, 2*time.Second)
+		wait = min(2*wait, 500*time.Millisecond)
 	}
 }
 
@@ -175,9 +194,12 @@ func policyErr(err error) error {
 
 // session is what the adapter remembers about one live session.
 type session struct {
-	ally      bool
-	lastTask  string // A2A task ID of the last prompt reply (Checkpoint's head)
-	lastStep  int    // last step that completed
+	ally     bool
+	lastTask string // A2A task ID of the last prompt reply (Checkpoint's head)
+	// staleHead: a suspend since lastTask changed the snapshot, so lastTask can't be
+	// checkpointed any more ("SnapshotTagFailed: snapshot changed"); a new turn fixes it.
+	staleHead bool
+	lastStep  int // last step that completed
 	steps     int
 	suspended bool
 }
@@ -236,7 +258,8 @@ func (o *agentOps) prompt(ctx context.Context, k agentAPI, sid, text string) (ka
 		})
 		if err == nil && r.Task != nil && r.Task.ID != "" { // a failed task never becomes Checkpoint's head
 			o.mu.Lock()
-			o.sessLocked(sid).lastTask = string(r.Task.ID)
+			s := o.sessLocked(sid)
+			s.lastTask, s.staleHead = string(r.Task.ID), false
 			o.mu.Unlock()
 		}
 		if err == nil || !strings.Contains(err.Error(), "output_validation_failed") || ctx.Err() != nil {
@@ -333,15 +356,24 @@ func (o *agentOps) Step(ctx context.Context, sid string, step, steps int) (StepR
 	return res, nil
 }
 
+// Freeze suspends the session. Mid-turn kagent refuses (Aborted, "active task"), so it
+// waits, within ctx, for the turn to end: the freeze lands when the turn settles.
 func (o *agentOps) Freeze(ctx context.Context, sid string) (int64, error) {
 	k := o.client(sid)
-	start := time.Now()
-	if err := settle(ctx, func() error { return k.Suspend(ctx, sid) }); err != nil {
+	// ms is the Suspend that landed, not the wait for an in-flight turn to end (the
+	// screen shows it as the suspend time).
+	var ms int64
+	if err := settle(ctx, func() error {
+		start := time.Now()
+		err := k.Suspend(ctx, sid)
+		ms = time.Since(start).Milliseconds()
+		return err
+	}); err != nil {
 		return 0, err
 	}
-	ms := time.Since(start).Milliseconds()
 	o.mu.Lock()
-	o.sessLocked(sid).suspended = true
+	s := o.sessLocked(sid)
+	s.suspended, s.staleHead = true, true
 	o.mu.Unlock()
 	return max(ms, 1), nil
 }
@@ -388,35 +420,66 @@ func (o *agentOps) Spring(ctx context.Context, sid string) (string, string, int6
 	return nd, say, ms, nil
 }
 
-// Extract checkpoints the session's last turn, then deletes it. In resume-first mode a
-// suspended session is resumed first: kagent can't checkpoint a SUSPENDED session.
-func (o *agentOps) Extract(ctx context.Context, sid string) (int64, error) {
+// Extract checkpoints the session's last turn, then deletes it, and returns the
+// session's booked line ("" when there is none). kagent can't checkpoint a SUSPENDED
+// session, and once a session has been suspended the pre-freeze head can't be tagged
+// either ("SnapshotTagFailed: snapshot changed", for good). So in resume-first mode a
+// suspended session is resumed and prompted once (bookedLine); that turn is the fresh
+// head that is checkpointed. If that prompt fails the session stays awake and in the
+// game, and its head stays stale, so the next Extract prompts again. ms is the Substrate work (resume, checkpoint, delete),
+// without the LLM turn.
+func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, error) {
 	k := o.client(sid)
-	start := time.Now()
 	o.mu.Lock()
 	s := o.sessLocked(sid)
-	suspended, head := s.suspended, s.lastTask
+	suspended, stale, head := s.suspended, s.staleHead, s.lastTask
 	o.mu.Unlock()
+	var say string
+	var ms int64
+	timed := func(call func() error) error {
+		start := time.Now()
+		err := call()
+		ms += time.Since(start).Milliseconds()
+		return err
+	}
+	if suspended {
+		if !o.resumeFirst {
+			return "", 0, errors.New("direct extract of a suspended session: kagent can't checkpoint it")
+		}
+		if err := timed(func() error { return k.Resume(ctx, sid) }); err != nil {
+			return "", 0, err
+		}
+		o.mu.Lock()
+		s.suspended = false
+		o.mu.Unlock()
+	}
+	// Also when awake: a session resumed earlier whose post-resume prompt failed (a
+	// spring's line, or a failed booked line) still has the stale pre-freeze head.
+	if suspended || stale {
+		r, err := o.prompt(ctx, k, sid, bookedLine)
+		if err != nil {
+			return "", 0, fmt.Errorf("booked line: %w", err)
+		}
+		if r.Task == nil || r.Task.ID == "" {
+			return "", 0, errors.New("booked line: reply has no task to checkpoint")
+		}
+		if say, err = parseSay(r); err != nil || say == "" {
+			slog.Warn("heist: booked line unreadable, using fallback", "session", sid, "err", err)
+			say = bookedFallback
+		}
+		head = string(r.Task.ID)
+	}
 	if head != "" {
-		if suspended {
-			if !o.resumeFirst {
-				return 0, errors.New("direct extract of a suspended session: kagent can't checkpoint it")
-			}
-			if err := k.Resume(ctx, sid); err != nil {
-				return 0, err
-			}
-			o.mu.Lock()
-			s.suspended = false
-			o.mu.Unlock()
-		}
-		if err := settle(ctx, func() error { _, err := k.Checkpoint(ctx, sid, head); return err }); err != nil {
-			return 0, fmt.Errorf("checkpoint: %w", err)
+		if err := timed(func() error {
+			return settle(ctx, func() error { _, err := k.Checkpoint(ctx, sid, head); return err })
+		}); err != nil {
+			return "", 0, fmt.Errorf("checkpoint: %w", err)
 		}
 	}
-	if err := o.Delete(ctx, sid); err != nil {
-		return 0, err
+	if err := timed(func() error { return o.Delete(ctx, sid) }); err != nil {
+		return "", 0, err
 	}
-	return max(time.Since(start).Milliseconds(), 1), nil
+	return say, max(ms, 1), nil
 }
 
 // Delete removes the session and forgets it.

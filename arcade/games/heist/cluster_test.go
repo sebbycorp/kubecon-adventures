@@ -177,13 +177,14 @@ func TestKagentOpsLifecycle(t *testing.T) {
 
 	c, cc = opCtx()
 	done = op("extract")
-	ms, err = o.Extract(c, sid)
+	var bookedSay string
+	bookedSay, ms, err = o.Extract(c, sid)
 	cc()
 	done()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("extract reported %d ms", ms)
+	t.Logf("extract reported %d ms, say %q", ms, bookedSay)
 	ids, err := heister.ListSessionIDs(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -243,5 +244,163 @@ func TestKagentOpsLifecycle(t *testing.T) {
 		if id == aid {
 			t.Fatalf("ally session %s still listed after Delete", aid)
 		}
+	}
+}
+
+// clusterOps is the real adapter on heister and sidekick; cleanup deletes every session
+// it made, pass or fail, and fails the test if one is still listed afterwards.
+func clusterOps(t *testing.T) (*agentOps, *kagent.Kagent, func(string)) {
+	t.Helper()
+	url := os.Getenv("KAGENT_URL")
+	heister, err := kagent.NewKagent(url, "heist-test", "kagent", "heister")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidekick, err := kagent.NewKagent(url, "heist-test", "kagent", "sidekick")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := newAgentOps(heister, sidekick, "resume-first")
+	var made []string
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		for _, sid := range made {
+			_ = o.Delete(ctx, sid) // already gone after a good Extract: NotFound is fine
+		}
+		ids, err := heister.ListSessionIDs(ctx)
+		if err != nil {
+			t.Errorf("cleanup list: %v", err)
+		}
+		for _, id := range ids {
+			for _, sid := range made {
+				if id == sid {
+					t.Errorf("session %s left behind", sid)
+				}
+			}
+		}
+	})
+	return o, heister, func(sid string) { made = append(made, sid) }
+}
+
+// sessionState is the session's runtime state and operation, as kagent reports it.
+func sessionState(t *testing.T, k *kagent.Kagent, sid string) string {
+	t.Helper()
+	actors, err := k.ActorStates(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, ok := actors[sid]
+	if !ok {
+		return "GONE"
+	}
+	return a.State
+}
+
+// TestExtractFrozenTarget: a frozen target is booked (Resume, booked line, Checkpoint of
+// that turn, Delete) and its session is gone afterwards.
+func TestExtractFrozenTarget(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	o, heister, track := clusterOps(t)
+	opCtx := func() (context.Context, context.CancelFunc) { return context.WithTimeout(ctx, opTimeout) }
+
+	c, cc := opCtx()
+	sid, _, err := o.Spawn(c, "extract-frozen-test")
+	cc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	track(sid)
+	c, cc = opCtx()
+	start := time.Now()
+	r, err := o.Step(c, sid, 1, 4)
+	cc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("TIMING step     %v (%q)", time.Since(start).Round(time.Millisecond), r.Say)
+	c, cc = opCtx()
+	start = time.Now()
+	ms, err := o.Freeze(c, sid)
+	cc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("TIMING freeze   %v (reported %d ms), state %s", time.Since(start).Round(time.Millisecond), ms, sessionState(t, heister, sid))
+	c, cc = opCtx()
+	start = time.Now()
+	say, ms, err := o.Extract(c, sid)
+	cc()
+	if err != nil {
+		t.Fatalf("extract of a frozen target: %v", err)
+	}
+	t.Logf("TIMING extract  %v (reported %d ms without the LLM turn), say %q", time.Since(start).Round(time.Millisecond), ms, say)
+	if say == "" || say == bookedFallback {
+		t.Errorf("no booked line from the agent: %q", say)
+	}
+	ids, err := heister.ListSessionIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if id == sid {
+			t.Fatalf("session %s still listed after Extract", sid)
+		}
+	}
+}
+
+// TestFreezeDuringStep: a Freeze ~300 ms into a step (kagent answers Aborted "session has
+// an active task" mid-turn) waits for the turn to end and lands: SUSPENDED.
+func TestFreezeDuringStep(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	o, heister, track := clusterOps(t)
+	opCtx := func() (context.Context, context.CancelFunc) { return context.WithTimeout(ctx, opTimeout) }
+
+	c, cc := opCtx()
+	sid, _, err := o.Spawn(c, "freeze-during-step-test")
+	cc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	track(sid)
+	c, cc = opCtx()
+	_, err = o.Step(c, sid, 1, 4) // the first turn places the session (as in the game)
+	cc()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type stepOut struct {
+		err error
+		end time.Time
+	}
+	done := make(chan stepOut, 1)
+	stepStart := time.Now()
+	go func() {
+		c, cc := opCtx()
+		defer cc()
+		_, err := o.Step(c, sid, 2, 4)
+		done <- stepOut{err, time.Now()}
+	}()
+	time.Sleep(300 * time.Millisecond)
+	c, cc = opCtx()
+	start := time.Now()
+	ms, err := o.Freeze(c, sid)
+	cc()
+	frozeAt := time.Now()
+	if err != nil {
+		t.Fatalf("freeze during a step: %v", err)
+	}
+	st := <-done
+	t.Logf("TIMING step ended %v after its start (err %v); freeze called at +%v, returned at +%v (call %v, reported %d ms)",
+		st.end.Sub(stepStart).Round(time.Millisecond), st.err, start.Sub(stepStart).Round(time.Millisecond),
+		frozeAt.Sub(stepStart).Round(time.Millisecond), frozeAt.Sub(start).Round(time.Millisecond), ms)
+	if st.err != nil {
+		t.Errorf("the in-flight step should finish first: %v", st.err)
+	}
+	if got := sessionState(t, heister, sid); got != "SUSPENDED" {
+		t.Fatalf("after freeze: actor %s, want SUSPENDED", got)
 	}
 }

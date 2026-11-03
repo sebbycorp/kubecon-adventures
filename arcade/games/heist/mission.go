@@ -225,6 +225,11 @@ func (m *Missions) OnResult(r Result, w *World) {
 		p.Takedowns++
 		m.squadTD[p.Squad]++
 	}
+	if r.Kind == "extract" && r.OK && t != nil && r.Step.Say != "" {
+		// The booked target's last words, from the turn its checkpoint was taken on.
+		t.Say = clip(r.Step.Say)
+		w.Events = append(w.Events, Event{Kind: "booked-line", Target: t.ID, Text: t.Say})
+	}
 	if (r.Kind == "step" || r.Kind == "spring") && !r.OK && strings.HasPrefix(r.Err, "policy: ") && t != nil {
 		// agentgateway stopped the target's LLM call (prompt guard or rate limit).
 		why, _, _ := strings.Cut(strings.TrimPrefix(r.Err, "policy: "), ":")

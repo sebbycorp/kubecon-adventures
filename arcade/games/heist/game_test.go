@@ -77,8 +77,8 @@ func (o *liveOps) Freeze(ctx context.Context, id string) (int64, error) {
 func (o *liveOps) Spring(ctx context.Context, id string) (string, string, int64, error) {
 	return "node-1", "back", 9, o.do(ctx, "spring", id)
 }
-func (o *liveOps) Extract(ctx context.Context, id string) (int64, error) {
-	return 11, o.do(ctx, "extract", id)
+func (o *liveOps) Extract(ctx context.Context, id string) (string, int64, error) {
+	return "booked", 11, o.do(ctx, "extract", id)
 }
 func (o *liveOps) Delete(ctx context.Context, id string) error { return o.do(ctx, "delete", id) }
 

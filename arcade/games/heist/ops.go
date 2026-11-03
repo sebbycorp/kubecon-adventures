@@ -16,7 +16,9 @@ type Ops interface {
 	Step(ctx context.Context, sessionID string, step, steps int) (StepResult, error)
 	Freeze(ctx context.Context, sessionID string) (ms int64, err error)
 	Spring(ctx context.Context, sessionID string) (node string, say string, ms int64, err error)
-	Extract(ctx context.Context, sessionID string) (ms int64, err error)
+	// Extract books the session into the vault (checkpoint, then delete) and returns
+	// its booked line ("" if it has none).
+	Extract(ctx context.Context, sessionID string) (say string, ms int64, err error)
 	Delete(ctx context.Context, sessionID string) error
 	// SpawnAlly starts a player's ally session (the sidekick Agent) and returns its
 	// greeting line.
@@ -37,7 +39,7 @@ type StepResult struct {
 
 // Result is the outcome of one submitted op. Spawned holds the new session ID for
 // "spawn" and "ally"; Node and Step.Say carry the node and the sprung line for "spring"
-// or the greeting for "ally".
+// or the greeting for "ally"; Step.Say is the booked line for "extract".
 type Result struct {
 	Kind, Target string
 	OK           bool
@@ -220,7 +222,7 @@ func (s *Scheduler) run(ctx context.Context, j job) (r Result) {
 	case "spring":
 		r.Node, r.Step.Say, ms, err = s.ops.Spring(ctx, j.sessionID)
 	case "extract":
-		ms, err = s.ops.Extract(ctx, j.sessionID)
+		r.Step.Say, ms, err = s.ops.Extract(ctx, j.sessionID)
 	case "delete":
 		err = s.ops.Delete(ctx, j.sessionID)
 	}

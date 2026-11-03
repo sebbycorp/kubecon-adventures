@@ -407,6 +407,7 @@ export function startCity(canvas, opts) {
       case "sprung": if (t) floater(`↻ restored in ${e.ms} ms`, t.x, t.y, "#7ab8ff", 2.6); break;
       case "slipped": if (t) floater("it slipped away", t.x, t.y, "#ff9f43", 2.2); break;
       case "booked": if (t) floater("▣ booked into the Vault", t.x, t.y, "#ffd23d", 2.2); break;
+      case "booked-line": if (t) floater(`“${e.text}”`, t.x, t.y, "#ffd23d", 3.2); break;
       case "deleted": if (t) floater("✖ deleted", t.x, t.y, "#ff4d5e", 2); break;
       case "escaped": if (t) floater("got away with it", t.x, t.y, "#ff4d5e", 2.5); break;
       case "drop": if (t) floater(`★ ${e.text}`, t.x, t.y, "#ffd23d", 1.8); break;

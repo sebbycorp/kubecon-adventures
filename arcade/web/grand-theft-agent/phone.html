@@ -424,6 +424,7 @@ function feedEvent(e) {
     frozen: `<span style="color:#6ff">✓ ${who(e.player)} froze ${name} · suspended in ${e.ms} ms</span>`,
     sprung: `<span style="color:#7ab8ff">↻ ${name} restored in ${e.ms} ms</span>`,
     booked: `<span style="color:#ffd23d">▣ ${who(e.player)} booked ${name}</span>`,
+    "booked-line": `<span style="color:#ffd23d">❝ ${esc((t && t.name) || "a hunter")}: “${esc(e.text)}”</span>`,
     deleted: `✖ ${who(e.player)} deleted ${name}`,
     escaped: `<span style="color:#ff4d5e">${name} got away with the heist</span>`,
     drop: e.text === "DDR5" ? `<span style="color:#ffd23d">★ DDR5 RAM dropped</span>` : "",

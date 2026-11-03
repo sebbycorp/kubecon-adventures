@@ -65,8 +65,9 @@ func (f *fakeOps) Spring(ctx context.Context, id string) (string, string, int64,
 	return "node-2", "sprung!", f.ms, err
 }
 
-func (f *fakeOps) Extract(ctx context.Context, id string) (int64, error) {
-	return f.ms, f.block(ctx, "extract", id)
+func (f *fakeOps) Extract(ctx context.Context, id string) (string, int64, error) {
+	err := f.block(ctx, "extract", id)
+	return "booked!", f.ms, err
 }
 
 func (f *fakeOps) Delete(ctx context.Context, id string) error {

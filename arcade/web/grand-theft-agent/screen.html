@@ -304,6 +304,7 @@ function onEvent(e) {
   switch (e.kind) {
     case "frozen": lastAction = Date.now(); return feed("ice", "❄", `${who} froze ${tname}`, `suspend ${e.ms} ms`);
     case "booked": lastAction = Date.now(); return feed("gold", "▣", `${who} booked ${tname} into the Vault`, "checkpoint");
+    case "booked-line": return feed("gold", "❝", `${tname}, from the Vault: “${esc(e.text)}”`);
     case "sprung": {
       lastAction = Date.now();
       heart.beat(0.9, `${tg ? tg.name : "hunter"} · restored`);
