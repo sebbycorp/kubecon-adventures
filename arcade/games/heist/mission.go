@@ -45,7 +45,7 @@ const (
 	ptsFreeze      = 1
 	ptsBook        = 2
 	frozenTTL      = 8.0 // a frozen agent nobody books is deleted after this long
-	stepMin        = 10.0
+	stepMin        = 12.0
 	stepJitter     = 4.0
 	runSteps       = 4 // an agent that finishes its 4th step escapes
 	spawnRetry     = 2.0

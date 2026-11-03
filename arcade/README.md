@@ -142,7 +142,7 @@ A 3-minute multiplayer shooter in a stylised night city (`games/heist`, design i
 
 | In the game | Real call |
 |-------------|-----------|
-| An agent spawns 6–14 tiles from you and works a 4-step job, one turn every 8–12 s | `CreateSession`, then one A2A turn per step (its line is the speech bubble) |
+| An agent spawns 6–14 tiles from you and works a 4-step job, one turn every 12–16 s | `CreateSession`, then one A2A turn per step (its line is the speech bubble) |
 | Two hits freeze it: +1 | `SuspendSession`, which lands when the agent's current turn ends; the agent shows FREEZING at once. A freeze that races the final step wins. |
 | Tap BOOK next to a frozen agent: +2 | `ResumeSession`, one "you got booked" turn, `Checkpoint` of that turn, then `DeleteSession` |
 | A frozen agent nobody books for 8 s | `DeleteSession` |

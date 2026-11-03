@@ -10,7 +10,7 @@ The game was first built as "Grand Theft Agent" with levels and missions (2026-1
 |-------|----------|
 | Name | **Substrate Siege**, at `/substrate-siege`; `/grand-theft-agent` redirects |
 | Goal on screen | One PLAY button and four lines of how-to. A 3:00 clock, your points, your best and your rank, a one-line goal that changes with what is next to you, and a red arrow on the screen edge to the nearest agent with its distance |
-| Pace | Agents spawn 6–14 tiles from a player of the run. Two hits freeze (was three). Steps are 8–12 s apart (was 15–25), so an agent escapes in about 40 s |
+| Pace | Agents spawn 6–14 tiles from a player of the run. Two hits freeze (was three). Steps are 12–16 s apart (was 15–25), so an agent escapes in under a minute |
 | Points | Freeze +1, book +2, for the player who did it, in their own team's running run (whichever run spawned the agent). The leaderboard ranks best single run, then total freezes |
 | Agents per run | 1 + the run's online players, at most 4; 32 in the city; a freed slot goes to the run with the fewest live agents |
 | Frozen agents | Show FREEZING the moment the freezing hit lands (the suspend waits for the agent's turn). Tap BOOK next to one to book it in place (no dragging). Unbooked ones are deleted after 8 s |
