@@ -71,6 +71,10 @@
   .btn { position: fixed; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; letter-spacing: .08em; touch-action: none; }
   #fire { right: 18px; bottom: calc(22px + var(--sb)); width: 92px; height: 92px; background: #0a4a1f; border: 2px solid var(--g); color: #d8ffe0; box-shadow: 0 0 20px #2bff6a77; font-size: 14px; }
   #fire.on { background: #12803a; box-shadow: 0 0 34px #2bff6acc; transform: scale(.96); }
+  #fire.lock { border-color: #9fffff; color: #fff; box-shadow: 0 0 26px #6ffc, inset 0 0 18px #6ff6; }
+  #fire.lock.on { background: #0f7a8a; box-shadow: 0 0 40px #9fffffee; }
+  #fire.far, #fire.none { opacity: .6; }
+  #fire small { display: block; font-size: 8px; letter-spacing: .06em; font-weight: 700; opacity: .9; text-align: center; }
   #act { right: 122px; bottom: calc(70px + var(--sb)); width: 70px; height: 70px; background: #062a12; border: 2px solid var(--gd); color: var(--gt); font-size: 11px; }
   #act.on { background: #0b3d1a; }
   #act.ready { color: #fff; border-color: var(--gold); background: #3a2f06; box-shadow: 0 0 18px #ffd23d88; }
@@ -142,7 +146,7 @@
   <div id="inv"></div>
   <div id="stickZone"><div id="stick"><div id="knob"></div></div></div>
   <div id="act" class="btn"><span id="actTxt">BOOK<small>tap: +2</small></span></div>
-  <div id="fire" class="btn">FIRE</div>
+  <div id="fire" class="btn none"><span>FIRE<small id="fireTxt">NO TARGET</small></span></div>
 </div>
 
 <div id="start" class="sheet panel hidden">
@@ -168,6 +172,7 @@
 <div id="menu" class="sheet panel hidden">
   <h2>MENU</h2>
   <button class="big" id="mPlay">PLAY / TEAM<small id="mPlayWhy">Start a run, or change team.</small></button>
+  <button class="big" id="mSound">SOUND: ON<small>Shots and freezes; vibration on Android.</small></button>
   <button class="big" id="mQuality">GRAPHICS: HIGH<small>Low: sharper frame rate, no shadows.</small></button>
   <div class="row"><button class="ghost" id="mClose">Close</button><a href="/substrate-siege/screen" target="_blank">Big screen ↗</a></div>
 </div>
@@ -226,7 +231,7 @@ const ctl = { mx: 0, my: 0, fire: false, act: false, stick: false };
 
 const view = startCity($("view"), {
   mode: "phone", me: me.id, city, overlay: $("labels"), logo: "/substrate-siege/static/kagent-icon.svg",
-  pos: (k, id) => net.pos(k, id), input: () => ctl, onEvent: feedEvent,
+  pos: (k, id) => net.pos(k, id), input: () => ctl, onEvent: feedEvent, onShot: () => { sfx("shot"); buzz(8); },
 });
 let snap = null, snapAt = 0, mySquad = "";
 const net = connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/substrate-siege/ws`, (s) => {
@@ -402,8 +407,48 @@ function toast(text) {
   clearTimeout(toastT);
   toastT = setTimeout(() => show("toast", false), 2600);
 }
+// ---- sound and vibration: tiny WebAudio synth, no files; the browser only lets audio
+// start after a touch, so the context is made on the first one ----
+let soundOn = true, actx = null;
+try { soundOn = localStorage.getItem("siege-sound") !== "off"; } catch {}
+addEventListener("pointerdown", () => {
+  if (actx || !soundOn) return;
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+}, { capture: true });
+function sfx(kind) {
+  if (!soundOn || !actx) return;
+  if (actx.state === "suspended") actx.resume();
+  const t0 = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  const set = { // [wave, start Hz, end Hz, seconds, volume]
+    shot: ["square", 880, 220, 0.07, 0.05],
+    freeze: ["triangle", 520, 1560, 0.35, 0.09],
+    book: ["sine", 660, 990, 0.25, 0.1],
+    hurt: ["sawtooth", 160, 60, 0.15, 0.08],
+  }[kind];
+  if (!set) return;
+  const [wave, f0, f1, dur, vol] = set;
+  o.type = wave;
+  o.frequency.setValueAtTime(f0, t0);
+  o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(t0);
+  o.stop(t0 + dur + 0.02);
+}
+const buzz = (ms) => { if (soundOn && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
+$("mSound").onclick = () => {
+  soundOn = !soundOn;
+  $("mSound").firstChild.textContent = soundOn ? "SOUND: ON" : "SOUND: OFF";
+  try { localStorage.setItem("siege-sound", soundOn ? "on" : "off"); } catch {}
+};
+$("mSound").firstChild.textContent = soundOn ? "SOUND: ON" : "SOUND: OFF";
+
 const feed = [];
 function feedEvent(e) {
+  if (e.player === me.id && e.kind === "frozen") { sfx("freeze"); buzz(40); }
+  if (e.player === me.id && e.kind === "booked") { sfx("book"); buzz(25); }
+  if (e.player === me.id && e.kind === "hit") { sfx("hurt"); buzz(20); }
   const t = snap && snap.targets.find((x) => x.id === e.target);
   const who = (id) => { const a = snap && snap.avatars.find((x) => x.id === id); return a ? esc(a.nick) : "someone"; };
   const name = esc(e.text || (t && t.name) || "a hunter");
@@ -561,8 +606,16 @@ function debug(now) {
 }
 show("debug", DEBUG);
 
+let fireLook = "";
 function frame(now) {
   view.draw();
+  const lk = view.lock();
+  if (lk !== fireLook) {
+    fireLook = lk;
+    $("fire").classList.remove("lock", "far", "none");
+    $("fire").classList.add(lk);
+    $("fireTxt").textContent = { lock: "LOCKED", far: "TOO FAR", none: "NO TARGET" }[lk];
+  }
   probeFrame(now);
   debug(now);
   if (now - lastHud > 100) { lastHud = now; hud(now); }

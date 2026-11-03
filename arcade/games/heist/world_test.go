@@ -33,7 +33,7 @@ func tap(w *World, dt float64, ids ...string) []Intent {
 func TestTwoHitsFreeze(t *testing.T) {
 	w := testWorld([]string{"red", "red"}, Vec{10.5, 9.5}, Vec{10.5, 9.5})
 	tg := addTarget(w, "t1", "red", Working, Vec{14.5, 9.5})
-	far := addTarget(w, "t2", "red", Working, Vec{3.5, 9.5}) // 7 tiles: out of range
+	far := addTarget(w, "t2", "red", Working, Vec{2.5, 9.5}) // 8 tiles: out of range
 
 	w.Input("a", Input{Fire: true})
 	if got := w.Tick(0.25); tg.Hits != 1 || len(got) != 0 {

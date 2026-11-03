@@ -25,7 +25,7 @@ const (
 const (
 	avatarSpeed  = 5.0
 	targetSpeed  = 3.5
-	fireRange    = 6.0
+	fireRange    = 7.0
 	actionRange  = 1.6
 	fleeRange    = 5.0
 	fireCD       = 0.25

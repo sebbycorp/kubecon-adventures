@@ -223,7 +223,7 @@ The targets fight back, and players loot hardware from them to run agents of the
 **Rigs and allies (deploy your own agents).**
 - A rig takes one motherboard, one CPU, one RAM stick and one hard drive from your stash. **Build rig** on your phone spends them and deploys an **ally**.
 - An ally is a real kagent session on its own Agent (`sidekick`, in the same `heist` worker pool), so it shows up in the Substrate numbers like any other agent.
-- The ally follows you and shoots hunters within 6 tiles. Its hits count toward freezes, and **a freeze it lands is your takedown**.
+- The ally follows you and shoots hunters within 7 tiles. Its hits count toward freezes, and **a freeze it lands is your takedown**.
 - The RAM's tier sets the ally's level: DDR1 = 1 shot per second, up to DDR5 = 2.2 shots per second and +20% speed.
 - An ally makes one LLM turn when deployed (a greeting line) and one when it is sprung. Otherwise it's scripted.
 - Limits: 2 allies per player and 16 in the whole city. When the city is full, Build rig waits with "no free safehouse".

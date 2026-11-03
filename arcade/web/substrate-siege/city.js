@@ -24,7 +24,7 @@ const PART_COLORS = { cpu: "#5ef0ff", drive: "#ff9f43", board: "#19e6b0" };
 export const partColor = (p) => (p.kind === "ram" ? RAM_COLORS[p.tier] || RAM_COLORS[1] : PART_COLORS[p.kind] || "#9dffb0");
 
 const PITCH = (58 * Math.PI) / 180; // camera angle below the horizon
-const FIRE_RANGE = 6, FIRE_CD = 0.25, SPEED = 5;
+const FIRE_RANGE = 7, FIRE_CD = 0.25, SPEED = 5;
 const CAP = { people: 96, hunters: 128, ice: 160, drops: 128, tracers: 96, bits: 400 };
 const GREEN = 0x2bff6a;
 
@@ -98,10 +98,12 @@ const feet = (geo, y) => geo.translate(0, y, 0);
 // opts.city: the map from /substrate-siege/api/city.
 // opts.pos(kind, id): interpolated {x, y} (net.js); falls back to snapshot positions.
 // opts.input(): the local controls {mx, my, fire}, for prediction and the player's tracer.
+// opts.onShot(): the local player fired at a locked agent (for sound and vibration).
 // opts.logo: URL of the kagent logo for Dispatch. opts.onEvent(e): every snapshot event.
 export function startCity(canvas, opts) {
   const { mode = "phone", city } = opts;
   const pos = opts.pos || (() => null), input = opts.input || (() => ({ mx: 0, my: 0, fire: false }));
+  const onShot = opts.onShot || (() => {});
   const onEvent = opts.onEvent || (() => {});
   let me = opts.me || "";
   const W = city.w, H = city.h, tiles = city.tiles;
@@ -265,6 +267,18 @@ export function startCity(canvas, opts) {
     new THREE.MeshBasicMaterial({ map: glowTex, color: 0x000000, transparent: true, opacity: 0.75, depthWrite: false }), CAP.people + CAP.hunters, { shadow: false });
   const blob = [], blobScale = [1, 1, 1]; // reused every frame
 
+  // Lock-on reticle: four cyan brackets that spin round the agent FIRE will hit (grey,
+  // and slower, round the nearest one when it is out of range).
+  const reticle = new THREE.Group();
+  const retMat = new THREE.MeshBasicMaterial({ color: 0x9fffff, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+  for (let i = 0; i < 4; i++) {
+    const arc = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.94, 8, 1, i * Math.PI / 2 + 0.25, Math.PI / 2 - 0.5).rotateX(-Math.PI / 2), retMat);
+    arc.renderOrder = 9;
+    reticle.add(arc);
+  }
+  reticle.visible = false;
+  scene.add(reticle);
+
   for (const m of [...Object.values(P), PX, ...Object.values(T), TX, ice, freezing, chips, glows, tracers, bits, blobs]) scene.add(m);
 
   // ---- HTML labels over the canvas ----
@@ -338,17 +352,24 @@ export function startCity(canvas, opts) {
   const parts = []; // de-rez bits {x,y,z,vx,vy,vz,t,life,color}
   const meView = { x: 0, y: 0, ok: false };
 
-  function tracer(a, b, color, life = 0.16) {
+  function tracer(a, b, color, life = 0.16, w = 1) {
     if (shots.length >= CAP.tracers - 8) shots.shift();
-    shots.push({ a, b, t: 0, life, color: new THREE.Color(color) });
+    shots.push({ a, b, t: 0, life, w, color: new THREE.Color(color) });
   }
-  function burst(x, z, color, n = 36) {
+  const flashes = []; // muzzle and impact glows {x, y, z, t, life, size, color}
+  function flash(x, y, z, color, size = 1, life = 0.1) {
+    if (flashes.length > 24) flashes.shift();
+    flashes.push({ x, y, z, t: 0, life, size, color: new THREE.Color(color) });
+  }
+  function burst(x, z, color, n = 36, life = 0.9, y0 = 0.2) {
     for (let i = 0; i < n && parts.length < CAP.bits; i++) {
       const a = Math.random() * Math.PI * 2, s = 0.6 + Math.random() * 1.6;
-      parts.push({ x: x + (Math.random() - 0.5) * 0.5, y: 0.2 + Math.random() * 1.2, z: z + (Math.random() - 0.5) * 0.5,
-        vx: Math.cos(a) * s, vy: 1 + Math.random() * 2, vz: Math.sin(a) * s, t: 0, life: 0.9 + Math.random() * 0.6, color: new THREE.Color(color) });
+      parts.push({ x: x + (Math.random() - 0.5) * 0.5, y: y0 + Math.random() * 1.2, z: z + (Math.random() - 0.5) * 0.5,
+        vx: Math.cos(a) * s, vy: 1 + Math.random() * 2, vz: Math.sin(a) * s, t: 0, life: life + Math.random() * life * 0.6, color: new THREE.Color(color) });
     }
   }
+  const hitFlash = new Map(); // target ID -> performance.now() until which it flashes white
+  let shake = 0, aimYaw = null, aimUntil = 0, lockState = "none";
   const byId = (list, id) => (list || []).find((e) => e.id === id);
   const where = (kind, id) => {
     const e = snap && byId(snap[kind], id);
@@ -370,6 +391,7 @@ export function startCity(canvas, opts) {
         if (t.hits > o.hits && t.state === "Working") {
           const shooter = nearestShooter(s, t);
           if (shooter) tracer([shooter.x, 0.75, shooter.y], [t.x, 0.75, t.y], 0x9fffff);
+          hitFlash.set(t.id, performance.now() + 140);
           if (t.hits < 2) floater(`HIT ${t.hits}/2`, t.x, t.y, "#9fffff", 0.7, 2.3);
         }
         if (t.step > o.step) towerFlash = 1;
@@ -403,7 +425,8 @@ export function startCity(canvas, opts) {
     const t = byId(s.targets, e.target), a = byId(s.avatars, e.player);
     const at = t || a;
     switch (e.kind) {
-      case "frozen": if (t) floater(`❄ +1 · suspended in ${e.ms} ms`, t.x, t.y, "#6ff", 2.6); break;
+      case "frozen": if (t) { burst(t.x, t.y, 0x9fffff, 40, 0.6); if (e.player === me) shake = Math.max(shake, 0.35); }
+        if (t) floater(`❄ +1 · suspended in ${e.ms} ms`, t.x, t.y, "#6ff", 2.6); break;
       case "slipped": if (t) floater("it slipped away", t.x, t.y, "#ff9f43", 2.2); break;
       case "booked": if (t) floater("▣ booked: checkpoint saved +2", t.x, t.y, "#ffd23d", 2.2); break;
       case "booked-line": if (t) floater(`“${e.text}”`, t.x, t.y, "#ffd23d", 3.2); break;
@@ -530,7 +553,7 @@ export function startCity(canvas, opts) {
         if (!a.online || np >= CAP.people) continue;
         const p = a.id === me ? mp : pos("avatars", a.id) || a;
         const col = C.set(a.down ? "#3a4a3e" : colorOf(a.color));
-        const yaw = yawOf(a.fx, a.fy);
+        const yaw = a.id === me && aimYaw !== null && now < aimUntil ? aimYaw : yawOf(a.fx, a.fy);
         for (const k of ["body", "head", "visor"]) put(P[k], np, p.x, p.y, yaw, a.id === me ? 1.12 : 1, a.down);
         put(P.ring, np, p.x, p.y, 0, a.id === me ? 1.12 : 1);
         P.body.setColorAt(np, col); P.head.setColorAt(np, col); P.ring.setColorAt(np, a.down ? C.set("#ff4d5e") : col);
@@ -576,7 +599,8 @@ export function startCity(canvas, opts) {
         putS(T.stick, nh, p.x, p.y, yaw, hat >= 2 ? sc : none, hat === 2 ? -0.06 : 0);
         putS(T.tip, nh, p.x, p.y, yaw, hat >= 2 ? sc : none, hat === 2 ? -0.06 : 0);
         const flick = going && Math.random() < 0.25;
-        const suit = frozen ? "#123c44" : t.state === "Escaped" ? "#2a0d10" : flick ? "#1d5560" : "#0b120c";
+        const flashing = (hitFlash.get(t.id) || 0) > now;
+        const suit = flashing ? "#e8ffff" : frozen ? "#123c44" : t.state === "Escaped" ? "#2a0d10" : flick ? "#1d5560" : "#0b120c";
         // Green is kept for the shades; the outline is a quiet slate so it reads on asphalt.
         const edge = frozen || flick ? "#9fffff" : t.state === "Escaped" ? "#ff4d5e" : "#2bff6a";
         const hull = frozen || flick ? "#9fffff" : t.state === "Escaped" ? "#ff4d5e" : "#6a7590";
@@ -611,20 +635,48 @@ export function startCity(canvas, opts) {
       // The local player's own shots, drawn at once rather than after the round trip.
       fireCD -= dt;
       const inp = input();
-      if (inp.fire && mp && meA && !meA.down && fireCD <= 0) {
-        let best = null, bd = FIRE_RANGE;
+      // Lock-on: the agent FIRE will hit (the server aims the same way), else the nearest
+      // one a little out of range.
+      let lock = null, lockId = null, far = null, fd = FIRE_RANGE + 6;
+      if (mp && meA && !meA.down) {
+        let bd = FIRE_RANGE;
         for (const t of s.targets) {
-          if (t.state !== "Working" || t.busy) continue;
+          if (t.state !== "Working" || t.busy || t.op) continue;
           const p = pos("targets", t.id) || t, d = Math.hypot(p.x - mp.x, p.y - mp.y);
-          if (d < bd) { best = p; bd = d; }
+          if (d < bd) { lock = p; lockId = t.id; bd = d; }
+          if (d < fd) { far = p; fd = d; }
         }
-        if (best) { tracer([mp.x, 0.75, mp.y], [best.x, 0.75, best.y], 0x9fffff); fireCD = FIRE_CD; }
+      }
+      lockState = lock ? "lock" : far ? "far" : "none";
+      const rt = lock || far;
+      reticle.visible = !!rt;
+      if (rt) {
+        reticle.position.set(rt.x, 0.06, rt.y);
+        reticle.rotation.y = clock * (lock ? 3 : 0.8);
+        const pulse = lock ? 1 + Math.sin(clock * 12) * 0.06 : 1.15;
+        reticle.scale.setScalar(pulse);
+        retMat.color.set(lock ? (inp.fire ? 0xffffff : 0x9fffff) : 0x56606e);
+        retMat.opacity = lock ? 0.95 : 0.5;
+      }
+      if (inp.fire && lock && fireCD <= 0) {
+        const dx = lock.x - mp.x, dy = lock.y - mp.y, n = Math.hypot(dx, dy) || 1;
+        const mx = mp.x + (dx / n) * 0.45, my = mp.y + (dy / n) * 0.45;
+        tracer([mx, 0.85, my], [lock.x, 0.9, lock.y], 0xc8ffff, 0.1, 2.2);
+        flash(mx, 0.85, my, 0xeaffff, 0.9, 0.07);
+        flash(lock.x, 0.9, lock.y, 0x9fffff, 1.3, 0.14);
+        burst(lock.x, lock.y, 0x9fffff, 5, 0.25, 0.6);
+        hitFlash.set(lockId, now + 90);
+        aimYaw = Math.atan2(dx, dy); aimUntil = now + 400;
+        shake = Math.max(shake, 0.06);
+        fireCD = FIRE_CD;
+        onShot("shot");
       }
       if (phone && mp) {
         const k = 1 - Math.exp(-dt * 6);
         focus.x += (mp.x - focus.x) * k;
         focus.z += (mp.y - focus.z) * k;
-        place(focus);
+        shake = Math.max(0, shake - dt * 1.6);
+        place(shake > 0.001 ? V3.set(focus.x + (Math.random() - 0.5) * shake, 0, focus.z + (Math.random() - 0.5) * shake) : focus);
         // See-through tube from the camera to the player's chest.
         fade.uFadeCam.value.copy(cam.position);
         fade.uFadeAt.value.set(mp.x, 0.7, mp.y);
@@ -642,7 +694,7 @@ export function startCity(canvas, opts) {
       if (nt < CAP.tracers && len > 0.01) {
         V3.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
         Q.setFromUnitVectors(X, S3.set(bx - ax, by - ay, bz - az).normalize());
-        const th = (sh.life < 0.01 ? 0.03 : 0.07) * Math.max(f, 0.2);
+        const th = (sh.life < 0.01 ? 0.03 : 0.07) * (sh.w || 1) * Math.max(f, 0.2);
         tracers.setMatrixAt(nt, M.compose(V3, Q, S3.set(len, th, th)));
         tracers.setColorAt(nt++, C.copy(sh.color).multiplyScalar(Math.max(f, 0.3)));
         if (sh.life >= 0.01 && ng < glows.instanceMatrix.count) {
@@ -651,6 +703,17 @@ export function startCity(canvas, opts) {
         }
       }
       if (sh.life < 0.01) shots.splice(i, 1); // tethers last one frame
+    }
+    // Muzzle and impact flashes.
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const fl = flashes[i];
+      fl.t += dt;
+      const f = 1 - fl.t / fl.life;
+      if (f <= 0) { flashes.splice(i, 1); continue; }
+      if (ng < glows.instanceMatrix.count) {
+        putS(glows, ng, fl.x, fl.z, 0, [fl.size * (1.4 - f * 0.4), 1, fl.size * (1.4 - f * 0.4)], fl.y * 0.5);
+        glows.setColorAt(ng++, C.copy(fl.color).multiplyScalar(f));
+      }
     }
     // De-rez bits.
     let nb = 0;
@@ -724,6 +787,8 @@ export function startCity(canvas, opts) {
     resize,
     setLowQuality,
     lowQuality: () => low,
+    // lock is "lock" (FIRE will hit an agent), "far" (the nearest is out of range) or "none".
+    lock: () => lockState,
     // stats: draw calls and triangles of the last frame, frames drawn, mean CPU ms per draw().
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, drawn: frames, cpuMs: frames ? frameMs / frames : 0, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled && sun.castShadow }),
     // view is where the camera is centred (for the minimap).

@@ -224,11 +224,11 @@ func TestAllyFollowsAndFires(t *testing.T) {
 		}
 	}
 
-	// Out of range (7 tiles): no shots. A frozen ally doesn't fire.
+	// Out of range (8 tiles): no shots. A frozen ally doesn't fire.
 	for _, frozen := range []bool{false, true} {
 		w := testWorld([]string{"red"}, Vec{10.5, 0.5})
 		al := addAlly(w, "al", "a", 5, Vec{10.5, 0.5})
-		pos := Vec{17.5, 0.5}
+		pos := Vec{18.5, 0.5}
 		if frozen {
 			al.State, al.HP, pos = Frozen, 0, Vec{13.5, 0.5}
 		}

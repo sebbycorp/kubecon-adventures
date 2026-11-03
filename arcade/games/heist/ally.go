@@ -16,7 +16,7 @@ import (
 	"slices"
 )
 
-// Tuning, in tiles and seconds. An ally fires within fireRange (6 tiles), like a player.
+// Tuning, in tiles and seconds. An ally fires within fireRange (7 tiles), like a player.
 const (
 	allyFollow    = 1.0 // an ally closes in until it is this close to its owner
 	allyFastTier  = 5   // DDR5 allies move allyFastSpeed times faster
