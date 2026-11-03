@@ -8,7 +8,7 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Sandbox Escape | Security: gVisor, egress policies, agentgateway holds the key | Playable | [below](#sandbox-escape) |
 | Fork Frenzy | Checkpoints and forks | Playable | [below](#fork-frenzy) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
-| Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a multiplayer city shooter | Playable (levels 1–3) | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
+| Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a 3-minute multiplayer city shooter | Playable | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
 | Agent Invaders | Scale and density | Next | |
 | Whack-a-Mole | Cold start (restore latency) | Planned | |
 
@@ -138,23 +138,23 @@ The QR code points at `https://kubecon.agentpwned.ai/agent-flow` when the screen
 
 ## Substrate Siege
 
-A multiplayer extraction shooter in a stylised night city (`games/heist`, design in [docs/substrate-siege.md](docs/substrate-siege.md)). Every wanted target is a real `heister` agent session on its own 40-worker `heist` pool (`manifests/heist-agent.yaml`). Players play solo or in squads of up to 4 (a 4-letter code), with an on-screen joystick, FIRE and ACTION; there is no keyboard. The server runs the world at 15 Hz over one WebSocket per phone (`/substrate-siege/ws`), and every game action is the real Substrate call:
+A 3-minute multiplayer shooter in a stylised night city (`games/heist`, design in [docs/substrate-siege.md](docs/substrate-siege.md)). Every agent on the streets is a real `heister` agent session on its own 40-worker `heist` pool (`manifests/heist-agent.yaml`). A player taps PLAY and has 3 minutes to freeze as many agents as they can; a red arrow on the screen edge points to the nearest one. Players play solo or as a team of up to 4 on one clock (a 4-letter code), with an on-screen joystick, FIRE and BOOK; there is no keyboard. The server runs the world at 15 Hz over one WebSocket per phone (`/substrate-siege/ws`), and every game action is the real Substrate call:
 
 | In the game | Real call |
 |-------------|-----------|
-| A target spawns and works a 4-step heist, one turn every 15–25 s | `CreateSession`, then one A2A turn per step (its line is the speech bubble) |
-| Three hits freeze it | `SuspendSession`, which lands when the target's current turn ends. A freeze that races the final step wins. |
-| Drag it into the Vault (Levels 2–3) | Book it: `ResumeSession`, one "you got booked" turn, `Checkpoint` of that turn, then `DeleteSession` |
-| Its crew or a rival springs it | `ResumeSession` plus one turn: it reacts and carries on from the step it was on |
-| Hold ACTION on a frozen target | `DeleteSession` |
-| Build a rig from looted parts (DDR1–5 RAM, CPU, drive, motherboard, banked in the Vault) | A real `sidekick` ally session that follows you and shoots hunters |
+| An agent spawns 6–14 tiles from you and works a 4-step job, one turn every 8–12 s | `CreateSession`, then one A2A turn per step (its line is the speech bubble) |
+| Two hits freeze it: +1 | `SuspendSession`, which lands when the agent's current turn ends; the agent shows FREEZING at once. A freeze that races the final step wins. |
+| Tap BOOK next to a frozen agent: +2 | `ResumeSession`, one "you got booked" turn, `Checkpoint` of that turn, then `DeleteSession` |
+| A frozen agent nobody books for 8 s | `DeleteSession` |
+| It finishes its 4th step | It escapes; its session is deleted and a new agent takes its place |
+| Pick up a board, a CPU, RAM and a drive (DDR1–5) | A real `sidekick` ally session that follows you and shoots agents |
 
-Levels: 1 Rookie (freeze one target, 90 s), 2 Booking (freeze and book it, 120 s), 3 The Crew (three targets whose crew springs them, 180 s). Each needs the previous one won. Hunters shoot back; a downed player drops the parts they haven't banked. The leaderboard ranks by takedowns (freezes landed, your ally's count as yours); cash only breaks ties.
+A run keeps 1 + its online players agents on the streets (at most 4), 32 in the whole city; a freed slot goes to the run with the fewest. Agents shoot back; a downed player drops the parts they carry. The leaderboard ranks players by their best run (points; total freezes break ties). Old `/grand-theft-agent` links redirect here.
 
 - A turn whose reply fails the agent's output validation falls back to a fixed line, so a target never stalls on a bad reply.
-- Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process (with their checkpoints), and refuses new missions and rigs until that list is in. Booked targets' checkpoints are deleted by the admin reset and on shutdown.
+- Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process (with their checkpoints), and refuses new runs and rigs until that list is in. Booked targets' checkpoints are deleted by the admin reset and on shutdown.
 - `manifests/heist-policies.yaml` gives the heist agents their own LLM route (`/heist/v1`) with a prompt guard and a budget of 300k tokens and 400 requests a minute; a policy stop shows on the screen.
 - The phone switches to low quality (lower pixel ratio, no shadows) by itself on a slow first few seconds; MENU has a switch for it.
-- The big screen (`/substrate-siege/screen`) shows the whole city, a QR code, the leaderboard, the mission feed and live suspend, resume and checkpoint times.
+- The big screen (`/substrate-siege/screen`) shows the whole city, a QR code, the best-run leaderboard, a live feed and live suspend and booking times.
 
 Booth load (24 players for 5 minutes, `TestBoothLoad`): no op errors and no stuck missions, but three targets were missed under bot load: freeze p95 4.8 s (target 1 s, including the wait for the target's turn to end; the suspend call alone is 66 ms), spring p95 8.7 s (target 6 s) and LLM tokens at 331k in the busiest minute (budget 300k). The measured numbers and why are in the [design doc](docs/substrate-siege.md#booth-load-measured-2026-11-02). Reset the round with `curl -XPOST localhost:8090/admin/substrate-siege/api/reset`.

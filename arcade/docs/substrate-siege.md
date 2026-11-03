@@ -1,10 +1,25 @@
 # Substrate Siege: design
 
-A multiplayer, top-down city shooter in the style of the original 1997 top-down GTA games. Players scan a QR code and drop into "Substrate City", where every wanted target is a real kagent agent running as an Agent Substrate actor in its own gVisor sandbox. Missions send players to hunt a target before a timer runs out. They then **suspend** it (stun shot), **extract** it to the snapshot vault, or **kill** it (delete). Rival crews can **resume** a stunned target before it's extracted. Every game action is the real Substrate operation, and the targets keep talking back the whole time.
+A 3-minute multiplayer city shooter. Players scan a QR code, tap PLAY and drop into a night city where every agent on the streets is a real kagent agent running as an Agent Substrate actor in its own gVisor sandbox. Two hits **suspend** an agent, a tap next to a frozen one **books** it (resume, checkpoint into Snapshot Storage, delete), and an agent left frozen is **deleted**. Every game action is the real Substrate operation, and the agents keep talking the whole time.
 
-Working title, my call: "Substrate Siege". It's a parody name. The art, sprites, fonts and sounds are original, with no Rockstar names, logos or assets. That's the same rule as Duck Hunt.
+The game was first built as "Grand Theft Agent" with levels and missions (2026-11-02). Players found it confusing, slow and too busy, and the name too close to GTA, so it became Substrate Siege with 3-minute runs (2026-11-03, below). Sections after that one describe the first version where they say levels, missions, dragging, springs, crews or the Vault; the runs section wins where they differ. The art, fonts and sounds are original.
 
-## Decisions (agreed 2026-11-02)
+## Runs (agreed 2026-11-03, replaces levels and missions)
+
+| Topic | Decision |
+|-------|----------|
+| Name | **Substrate Siege**, at `/substrate-siege`; `/grand-theft-agent` redirects |
+| Goal on screen | One PLAY button and four lines of how-to. A 3:00 clock, your points, your best and your rank, a one-line goal that changes with what is next to you, and a red arrow on the screen edge to the nearest agent with its distance |
+| Pace | Agents spawn 6–14 tiles from a player of the run. Two hits freeze (was three). Steps are 8–12 s apart (was 15–25), so an agent escapes in about 40 s |
+| Points | Freeze +1, book +2, for the player who did it, in their own team's running run (whichever run spawned the agent). The leaderboard ranks best single run, then total freezes |
+| Agents per run | 1 + the run's online players, at most 4; 32 in the city; a freed slot goes to the run with the fewest live agents |
+| Frozen agents | Show FREEZING the moment the freezing hit lands (the suspend waits for the agent's turn). Tap BOOK next to one to book it in place (no dragging). Unbooked ones are deleted after 8 s |
+| Escapes | An agent that finishes its 4th step escapes: a feed line, its session deleted 3 s later, and a replacement. The run goes on |
+| Removed | Levels and their locks, mission queueing, dragging to the Vault, hold-to-delete, player and crew springs, wanted stars, cash, Vault banking and the stash screen |
+| Loot | Parts drop on freezes and deletes and are picked up by walking over them. A strip shows the four rig parts; a full set deploys an ally by itself. A downed player drops what they carry |
+| Teams | Optional, folded under "Play with friends": one code, one clock, up to 4 |
+
+## Decisions (agreed 2026-11-02, first version)
 
 | Topic | Decision |
 |-------|----------|
@@ -156,7 +171,7 @@ After a resume, the first prompt is "You were frozen by the cops and just got sp
 
 **Movement is not the LLM.** Targets walk, run, flee and hide by server-side scripted behaviour (waypoints, flee from the nearest player within range). The LLM is never asked where to move.
 
-## Levels and missions
+## Levels and missions (first version, replaced by runs)
 
 Every level is a mission template: timer, target count, and rules. A mission is offered to a solo player or a squad from Dispatch.
 
