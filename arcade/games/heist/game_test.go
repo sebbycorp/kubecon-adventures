@@ -615,6 +615,80 @@ func TestInputRateLimit(t *testing.T) {
 	_ = g
 }
 
+// testClient is a connection for driving g.handle directly.
+func testClient(player string) *client {
+	return &client{pl: platform.Player{ID: player}, player: player, snaps: make(chan []byte, 2),
+		ctrl: make(chan []byte, 16), cancel: func() {}}
+}
+
+// TestReleaseFrameNeverDropped: a burst of ACTION-down frames over the input limit ends
+// in the release. The release changes act, so it is applied, not dropped: the tap stays
+// a tap and no delete starts a second later as a "hold".
+func TestReleaseFrameNeverDropped(t *testing.T) {
+	g, f := newManual(t)
+	g.mu.Lock()
+	a := g.w.Avatars["a"]
+	tg := addTarget(g.w, "t1", "", Frozen, Vec{a.Pos.X + 1, a.Pos.Y})
+	tg.SessionID = "s1"
+	g.mu.Unlock()
+	cl := testClient("a")
+	for range 10 {
+		g.handle(cl, []byte(`{"t":"in","act":true}`))
+	}
+	g.handle(cl, []byte(`{"t":"in","act":false}`))
+	g.mu.Lock()
+	held := g.w.ctl["a"].held
+	g.mu.Unlock()
+	if held {
+		t.Fatal("release frame dropped: ACTION still held")
+	}
+	for range 2 * tickHz { // 2 s, past the 1 s hold
+		g.tick()
+	}
+	f.noStartOf(t, "delete")
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if tg.State == Deleted || tg.Busy {
+		t.Fatalf("target %s busy=%v: the tap became a delete", tg.State, tg.Busy)
+	}
+	// The same for FIRE: a dropped release would keep shooting.
+	for range 10 {
+		g.mu.Unlock()
+		g.handle(cl, []byte(`{"t":"in","fire":true}`))
+		g.mu.Lock()
+	}
+	g.mu.Unlock()
+	g.handle(cl, []byte(`{"t":"in","fire":false}`))
+	g.mu.Lock()
+	if g.w.ctl["a"].in.Fire {
+		t.Fatal("FIRE release dropped")
+	}
+}
+
+// TestInputCoalesced: frames over the limit that change only the stick direction are
+// coalesced: the newest is applied once a token frees, even if no frame follows.
+func TestInputCoalesced(t *testing.T) {
+	g, _ := newManual(t)
+	cl := testClient("a")
+	for i := 1; i <= 10; i++ {
+		g.handle(cl, fmt.Appendf(nil, `{"t":"in","mx":%g}`, float64(i)/10))
+	}
+	g.mu.Lock()
+	got := g.w.ctl["a"].in.Move.X
+	g.mu.Unlock()
+	if got == 1 {
+		t.Fatal("every frame applied: no rate limit")
+	}
+	time.Sleep(120 * time.Millisecond) // tokens free up
+	g.tick()
+	g.mu.Lock()
+	got = g.w.ctl["a"].in.Move.X
+	g.mu.Unlock()
+	if got != 1 {
+		t.Fatalf("move %v, want the newest frame (1) applied once a token frees", got)
+	}
+}
+
 func TestRoutes(t *testing.T) {
 	s := newServer(t, &liveOps{})
 	for _, p := range []string{"/grand-theft-agent", "/grand-theft-agent/screen", "/grand-theft-agent/static/app.js", "/admin/grand-theft-agent/api/state"} {

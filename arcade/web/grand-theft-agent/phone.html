@@ -512,11 +512,17 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) relea
 addEventListener("resize", homeStick);
 homeStick();
 
-// Send input at 20 Hz while anything is held, and once more on release.
-let wasActive = false;
+// Send input at 20 Hz while anything is held. After a release, resend the idle state at
+// 4 Hz for 1 s: one lost release frame must not leave FIRE or ACTION held (a held
+// ACTION deletes the target after 1 s).
+let wasActive = false, idleUntil = 0, idleNext = 0;
 setInterval(() => {
+  const now = performance.now();
   const active = ctl.stick || ctl.fire || ctl.act;
-  if (active || wasActive) net.send({ t: "in", mx: ctl.mx, my: ctl.my, fire: ctl.fire, act: ctl.act });
+  const send = () => net.send({ t: "in", mx: ctl.mx, my: ctl.my, fire: ctl.fire, act: ctl.act });
+  if (active) send();
+  else if (wasActive) { send(); idleUntil = now + 1000; idleNext = now + 250; }
+  else if (now < idleUntil && now >= idleNext) { send(); idleNext += 250; }
   wasActive = active;
 }, 50);
 

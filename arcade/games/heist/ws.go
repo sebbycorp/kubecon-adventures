@@ -1,7 +1,8 @@
 // This file is the wire: one WebSocket per phone or big screen, JSON text frames.
 //
-// Client to server: {"t":"in","mx","my","fire","act"} (at most ~20 Hz, extra frames are
-// dropped), {"t":"squad","op":"solo"|"create"|"join","code"}, {"t":"start","level"},
+// Client to server: {"t":"in","mx","my","fire","act"} (~20 Hz; a frame over the limit
+// is applied anyway when it changes fire, act or whether the stick is centred, and
+// otherwise coalesced: the newest is applied once the limit allows), {"t":"squad","op":"solo"|"create"|"join","code"}, {"t":"start","level"},
 // {"t":"build"} and {"t":"ping","code"}. Unknown or malformed frames are ignored; a
 // frame over 4 KiB closes the connection. A screen spectator (?screen=1) has no avatar
 // and its frames are ignored.
@@ -343,7 +344,12 @@ type client struct {
 	ctrl   chan []byte // replies; a client that lets these back up is closed
 	cancel context.CancelFunc
 
-	in, cmd bucket // rate limiters (reader goroutine only)
+	in  bucket // input rate limiter (g.mu)
+	cmd bucket // command rate limiter (reader goroutine only)
+
+	// lastIn is the last input applied for this connection (g.mu).
+	lastIn  Input
+	applied bool
 }
 
 // bucket is a token bucket.
@@ -482,6 +488,7 @@ func (g *Game) attach(c *client) bool {
 
 func (g *Game) detach(c *client) {
 	g.mu.Lock()
+	delete(g.pendIn, c)
 	delete(g.clients, c)
 	if c.screen {
 		g.screens--
@@ -489,6 +496,36 @@ func (g *Game) detach(c *client) {
 	g.mu.Unlock()
 	if !c.screen {
 		g.leave(c.player)
+	}
+}
+
+// input applies an input frame within the rate limit. A frame that changes fire, act or
+// whether the stick is centred is never dropped (a lost release would hold FIRE, or turn
+// a tap into a 1 s hold that deletes a target); any other frame over the limit is kept
+// as the connection's pending input, replaced by newer ones, and applied by the tick
+// once a token frees. g.mu is held.
+func (g *Game) input(c *client, in Input, now time.Time) {
+	last := c.lastIn
+	edge := !c.applied || in.Fire != last.Fire || in.Action != last.Action || (in.Move == Vec{}) != (last.Move == Vec{})
+	if c.allowInput(now) || edge {
+		g.applyInput(c, in)
+		return
+	}
+	g.pendIn[c] = in
+}
+
+func (g *Game) applyInput(c *client, in Input) {
+	g.w.Input(c.player, in)
+	c.lastIn, c.applied = in, true
+	delete(g.pendIn, c)
+}
+
+// flushInputs applies coalesced inputs whose connection has a token again. g.mu is held.
+func (g *Game) flushInputs(now time.Time) {
+	for c, in := range g.pendIn {
+		if c.allowInput(now) {
+			g.applyInput(c, in)
+		}
 	}
 }
 
@@ -519,9 +556,7 @@ func (g *Game) handle(c *client, b []byte) {
 	g.mu.Lock()
 	switch m.T {
 	case "in":
-		if c.allowInput(time.Now()) {
-			g.w.Input(c.player, Input{Move: Vec{clamp(m.MX), clamp(m.MY)}, Fire: m.Fire, Action: m.Act})
-		}
+		g.input(c, Input{Move: Vec{clamp(m.MX), clamp(m.MY)}, Fire: m.Fire, Action: m.Act}, time.Now())
 	case "squad":
 		var code string
 		if code, err = g.squad(c.player, m.Op, m.Code); err == nil {

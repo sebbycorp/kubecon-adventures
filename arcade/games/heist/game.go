@@ -60,6 +60,7 @@ type Game struct {
 	conns      map[string]int     // open connections per player
 	screens    int                // open spectator connections
 	clients    map[*client]bool
+	pendIn     map[*client]Input // coalesced input frames waiting for a rate-limit token
 	booked     map[string]bool // sessions of Booked targets removed from the world; Reset deletes them
 	paused     bool
 	listing    bool             // the startup sweep is still listing sessions; no spawns yet
@@ -72,7 +73,7 @@ type Game struct {
 // New builds the game on a city with a district per node. Run starts it.
 func New(p *platform.Platform, ops Ops, nodes []string) *Game {
 	g := &Game{p: p, ops: ops, city: NewCity(nodes), every: time.Second / tickHz,
-		conns: map[string]int{}, booked: map[string]bool{}, clients: map[*client]bool{}, timings: map[string]int64{}, done: make(chan struct{}),
+		conns: map[string]int{}, booked: map[string]bool{}, clients: map[*client]bool{}, pendIn: map[*client]Input{}, timings: map[string]int64{}, done: make(chan struct{}),
 		podHourUSD: podHourFromEnv()}
 	g.fresh()
 	return g
@@ -145,6 +146,7 @@ func (g *Game) shutdown() {
 func (g *Game) tick() {
 	g.mu.Lock()
 	g.drainResults()
+	g.flushInputs(time.Now())
 	for _, in := range g.w.Tick(g.every.Seconds()) {
 		g.submit(in)
 	}
