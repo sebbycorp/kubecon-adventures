@@ -550,3 +550,67 @@ func TestSpawnWithoutNodeAvoidsDispatch(t *testing.T) {
 		}
 	}
 }
+
+// finalStepUnderFreeze: a Level 2 target on its last step has a freeze in flight when
+// its final step completes.
+func finalStepUnderFreeze(t *testing.T) (*mtest, *Mission, *Target) {
+	x := newMTest(t, 24)
+	x.m.best["red"] = 1
+	ms := x.start("red", 2)
+	tg := x.target(ms, 0)
+	tg.Step, ms.Stars = 3, 1
+	tg.HitBy = map[string]bool{"a": true}
+	x.w.start(tg, "freeze", "a")
+	x.route(Result{Kind: "step", Target: tg.ID, OK: true, Step: StepResult{Say: "got away"}})
+	if tg.State != Working || ms.Outcome != "" || !tg.escapePending || ms.Stars != 1 {
+		t.Fatalf("while the freeze is pending: state %s outcome %q pending %v stars %d", tg.State, ms.Outcome, tg.escapePending, ms.Stars)
+	}
+	return x, ms, tg
+}
+
+func TestFreezePendingBeatsFinalStep(t *testing.T) {
+	x, ms, tg := finalStepUnderFreeze(t)
+	x.route(Result{Kind: "freeze", Target: tg.ID, OK: true, Ms: 20})
+	if tg.State != Frozen || ms.Outcome != "" || tg.escapePending {
+		t.Fatalf("freeze won: state %s outcome %q pending %v", tg.State, ms.Outcome, tg.escapePending)
+	}
+	for _, e := range x.w.Events {
+		if e.Kind == "escaped" {
+			t.Fatalf("escaped event after the freeze won: %+v", x.w.Events)
+		}
+	}
+}
+
+func TestFreezePendingFailsThenEscapes(t *testing.T) {
+	x, ms, tg := finalStepUnderFreeze(t)
+	x.route(Result{Kind: "freeze", Target: tg.ID, OK: false, Err: "boom"})
+	if tg.State != Escaped || ms.Outcome != "escaped" || ms.Stars != 2 {
+		t.Fatalf("freeze failed: state %s outcome %q stars %d", tg.State, ms.Outcome, ms.Stars)
+	}
+	n := 0
+	for _, e := range x.w.Events {
+		if e.Kind == "escaped" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("%d escaped events: %+v", n, x.w.Events)
+	}
+}
+
+func TestLateFreezeNeverRevives(t *testing.T) {
+	for _, st := range []TargetState{Escaped, Booked, Deleted} {
+		w := testWorld([]string{"red"}, Vec{1.5, 1.5})
+		tg := addTarget(w, "t1", "red", st, Vec{3, 3})
+		w.start(tg, "freeze", "a")
+		w.Resolve("t1", "freeze", true, 10)
+		if tg.State != st || tg.Busy {
+			t.Fatalf("%s: late freeze left state %s busy %v", st, tg.State, tg.Busy)
+		}
+		for _, e := range w.Events {
+			if e.Kind == "frozen" {
+				t.Fatalf("%s: frozen event for a gone target", st)
+			}
+		}
+	}
+}

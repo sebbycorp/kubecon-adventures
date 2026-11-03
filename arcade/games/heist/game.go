@@ -233,7 +233,7 @@ func (g *Game) submit(in Intent) {
 		return
 	}
 	if t != nil {
-		t.Busy, t.opBy = false, ""
+		t.Busy, t.opBy, t.opKind = false, "", ""
 	}
 	if al != nil {
 		al.Busy, al.opBy = false, ""

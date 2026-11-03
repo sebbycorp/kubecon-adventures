@@ -73,7 +73,11 @@ type Target struct {
 	New, Restored                             bool
 	ShotCD                                    float64 // hunter fire cooldown, seconds until it may shoot again
 
-	opBy string // player whose intent is in flight
+	opBy   string // player whose intent is in flight
+	opKind string // that intent's kind ("freeze", ...)
+	// escapePending: its final step completed while a freeze was in flight. The freeze
+	// wins (the shot landed first); if it fails, the escape is applied then.
+	escapePending bool
 }
 
 // Event is something the big screen and players are told about.
@@ -241,7 +245,7 @@ func (w *World) Tick(dt float64) []Intent {
 
 // start marks t busy with an op by player and returns its intent.
 func (w *World) start(t *Target, kind, player string) Intent {
-	t.Busy, t.opBy = true, player
+	t.Busy, t.opBy, t.opKind = true, player, kind
 	return Intent{Kind: kind, Target: t.ID, Player: player}
 }
 
@@ -362,13 +366,18 @@ func (w *World) Resolve(target, kind string, ok bool, ms int64) {
 		return
 	}
 	by := t.opBy
-	t.Busy, t.opBy = false, ""
+	t.Busy, t.opBy, t.opKind = false, "", ""
+	if t.State == Escaped || t.State == Booked || t.State == Deleted {
+		// A late result (say a freeze) never revives a target that is gone; its session
+		// is deleted by the mission's normal cleanup.
+		return
+	}
 	ev := Event{Kind: kind + "-failed", Target: t.ID, Player: by, Text: t.Name, Ms: ms}
 	loot := false // a confirmed freeze or delete drops one part, after its event
 	switch kind {
 	case "freeze":
 		if ok {
-			t.State, t.FrozenBy, t.FrozenAt = Frozen, by, w.Now
+			t.State, t.FrozenBy, t.FrozenAt, t.escapePending = Frozen, by, w.Now, false
 			ev.Kind = "frozen"
 			loot = true
 		} else {

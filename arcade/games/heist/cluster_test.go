@@ -400,6 +400,12 @@ func TestFreezeDuringStep(t *testing.T) {
 	if st.err != nil {
 		t.Errorf("the in-flight step should finish first: %v", st.err)
 	}
+	// The freeze really waited for the turn: it returned after the step ended (and so
+	// took well over 100 ms), instead of landing or failing fast mid-turn.
+	if frozeAt.Before(st.end) || frozeAt.Sub(start) < 100*time.Millisecond {
+		t.Fatalf("freeze did not wait for the turn: returned at +%v, step ended at +%v, call %v",
+			frozeAt.Sub(stepStart), st.end.Sub(stepStart), frozeAt.Sub(start))
+	}
 	if got := sessionState(t, heister, sid); got != "SUSPENDED" {
 		t.Fatalf("after freeze: actor %s, want SUSPENDED", got)
 	}

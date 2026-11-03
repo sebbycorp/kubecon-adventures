@@ -28,6 +28,7 @@ type fakeAgent struct {
 	reply       string
 	settleFails int
 	busyFails   int // the next N Suspend/Delete calls answer Aborted (a turn in flight)
+	suspendErr  error
 	invalid     int // the next N prompts end in output_validation_failed
 	promptErr   error
 	tasks       int
@@ -108,6 +109,13 @@ func (f *fakeAgent) Suspend(ctx context.Context, sid string) error {
 	if err := f.busy(); err != nil {
 		f.note("suspend-busy " + sid)
 		return err
+	}
+	f.mu.Lock()
+	serr := f.suspendErr
+	f.mu.Unlock()
+	if serr != nil {
+		f.note("suspend-failed " + sid)
+		return serr
 	}
 	f.note("suspend " + sid)
 	return nil
@@ -659,6 +667,8 @@ func TestSettlingClassification(t *testing.T) {
 		{errors.New("send: session has an active task or checkpoint: resource conflict"), true},
 		{errors.New("send failed: runtime cleanup or lifecycle work is not yet settled"), true},
 		{status.Error(codes.NotFound, "session not found"), false},
+		// Any other Aborted conflict returns at once.
+		{status.Error(codes.Aborted, "begin Session operation: request id reused: resource conflict"), false},
 		{status.Error(codes.Unknown, `checkpoint failed: reason:"SnapshotTagFailed" message:"snapshot changed"`), false},
 		{errors.New("boom"), false},
 	} {
@@ -735,5 +745,95 @@ func TestExtractAfterFailedSpringLinePromptsFresh(t *testing.T) {
 	// the checkpoint of that line's task.
 	if got := strings.Join(h.calls()[n:], "|"); got != "prompt "+sid+"|checkpoint "+sid+" task-3|delete "+sid {
 		t.Fatalf("calls: %s", got)
+	}
+}
+
+func TestFailedBookedLineRefreezes(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
+	n := len(h.calls())
+	if _, _, err := o.Extract(ctx, sid); err == nil {
+		t.Fatal("want booked line error")
+	}
+	// Resumed, the line failed, and the session is suspended again: World puts the
+	// target back to Frozen, and Substrate agrees.
+	if got := strings.Join(h.calls()[n:], "|"); got != "resume "+sid+"|prompt "+sid+"|suspend "+sid {
+		t.Fatalf("calls: %s", got)
+	}
+	o.mu.Lock()
+	ss := *o.sessions[sid]
+	o.mu.Unlock()
+	if !ss.suspended || !ss.staleHead {
+		t.Fatalf("after a failed booked line: %+v", ss)
+	}
+	// The crew's spring then resumes it as usual.
+	h.promptErr = nil
+	n = len(h.calls())
+	if _, say, _, err := o.Spring(ctx, sid); err != nil || say == sprungFallback {
+		t.Fatalf("spring: %q %v", say, err)
+	}
+	if got := strings.Join(h.calls()[n:], "|"); got != "resume "+sid+"|prompt "+sid {
+		t.Fatalf("spring calls: %s", got)
+	}
+}
+
+func TestSpringOfAwakeSessionSkipsResume(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	// The booked line fails and so does the re-suspend: the session is left awake.
+	h.promptErr = errors.New("task ended in TASK_STATE_FAILED: boom")
+	h.suspendErr = status.Error(codes.Internal, "suspend broke")
+	if _, _, err := o.Extract(ctx, sid); err == nil {
+		t.Fatal("want booked line error")
+	}
+	h.promptErr, h.suspendErr = nil, nil
+	n := len(h.calls())
+	if _, say, _, err := o.Spring(ctx, sid); err != nil || say == sprungFallback {
+		t.Fatalf("spring: %q %v", say, err)
+	}
+	if got := strings.Join(h.calls()[n:], "|"); got != "prompt "+sid {
+		t.Fatalf("spring of an awake session: %s", got)
+	}
+}
+
+func TestTurnEndingUnderFreezeStaysStale(t *testing.T) {
+	h, s := newFakes()
+	o := newAgentOps(h, s, "resume-first")
+	ctx := context.Background()
+	sid, _, _ := o.Spawn(ctx, "m1-1")
+	_, _ = o.Step(ctx, sid, 1, 4)
+	_, _ = o.Freeze(ctx, sid)
+	// The step whose turn the freeze waited for records its task after the freeze
+	// landed: that task predates the suspend's snapshot, so it is stale.
+	if _, err := o.Step(ctx, sid, 2, 4); err != nil {
+		t.Fatal(err)
+	}
+	o.mu.Lock()
+	stale := o.sessions[sid].staleHead
+	o.mu.Unlock()
+	if !stale {
+		t.Fatal("a turn recorded while suspended cleared staleHead")
+	}
+	n := len(h.calls())
+	if _, _, err := o.Extract(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.calls()[n:], "|"); got != "resume "+sid+"|prompt "+sid+"|checkpoint "+sid+" task-3|delete "+sid {
+		t.Fatalf("calls: %s", got)
+	}
+}
+
+func TestBookedLineAsksForJSON(t *testing.T) {
+	if !strings.HasSuffix(bookedLine, replyJSON) {
+		t.Fatalf("bookedLine %q lacks replyJSON", bookedLine)
 	}
 }

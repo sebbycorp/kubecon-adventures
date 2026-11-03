@@ -67,7 +67,7 @@ const (
 	allySprung   = "You were frozen protecting your crew and just got rebooted. React in one line."
 	// bookedLine is Extract's post-resume prompt: it gives the checkpoint a fresh head
 	// (a suspend changes the snapshot, so the pre-freeze head can't be tagged).
-	bookedLine = "You just got booked into the Snapshot Vault. React in one line."
+	bookedLine = "You just got booked into the Snapshot Vault. React in one line." + replyJSON
 	// bookedFallback is Extract's line when the booked reply can't be parsed (the turn
 	// itself completed, so it is still the checkpoint's head).
 	bookedFallback = "Booked. I'll be back."
@@ -147,10 +147,11 @@ func settling(err error) bool {
 	if err == nil {
 		return false
 	}
-	switch status.Code(err) {
-	case codes.FailedPrecondition, codes.Aborted:
+	if status.Code(err) == codes.FailedPrecondition {
 		return true
 	}
+	// Only this Aborted means "a turn is in flight": other Aborted conflicts return at
+	// once rather than spinning for the op's 45 s while the target stays Busy.
 	e := err.Error()
 	return strings.Contains(e, "not yet settled") || strings.Contains(e, "active task or checkpoint")
 }
@@ -259,7 +260,9 @@ func (o *agentOps) prompt(ctx context.Context, k agentAPI, sid, text string) (ka
 		if err == nil && r.Task != nil && r.Task.ID != "" { // a failed task never becomes Checkpoint's head
 			o.mu.Lock()
 			s := o.sessLocked(sid)
-			s.lastTask, s.staleHead = string(r.Task.ID), false
+			// A turn that ended just before a Freeze landed (Freeze waits for it) is
+			// already stale: keep staleHead while the session is suspended.
+			s.lastTask, s.staleHead = string(r.Task.ID), s.suspended
 			o.mu.Unlock()
 		}
 		if err == nil || !strings.Contains(err.Error(), "output_validation_failed") || ctx.Err() != nil {
@@ -382,9 +385,14 @@ func (o *agentOps) Freeze(ctx context.Context, sid string) (int64, error) {
 // reacts and continues its next step, an ally reacts.
 func (o *agentOps) Spring(ctx context.Context, sid string) (string, string, int64, error) {
 	k := o.client(sid)
+	o.mu.Lock()
+	suspended := o.sessLocked(sid).suspended
+	o.mu.Unlock()
 	start := time.Now()
-	if err := k.Resume(ctx, sid); err != nil {
-		return "", "", 0, err
+	if suspended { // awake already (an Extract that failed after its resume): just prompt
+		if err := k.Resume(ctx, sid); err != nil {
+			return "", "", 0, err
+		}
 	}
 	ms := max(time.Since(start).Milliseconds(), 1)
 	o.mu.Lock()
@@ -453,15 +461,23 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 		s.suspended = false
 		o.mu.Unlock()
 	}
+	// fail returns err; when this Extract resumed the session, it is frozen again first,
+	// so Substrate matches the game, which puts the target back to Frozen.
+	fail := func(err error) (string, int64, error) {
+		if suspended {
+			o.refreeze(ctx, sid)
+		}
+		return "", 0, err
+	}
 	// Also when awake: a session resumed earlier whose post-resume prompt failed (a
 	// spring's line, or a failed booked line) still has the stale pre-freeze head.
 	if suspended || stale {
 		r, err := o.prompt(ctx, k, sid, bookedLine)
 		if err != nil {
-			return "", 0, fmt.Errorf("booked line: %w", err)
+			return fail(fmt.Errorf("booked line: %w", err))
 		}
 		if r.Task == nil || r.Task.ID == "" {
-			return "", 0, errors.New("booked line: reply has no task to checkpoint")
+			return fail(errors.New("booked line: reply has no task to checkpoint"))
 		}
 		if say, err = parseSay(r); err != nil || say == "" {
 			slog.Warn("heist: booked line unreadable, using fallback", "session", sid, "err", err)
@@ -473,13 +489,24 @@ func (o *agentOps) Extract(ctx context.Context, sid string) (string, int64, erro
 		if err := timed(func() error {
 			return settle(ctx, func() error { _, err := k.Checkpoint(ctx, sid, head); return err })
 		}); err != nil {
-			return "", 0, fmt.Errorf("checkpoint: %w", err)
+			return fail(fmt.Errorf("checkpoint: %w", err))
 		}
 	}
 	if err := timed(func() error { return o.Delete(ctx, sid) }); err != nil {
-		return "", 0, err
+		return fail(err)
 	}
 	return say, max(ms, 1), nil
+}
+
+// refreeze suspends a session an Extract resumed but could not book (its ctx may be the
+// thing that ran out, so this gets its own). It leaves staleHead set: the next Extract
+// resumes and prompts again.
+func (o *agentOps) refreeze(ctx context.Context, sid string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if _, err := o.Freeze(ctx, sid); err != nil {
+		slog.Warn("heist: re-suspend after a failed extract", "session", sid, "err", err)
+	}
 }
 
 // Delete removes the session and forgets it.

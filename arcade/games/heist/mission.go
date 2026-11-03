@@ -272,6 +272,14 @@ func (m *Missions) OnResult(r Result, w *World) {
 			ms.Stars = min(maxStars, ms.Stars+1)
 		}
 	case "freeze", "extract", "delete":
+		if r.Kind == "freeze" && !r.OK && t != nil && t.escapePending && t.State == Working {
+			if ms.Outcome == "" {
+				m.escape(ms, t, w) // the freeze that held the escape failed
+			} else {
+				t.State, t.escapePending = Escaped, false
+			}
+			return
+		}
 		if !r.OK || t == nil || ms.Outcome != "" {
 			return
 		}
@@ -300,7 +308,19 @@ func (m *Missions) onStep(ms *Mission, tr *track, t *Target, r Result, w *World)
 		ms.Stars = min(maxStars, ms.Stars+1)
 		return
 	}
-	t.Step, t.State = t.Steps, Escaped
+	t.Step = t.Steps
+	if t.Busy && t.opKind == "freeze" {
+		// The freeze was fired before the escape completed: it wins. OnResult applies
+		// the escape only if that freeze fails.
+		t.escapePending = true
+		return
+	}
+	m.escape(ms, t, w)
+}
+
+// escape ends the mission: t got away with the heist.
+func (m *Missions) escape(ms *Mission, t *Target, w *World) {
+	t.State, t.escapePending = Escaped, false
 	ms.Stars = min(maxStars, ms.Stars+1)
 	w.Events = append(w.Events, Event{Kind: "escaped", Target: t.ID, Text: t.Name})
 	m.finish(ms, "escaped", w)
