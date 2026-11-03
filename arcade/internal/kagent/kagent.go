@@ -321,8 +321,10 @@ func (k *Kagent) Checkpoint(ctx context.Context, sessionID, headTaskID string) (
 	cps := apiv1.NewCheckpointServiceClient(k.conn)
 	req := &apiv1.CreateCheckpointRequest{SessionId: sessionID, RequestId: "cp-" + headTaskID, ExpectedHeadTaskId: headTaskID}
 	wait := 200 * time.Millisecond
+	var last error
 	for {
 		r, err := cps.CreateCheckpoint(k.ctx(ctx), req)
+		last = err
 		if err == nil {
 			cp := r.GetCheckpoint()
 			if cp.GetState() == apiv1.CheckpointState_CHECKPOINT_STATE_READY {
@@ -336,7 +338,7 @@ func (k *Kagent) Checkpoint(ctx context.Context, sessionID, headTaskID string) (
 		}
 		select {
 		case <-ctx.Done():
-			return "", fmt.Errorf("waiting for checkpoint: %w", ctx.Err())
+			return "", fmt.Errorf("waiting for checkpoint: %w (last response: %v)", ctx.Err(), last)
 		case <-time.After(wait):
 		}
 		wait = min(2*wait, time.Second)

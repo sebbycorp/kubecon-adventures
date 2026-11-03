@@ -37,6 +37,10 @@ echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
 k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
 
+echo "==> Grand Theft Agent: heist WorkerPool and heister Agent"
+k apply -f manifests/heist-agent.yaml -f manifests/heist-policies.yaml
+k -n kagent wait agent/heister --for=condition=Ready --timeout 5m
+
 echo "==> arcade image"
 IMAGE=localhost:5001/arcade:$(date +%Y%m%d-%H%M%S)
 docker build -q -t "$IMAGE" .

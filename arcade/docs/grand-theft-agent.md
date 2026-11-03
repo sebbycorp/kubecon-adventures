@@ -187,7 +187,7 @@ admin  ─┘                                                  │  world tick (
 
 ## Open items for the builder
 
-- Verify that `Checkpoint` works on a **suspended** session (extraction depends on it). If it doesn't (my call): extraction resumes the target off-screen through the queue, checkpoints it, then deletes the live session, so level 6 still has a checkpoint to fork from.
+- **Checked: `Checkpoint` does not work on a suspended session.** kagent answers `FailedPrecondition: cannot checkpoint in state RUNTIME_STATE_SUSPENDED with operation RUNTIME_OPERATION_NONE: resource conflict`, and `Kagent.Checkpoint` retried that for its full 2 minutes without success. **Extraction mode: `resume-first`**: resume the target off-screen through the queue (measured about 0.2 s), checkpoint it, then delete the live session, so level 6 still has a checkpoint to fork from. Don't call `Checkpoint` on a suspended session: it burns the 2 minute retry. Also: right after a turn, `Suspend`, `Resume`+`Prompt` and `Delete` can answer `FailedPrecondition: runtime cleanup or lifecycle work is not yet settled`; retry for about a second (suspend succeeded on the 2nd try, 0.5 s). The `heister` outputSchema can't use `maxLength` or `minimum` (the portable output profile rejects them), so the 60 character limit lives in the prompt and the game must clip `say`.
 - The 4 errors at 80 agents in the load test weren't diagnosed. Rerun at 40 with error logging before sizing for the booth.
 - The token use per minute at peak is an estimate; measure it in the first playable build and tune the step interval.
 - Node hops on resume never happened in the load test. Draw the district from the real node, and don't promise teleporting.

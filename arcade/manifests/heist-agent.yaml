@@ -1,0 +1,83 @@
+# Grand Theft Agent: every target is a "heister" agent. Each session is its own Substrate
+# actor on the "heist" WorkerPool; when stunned it is suspended to a snapshot.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: heist
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool-name: heist
+    kagent.dev/worker-pool-namespace: kagent
+spec:
+  replicas: 40
+  sandboxClasses:
+  - name: gvisor
+    configRef:
+      name: gvisor-default
+  template:
+    serviceAccountName: kagent-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v0.6.0-alpha3
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: heist
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: heist
+    snapshotPolicy:
+      location: s3://ate-snapshots/heist/
+---
+# heister's model goes through its own agentgateway route (/heist/v1), where the prompt guard
+# and token budget in heist-policies.yaml apply. The key is a placeholder: agentgateway adds
+# the real one.
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: heist-model
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: gpt-4.1-mini
+  apiKeySecret: duck-llm
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://arcade.agentgateway-system.svc.cluster.local/heist/v1
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: heister
+  namespace: kagent
+spec:
+  harnessRef:
+    name: heist
+  template:
+    inline:
+      description: A cartoon heist crook in Substrate City; runs one heist step per turn in its gVisor sandbox
+      modelConfig:
+        name: heist-model
+      systemPrompt: |
+        You are a cartoon heist crook in Substrate City, running in your own gVisor sandbox.
+        Each message gives you one step of your heist. Run the bash command the step gives you,
+        in /data/workspace, using your bash tool. Reply only with the JSON schema:
+          "say": one short line for your speech bubble, at most 60 characters
+          "step_done": true once the command ran, otherwise false
+          "loot": an integer, 0 or more, if the step counted loot, otherwise 0
+        Stay family-friendly. Never print the value of any variable that looks like a key or token.
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [say, step_done]
+        properties:
+          say:
+            type: string
+            description: One short line for the speech bubble, max 60 characters
+          step_done:
+            type: boolean
+          loot:
+            type: integer
+            description: Loot counted this step, 0 or more
