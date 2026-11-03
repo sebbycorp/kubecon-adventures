@@ -60,7 +60,7 @@
     border: 1px solid #2a2d30; background: #101311f2; transition: border-color .15s, box-shadow .15s, transform .15s; }
   .card:hover, .card:focus-visible { border-color: var(--c); box-shadow: 0 0 40px color-mix(in srgb, var(--c) 18%, transparent); transform: translateY(-1px); outline: none; }
   .card > :not(.shot):not(object) { margin: 0 16px; }
-  .card .shot { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #0b0d0c; border-bottom: 1px solid #2a2d30; }
+  .card .shot { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; background: #0b0d0c; border-bottom: 1px solid #2a2d30; }
   .card .head { display: flex; align-items: center; gap: 12px; }
   .card .body { flex: 1; }
   .card .meta { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; font-size: 12.5px; --ab-accent: var(--c); }
