@@ -85,6 +85,12 @@
   .card .screen { position: absolute; top: 16px; right: 16px; font-size: 12px; color: var(--mute); text-decoration: none; padding: 4px 9px; border-radius: 999px; border: 1px solid #2a2d30; background: #121314; }
   .card .screen:hover { color: var(--fg); border-color: var(--mute); }
 
+  .overall { margin-top: 18px; border: 1px solid #2a2d30; border-radius: 14px; background: #101311f2; padding: 14px 16px; }
+  .overall .ohead { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; margin-bottom: 10px; }
+  .overall h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .overall .ohead span { color: var(--mute); font-size: 13px; }
+  .overall .ab-board { grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .overall .ab-board { grid-template-columns: 1fr 1fr; column-gap: 12px; } }
   footer { margin-top: 24px; font-size: 12.5px; color: var(--mute); text-align: center; }
   footer a { color: var(--green); }
 </style>
@@ -119,6 +125,10 @@
 
   <div id="err" role="alert"></div>
 
+  <section class="overall" aria-label="All games leaderboard">
+    <div class="ohead"><h2>🏆 All games leaderboard</h2><span>Your best score in each game, in arcade points: 1,000 = a great run. Play more games to climb.</span></div>
+    <div data-ab-board="/" data-ab-n="10" data-ab-detail="1" data-ab-empty="No scores yet. Play any game below to get on the board."></div>
+  </section>
   <div class="label">Pick a game</div>
   <section class="grid" id="games">
     <a class="card" href="/substrate-siege" style="--c: var(--siege)">
