@@ -28,6 +28,15 @@ phone ──https──> Cloudflare ──tunnel──> cloudflared (kind) ─�
 
 The token needs Account > Cloudflare Tunnel: Edit and Zone > DNS: Edit for `agentpwned.ai`.
 
+## Login (Cloudflare Access)
+
+```bash
+./access.sh on    # only @solo.io and @maniak.io emails get in (one-time code by email)
+./access.sh off   # public again: run this before the booth opens
+```
+
+`access.sh` puts a Cloudflare Access app in front of the whole hostname, including the games' WebSockets and the big screens. Visitors without one of those emails can't play while it is on. It needs a token with Account > Access: Apps and Policies: Edit and Access: Organizations, Identity Providers, and Groups: Edit, and Zero Trust set up on the account. `ACCESS_DOMAINS="solo.io maniak.io"` changes the allowed domains. The LAN screens (`http://localhost:8090`) don't go through Cloudflare and are not affected.
+
 ## Notes
 
 - The LLM route on the Gateway only matches the in-cluster hostname, so the public hostname can't reach OpenAI.
