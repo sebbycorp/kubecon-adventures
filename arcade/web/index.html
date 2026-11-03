@@ -105,6 +105,8 @@
       <div class="stat"><b id="nAsleep">–</b>asleep · 0 CPU</div>
       <div class="stat"><b id="nRestore">–</b>wake-up p50</div>
       <div class="stat"><b id="nTurns">0</b>turns/min</div>
+      <div class="stat"><b id="nTokMin">–</b>tokens/min</div>
+      <div class="stat"><b id="nUsd">–</b>est. LLM spend</div>
     </div>
   </div>
 
@@ -233,6 +235,9 @@ async function poll() {
   try {
     const s = await (await fetch("/api/stats")).json();
     $("nActors").textContent = fmt(s.actors);
+    const short = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n || 0)));
+    $("nTokMin").textContent = short(s.tokensPerMin);
+    $("nUsd").textContent = s.tokensUsd != null ? "$" + Number(s.tokensUsd).toFixed(2) : "–";
     $("nAwake").textContent = fmt(s.running);
     $("nWorkers").textContent = fmt(s.workers);
     $("nAsleep").textContent = fmt(s.suspended);

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -74,6 +75,8 @@ func main() {
 	fl.Run(ctx)
 	missions := newExtBoard(missionsBoard)
 	go missions.run(ctx)
+	tokens := newTokens() // every game's LLM token spend, from agentgateway's metrics
+	go tokens.run(ctx)
 
 	web := func(dir string) fs.FS {
 		sub, err := fs.Sub(webFS, path.Join("web", dir))
@@ -88,7 +91,7 @@ func main() {
 	mux.HandleFunc("GET /tv", servePage(versionedPage(web(""), "tv.html"))) // the booth TV
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
-	arcadeAPI(mux, p, duck, flw, gta, cd, gd, fl, missions)
+	arcadeAPI(mux, p, duck, flw, gta, cd, gd, fl, missions, tokens)
 	duck.Routes(mux, web("duck-hunt"))
 	flw.Routes(mux, web("agent-flow"))
 	gta.Routes(mux, web("substrate-siege"))
@@ -127,7 +130,8 @@ func envOr(key, def string) string {
 }
 
 // arcadeAPI serves what all games share: joining once, and arcade-wide stats.
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game, fl *flappy.Game, missions topper) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game, fl *flappy.Game, missions topper, tokens *Tokens) {
+	mux.HandleFunc("GET /api/tokens", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, tokens.View()) })
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -161,6 +165,8 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 			"actors": s.Actors, "running": s.Running, "suspended": s.Suspended,
 			"players": p.Players.Count(), "snapshotP50Ms": t["snapshot"].P50, "restoreP50Ms": t["restore"].P50,
 		}
+		tv := tokens.View()
+		out["tokens"], out["tokensPerMin"], out["tokensUsd"], out["tokensUsdPerMin"] = math.Round(tv.Tokens), math.Round(tv.PerMin), math.Round(tv.USD*100)/100, math.Round(tv.USDMin*1000)/1000
 		for _, pool := range s.Pools {
 			out["pool_"+pool.Name] = fmt.Sprintf("%d/%d workers", pool.Workers, pool.Replicas)
 		}

@@ -45,7 +45,7 @@
   .factory .vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, var(--bg) 100%); }
   .factory .cap { position: absolute; left: 16px; top: 14px; font-size: 17px; color: var(--mute); background: #0d0e0fd9; border: 1px solid #2a2d30; border-radius: 999px; padding: 6px 14px; }
   .factory .cap b { color: var(--fg); }
-  #feed { position: absolute; left: 22px; top: 232px; width: 430px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
+  #feed { position: absolute; left: 22px; top: 384px; width: 430px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
   #feed div { display: flex; gap: 10px; align-items: center; font-size: 17px; background: #0f1311ee; border: 1px solid #2a2d30; border-radius: 10px; padding: 6px 12px; animation: in .4s ease-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #feed i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   #feed b { font-weight: 600; }
@@ -111,6 +111,7 @@
       <div id="lb" aria-live="polite"><div class="lh"><div><small>LEADERBOARD</small><br><b id="lbGame">–</b></div><span class="new">NEW #1</span></div><div class="rows" id="lbRows"></div><div class="dots" id="lbDots"></div></div>
       <svg id="leads" aria-hidden="true"></svg>
       <div class="co" data-at="7,9,1.2" style="left: 22px; top: 70px"><b id="nActors">–</b><span>AGENTS</span><small>actors on Agent Substrate</small></div>
+      <div class="co" data-at="13,0.6,1.6" style="--c: #c084fc; left: 22px; top: 222px"><b id="nTokMin">–</b><span>TOKENS / MIN</span><small id="nTokTotal">every game, via agentgateway</small></div>
       <div class="co" data-at="13,9,0.9" style="--c: var(--green); left: 22px; bottom: 22px"><b id="nAwake">–</b><span>AWAKE</span><small>running in a gVisor sandbox</small></div>
       <div class="co" data-at="16.9,10.9,0.9" style="--c: #60a5fa; left: 266px; bottom: 22px"><b id="nAsleep">–</b><span>SUSPENDED</span><small>snapshots · 0 CPU</small></div>
       <div class="co" data-at="15.6,10.1,0.5" style="--c: #fbbf24; left: 510px; bottom: 22px"><b id="nKilled">–</b><span>KILLED</span><small>shot down &amp; suspended</small></div>
@@ -236,6 +237,8 @@ setInterval(lbPoll, 2000);
 
 // ---- live numbers ----
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
+// short: 1234 -> 1.2k, 2500000 -> 2.5M.
+const short = (n) => (n == null ? "–" : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k" : String(Math.round(n)));
 // bump sets a big number and flashes it when it went up.
 function bump(id, v) {
   const el = $(id), txt = fmt(v ?? 0);
@@ -246,6 +249,8 @@ const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "m
 async function poll() {
   try {
     const s = await (await fetch("/api/stats")).json();
+    $("nTokMin").textContent = short(s.tokensPerMin ?? 0);
+    $("nTokTotal").textContent = s.tokens ? `${short(s.tokens)} tokens · ~$${Number(s.tokensUsd || 0).toFixed(2)} spent` : "every game, via agentgateway";
     $("nActors").textContent = fmt(s.actors); $("nAwake").textContent = fmt(s.running); $("nWorkers").textContent = fmt(s.workers);
     $("nAsleep").textContent = fmt(s.suspended); $("nRestore").textContent = ms(s.restoreP50Ms);
     const ops = s.agentFlow_ops || {};
@@ -262,7 +267,7 @@ function feed(color, who, text) {
   const d = document.createElement("div");
   d.innerHTML = `<i style="background:${color}"></i><b>${esc(who)}</b><span>${esc(text)}</span>`;
   $("feed").appendChild(d);
-  while ($("feed").children.length > 3) $("feed").firstChild.remove();
+  while ($("feed").children.length > 2) $("feed").firstChild.remove();
 }
 const flow = startFlowScreen($("scene"), {
   camera: false,

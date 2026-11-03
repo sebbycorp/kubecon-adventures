@@ -1,0 +1,15 @@
+# Service in front of the arcade Gateway's agentgateway metrics port, so the arcade can
+# read every game's LLM token counts (agentgateway_gen_ai_client_token_usage) for the TV,
+# the home page and /api/tokens. In-cluster only: the public route never reaches it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: arcade-gw-metrics
+  namespace: agentgateway-system
+spec:
+  selector:
+    gateway.networking.k8s.io/gateway-name: arcade
+  ports:
+  - name: metrics
+    port: 15020
+    targetPort: 15020

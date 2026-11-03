@@ -52,7 +52,7 @@ docker push -q "$IMAGE"
 
 echo "==> arcade app"
 k delete namespace duck-hunt --ignore-not-found --wait=false   # pre-arcade name
-k apply -f manifests/atelet-metrics.yaml
+k apply -f manifests/atelet-metrics.yaml -f manifests/gateway-metrics.yaml
 # Cluster facts for Agent Flow's hints. The kind nodes share this host, so its CPU and RAM
 # are the real capacity (each node reports all of it).
 NODES=$(k get nodes --no-headers | wc -l)
