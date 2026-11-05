@@ -181,7 +181,7 @@ function hud() {
   $("sP50").textContent = ms(s.timings.suspendP50);
   $("sP95").textContent = ms(s.timings.suspendP95);
   $("sTok").textContent = s.tokensPerMin >= 1000 ? `${Math.round(s.tokensPerMin / 1000)}k` : s.tokensPerMin;
-  $("boardList").innerHTML = s.board.slice(0, 6).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span><span>${b.score}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">Scan to play!</li>`;
+  $("boardList").innerHTML = (s.board || []).slice(0, 6).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span><span>${b.score}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">Scan to play!</li>`;
   $("allTimeList").innerHTML = (s.allTime || []).slice(0, 6).map((b) => `<li><span style="color:${shipColor(b.color)}">${esc(b.nick)}</span>${b.title !== "Rookie Admin" ? ` <i>${esc(b.title)}</i>` : ""}<span>${b.best}</span></li>`).join("") || `<li style="color:#8ea0d6;list-style:none;margin-left:-22px">—</li>`;
   $("feed").innerHTML = feed.map((l) => `<div>${l}</div>`).join("");
   show("overlay", r.phase !== "live");
