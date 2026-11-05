@@ -86,6 +86,18 @@ if ! wait_for 60 "arcade sees Substrate workers" bash -c '[ "$(curl -s http://lo
   k -n arcade rollout restart deploy/arcade >/dev/null && k -n arcade rollout status deploy/arcade --timeout=300s >/dev/null
   wait_for 180 "arcade sees Substrate workers after restart" bash -c '[ "$(curl -s http://localhost:8090/api/stats | jq -r ".workers // 0")" -gt 0 ]' || fail=1
 fi
+# The games' agent pools. Right after a boot the first actor restores are slow; pool
+# sessions can time out while their actors keep running with no kagent session, holding
+# the small pools' workers so nothing new starts. If the pools are still empty after 4
+# minutes, restart those worker pools (freeing the orphans) and the arcade, once.
+pools_ok='s=$(curl -s http://localhost:8090/api/stats); [ "$(echo "$s" | jq -r ".flappy_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".podPacker_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".selfie_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".duckHunt_pool // 0")" -gt 0 ]'
+if ! wait_for 240 "game agent pools filled" bash -c "$pools_ok"; then
+  log "restarting the small worker pools and the arcade (pool sessions timed out after boot)"
+  k -n kagent rollout restart deploy/flappy deploy/podpacker deploy/selfie deploy/gatedef >/dev/null 2>&1
+  for d in flappy podpacker selfie gatedef; do k -n kagent rollout status deploy/$d --timeout=300s >/dev/null 2>&1; done
+  k -n arcade rollout restart deploy/arcade >/dev/null && k -n arcade rollout status deploy/arcade --timeout=300s >/dev/null
+  wait_for 240 "game agent pools filled after restart" bash -c "$pools_ok" || fail=1
+fi
 stats=$(curl -s http://localhost:8090/api/stats | jq -c '{actors, running, workers}' 2>/dev/null)
 log "substrate: $stats"
 
