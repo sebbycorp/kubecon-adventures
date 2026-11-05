@@ -78,6 +78,14 @@ for p in / /agent-flow/screen /substrate-siege /cluster-defense /gateway-defense
   code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8090$p")
   [ "$code" = 200 ] && log "ok: $p" || { log "HTTP $code: $p"; fail=1; }
 done
+# The arcade can start before kagent's controller is ready after a reboot; its games then
+# fail to set up their agent pools and it sees no Substrate workers. If it still sees none
+# a minute on, while the worker pools are up, restart it once.
+if ! wait_for 60 "arcade sees Substrate workers" bash -c '[ "$(curl -s http://localhost:8090/api/stats | jq -r ".workers // 0")" -gt 0 ]'; then
+  log "restarting the arcade (it started before kagent was ready)"
+  k -n arcade rollout restart deploy/arcade >/dev/null && k -n arcade rollout status deploy/arcade --timeout=300s >/dev/null
+  wait_for 180 "arcade sees Substrate workers after restart" bash -c '[ "$(curl -s http://localhost:8090/api/stats | jq -r ".workers // 0")" -gt 0 ]' || fail=1
+fi
 stats=$(curl -s http://localhost:8090/api/stats | jq -c '{actors, running, workers}' 2>/dev/null)
 log "substrate: $stats"
 
