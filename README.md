@@ -10,3 +10,5 @@ KubeCon demo and lab builds. Each folder is a self-contained component.
 | [boot](boot/) | Brings the whole lab back after the host reboots |
 
 Agent instructions live in [AGENTS.md](AGENTS.md) (`CLAUDE.md` imports it).
+
+To run the lab on Google Cloud (GKE) instead of the local kind cluster, see [Redeploying on GKE](AGENTS.md#redeploying-on-gke).
