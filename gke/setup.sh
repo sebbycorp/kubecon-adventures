@@ -18,8 +18,18 @@
 #   SKIP_GAMES      substrate-siege (set to "" to deploy every game)
 #   OPENAI_API_KEY  the key, or OPENAI_SECRET=<Secret Manager secret name> to read it from there
 #   TUNNEL=1        also run ../tunnel/setup.sh against this cluster (see README first)
+#   GCP_SA_KEY      a service account key (JSON) to log in with instead of your own gcloud login
+#   BUILDER         docker | cloudbuild (default: docker if a Docker daemon answers, else Cloud Build)
 set -euo pipefail
 cd "$(dirname "$0")"
+
+if [ -n "${GCP_SA_KEY:-}" ]; then
+  KEYFILE=$(mktemp); trap 'rm -f "$KEYFILE"' EXIT
+  printf '%s' "$GCP_SA_KEY" >"$KEYFILE"
+  unset CLOUDSDK_AUTH_ACCESS_TOKEN   # would override the key
+  gcloud auth activate-service-account --key-file "$KEYFILE" --quiet
+  PROJECT=${PROJECT:-$(jq -r .project_id "$KEYFILE")}
+fi
 
 PROJECT=${PROJECT:-$(gcloud config get-value project 2>/dev/null)}
 REGION=${REGION:-us-central1}
@@ -41,7 +51,9 @@ AGENTGATEWAY_VERSION=v1.7.0
 GATEWAY_API_VERSION=v1.6.3
 
 [ -n "$PROJECT" ] || { echo "Set PROJECT or run: gcloud config set project <id>" >&2; exit 1; }
-for t in gcloud docker jq curl; do command -v $t >/dev/null || { echo "Missing $t" >&2; exit 1; }; done
+if [ -z "${BUILDER:-}" ]; then docker info >/dev/null 2>&1 && BUILDER=docker || BUILDER=cloudbuild; fi
+export BUILDER BUILD_PROJECT=$PROJECT BUILD_REGION=$REGION
+for t in gcloud jq curl; do command -v $t >/dev/null || { echo "Missing $t" >&2; exit 1; }; done
 gcloud auth print-access-token >/dev/null 2>&1 || { echo "gcloud is not logged in: gcloud auth login" >&2; exit 1; }
 CTX=gke_${PROJECT}_${ZONE}_${CLUSTER}
 k() { kubectl --context "$CTX" "$@"; }
@@ -69,17 +81,21 @@ fi
 export OPENAI_API_KEY
 
 echo "==> Project $PROJECT: APIs"
-gcloud services enable container.googleapis.com artifactregistry.googleapis.com --project "$PROJECT"
+gcloud services enable container.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com --project "$PROJECT"
 
 echo "==> Artifact Registry $REGION-docker.pkg.dev/$PROJECT/$AR_REPO"
 gcloud artifacts repositories describe "$AR_REPO" --location "$REGION" --project "$PROJECT" >/dev/null 2>&1 ||
   gcloud artifacts repositories create "$AR_REPO" --repository-format docker --location "$REGION" --project "$PROJECT" \
     --description "KubeCon arcade images"
-gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet >/dev/null
-# The nodes run as the default compute service account; let it pull from this repo.
-NODE_SA=$(gcloud projects describe "$PROJECT" --format 'value(projectNumber)')-compute@developer.gserviceaccount.com
+[ "$BUILDER" = docker ] && gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet >/dev/null
+# The nodes run as the default compute service account: let it pull from this repo. Cloud Build
+# runs as the same account (or the legacy Cloud Build one in older projects): let those push.
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format 'value(projectNumber)')
+NODE_SA=$PROJECT_NUMBER-compute@developer.gserviceaccount.com
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --location "$REGION" --project "$PROJECT" \
-  --member "serviceAccount:$NODE_SA" --role roles/artifactregistry.reader >/dev/null
+  --member "serviceAccount:$NODE_SA" --role roles/artifactregistry.writer >/dev/null
+gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --location "$REGION" --project "$PROJECT" \
+  --member "serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" --role roles/artifactregistry.writer >/dev/null 2>&1 || true
 
 echo "==> GKE Standard cluster $CLUSTER ($NODE_COUNT x $MACHINE_TYPE, $ZONE)"
 # Standard, not Autopilot: Substrate's gVisor workers need node access Autopilot doesn't allow.

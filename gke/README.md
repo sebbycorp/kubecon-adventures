@@ -13,7 +13,7 @@ export OPENAI_API_KEY=...          # or OPENAI_SECRET=<Secret Manager secret nam
 ./setup.sh
 ```
 
-`setup.sh` uses **your** gcloud login and project. It:
+`setup.sh` uses **your** gcloud login and project, or a service account key in `GCP_SA_KEY` (roles: Kubernetes Engine Admin, Artifact Registry Admin, Service Usage Admin, Service Account User, Cloud Build Editor, Storage Admin). If no Docker daemon answers, the arcade image is built with Cloud Build instead. It:
 
 1. Enables the GKE and Artifact Registry APIs.
 2. Creates the Artifact Registry repo `us-central1-docker.pkg.dev/<project>/arcade` and lets the nodes' service account pull from it.

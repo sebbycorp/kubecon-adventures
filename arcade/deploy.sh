@@ -10,6 +10,8 @@
 #   POD_CIDR_PREFIX  the pod network prefix the in-cluster-only LLM routes allow ("10.244." on kind)
 #   SKIP_GAMES       comma-separated games to leave out; only "substrate-siege" is supported
 #   HEIST_NODES      Substrate Siege's district nodes (default: every worker node)
+#   BUILDER          docker (default) | cloudbuild (gcloud builds submit; no local Docker needed,
+#                    BUILD_PROJECT names the GCP project)
 set -euo pipefail
 cd "$(dirname "$0")"
 export PATH=$HOME/.local/bin:$PATH
@@ -92,8 +94,12 @@ k -n kagent wait agent/selfiebot --for=condition=Ready --timeout 5m
 
 echo "==> arcade image"
 IMAGE=$IMAGE_REPO:$(date +%Y%m%d-%H%M%S)
-docker build -q --platform linux/amd64 -t "$IMAGE" .
-docker push -q "$IMAGE"
+if [ "${BUILDER:-docker}" = cloudbuild ]; then
+  gcloud builds submit --project "$BUILD_PROJECT" --region "${BUILD_REGION:-us-central1}" --tag "$IMAGE" --quiet .
+else
+  docker build -q --platform linux/amd64 -t "$IMAGE" .
+  docker push -q "$IMAGE"
+fi
 
 echo "==> arcade app"
 k delete namespace duck-hunt --ignore-not-found --wait=false   # pre-arcade name
