@@ -176,6 +176,8 @@ function tile(g) {
     <div class="qr"><div class="code" data-url="${esc(url)}"></div>scan to play</div></div>`;
 }
 // Every game at once; the QR codes are drawn once and the boards refresh every 10 s.
+// Games left out of this deploy (DISABLED_GAMES, injected by the server).
+for (const p of window.ARCADE_DISABLED || []) { const i = TILES.findIndex((t) => t.path === p); if (i >= 0) TILES.splice(i, 1); }
 $("tiles").innerHTML = TILES.map(tile).join("");
 $("tiles").querySelectorAll("[data-url]").forEach((el) => qr(el, el.dataset.url, 5));
 $("tiles").querySelectorAll("[data-board]").forEach((el) => Arcade.board(el, el.dataset.board, { n: 1, detail: false, unit: false, empty: el.dataset.empty }));

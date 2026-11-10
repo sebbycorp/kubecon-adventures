@@ -1,0 +1,13 @@
+# GKE only: keeps the arcade Gateway's Service in-cluster. On kind, MetalLB hands the
+# LoadBalancer Service a private Docker-network IP; on GKE the same Service would get a
+# public IP, exposing /admin and the LLM routes past the Cloudflare tunnel.
+# arcade/deploy.sh (PLATFORM=gke) points the arcade Gateway at this.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: arcade-internal
+  namespace: agentgateway-system
+spec:
+  service:
+    spec:
+      type: ClusterIP

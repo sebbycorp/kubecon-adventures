@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Public access for the arcade: a remotely managed Cloudflare Tunnel from kubecon.agentpwned.ai
-# to the arcade's agentgateway, with cloudflared running in the kind-kagent cluster.
+# to the arcade's agentgateway, with cloudflared running in the kind-kagent cluster (or KUBE_CONTEXT).
 # Safe to rerun: it reuses the tunnel and DNS record if they exist. /admin is blocked publicly.
 #
 # Needs a Cloudflare API token with Account > Cloudflare Tunnel: Edit and Zone > DNS: Edit for
@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export PATH=$HOME/.local/bin:$PATH
-k() { kubectl --context kind-kagent "$@"; }
+k() { kubectl --context "${KUBE_CONTEXT:-kind-kagent}" "$@"; }
 
 PUBLIC_HOST=${PUBLIC_HOST:-kubecon.agentpwned.ai}
 ZONE=${ZONE:-agentpwned.ai}

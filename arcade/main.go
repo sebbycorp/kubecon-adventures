@@ -66,6 +66,11 @@ func main() {
 	fl := flappy.New(p, agentClient(flappy.AgentName))
 	pp := podpacker.New(p, agentClient(podpacker.AgentName))
 	sf := selfie.New(p, agentClient(selfie.AgentName), selfie.NewLLM())
+	// DISABLED_GAMES (e.g. "substrate-siege") leaves a game out: it isn't started, its pages
+	// and API 404, and the front page, TV and leaderboards hide it. Only Substrate Siege can
+	// be turned off today (the GKE deploy skips its agents).
+	disabled = parseDisabled(os.Getenv("DISABLED_GAMES"))
+	siegeOn := !disabled["/substrate-siege"]
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -73,7 +78,9 @@ func main() {
 	go p.RunAteletScraper(ctx, &platform.AteletScraper{Target: *atelet})
 	duck.Run(ctx)
 	flw.Run(ctx)
-	gta.Run(ctx)
+	if siegeOn {
+		gta.Run(ctx)
+	}
 	cd.Run(ctx)
 	gd.Run(ctx)
 	fl.Run(ctx)
@@ -93,8 +100,8 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
-	mux.HandleFunc("GET /{$}", servePage(versionedPage(web(""), "index.html")))
-	mux.HandleFunc("GET /tv", servePage(versionedPage(web(""), "tv.html"))) // the booth TV
+	mux.HandleFunc("GET /{$}", servePage(withDisabled(versionedPage(web(""), "index.html"))))
+	mux.HandleFunc("GET /tv", servePage(withDisabled(versionedPage(web(""), "tv.html")))) // the booth TV
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
 	moreStats["selfie_"] = sf.Stats
@@ -102,7 +109,9 @@ func main() {
 	mux.HandleFunc("GET /selfie/api/stats", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, sf.Stats()) })
 	duck.Routes(mux, web("duck-hunt"))
 	flw.Routes(mux, web("agent-flow"))
-	gta.Routes(mux, web("substrate-siege"))
+	if siegeOn {
+		gta.Routes(mux, web("substrate-siege"))
+	}
 	cd.Routes(mux, web("cluster-defense"))
 	gd.Routes(mux, web("gateway-defense"))
 	fl.Routes(mux, web("flappy"))
@@ -124,7 +133,11 @@ func main() {
 	// Substrate Siege deletes its booked checkpoints, Cluster Defense its round's sessions and
 	// Flappy Substrate its octopus pool on the way out (bounded).
 	deadline := time.After(20 * time.Second)
-	for _, stopped := range []<-chan struct{}{gta.Stopped(), cd.Stopped(), fl.Stopped(), pp.Stopped(), sf.Stopped()} {
+	waits := []<-chan struct{}{cd.Stopped(), fl.Stopped(), pp.Stopped(), sf.Stopped()}
+	if siegeOn {
+		waits = append(waits, gta.Stopped())
+	}
+	for _, stopped := range waits {
 		select {
 		case <-stopped:
 		case <-deadline:
@@ -196,8 +209,10 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		for k, v := range flw.Stats() {
 			out["agentFlow_"+k] = v
 		}
-		for k, v := range gta.Stats() {
-			out["heist_"+k] = v
+		if !disabled["/substrate-siege"] {
+			for k, v := range gta.Stats() {
+				out["heist_"+k] = v
+			}
 		}
 		for k, v := range cd.Stats() {
 			out["clusterDefense_"+k] = v
@@ -239,7 +254,7 @@ type topper interface {
 
 // arcadeBoards is every game's top n, in the home page's order.
 func arcadeBoards(n int, duck, flw, gta, cd, gd, fl, pp, missions topper) []GameBoard {
-	return []GameBoard{
+	all := []GameBoard{
 		{"Substrate Siege", "/substrate-siege", "best run", gta.Top(n), false},
 		{"Cluster Defense", "/cluster-defense", "best round", cd.Top(n), false},
 		{"Gateway Defense", "/gateway-defense", "points", gd.Top(n), false},
@@ -249,4 +264,11 @@ func arcadeBoards(n int, duck, flw, gta, cd, gd, fl, pp, missions topper) []Game
 		{"Pod Packer", "/pod-packer", "points", pp.Top(n), false},
 		{"AI agentgateway missions", missionsURL, "pts", missions.Top(n), true},
 	}
+	out := all[:0]
+	for _, b := range all {
+		if !disabled[b.Path] {
+			out = append(out, b)
+		}
+	}
+	return out
 }

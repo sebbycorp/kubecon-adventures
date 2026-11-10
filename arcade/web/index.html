@@ -230,6 +230,17 @@
 </div>
 
 <script>
+// Games left out of this deploy (DISABLED_GAMES, injected by the server): drop their card
+// and their big-screen link (and the " · " before it).
+for (const p of window.ARCADE_DISABLED || []) {
+  document.querySelectorAll(`#games a.card[href="${p}"]`).forEach((el) => el.remove());
+  document.querySelectorAll(`footer a[href="${p}/screen"]`).forEach((a) => {
+    if (a.previousSibling && a.previousSibling.nodeType === 3) a.previousSibling.textContent = a.previousSibling.textContent.replace(/ · $/, "");
+    a.remove();
+  });
+}
+</script>
+<script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 // ?next=/some-game sends a player back to the game that asked them to join first.

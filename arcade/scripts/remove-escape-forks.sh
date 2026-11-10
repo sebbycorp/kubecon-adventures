@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH=$HOME/.local/bin:$PATH
-k() { kubectl --context kind-kagent "$@"; }
+k() { kubectl --context "${KUBE_CONTEXT:-kind-kagent}" "$@"; }
 
 YES=""
 case "${1:-}" in

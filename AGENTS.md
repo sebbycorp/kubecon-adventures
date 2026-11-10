@@ -13,36 +13,27 @@ A collection of KubeCon demo/lab builds. Each top-level folder is a self-contain
 | `arcade/` | Agent arcade (Duck Hunt, Agent Flow, Substrate Siege, Cluster Defense, Gateway Defense, Flappy Substrate, Pod Packer, Substrate Selfie): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
 | `tunnel/` | Cloudflare Tunnel: public `https://kubecon.agentpwned.ai` to the arcade, cloudflared in the kind cluster, `/admin` blocked | `cd tunnel && ./setup.sh` |
 | `homepage/` | Homepage dashboard for the host, cluster, and containers (port 3000) | `cd homepage && ./start.sh` |
+| `gke/` | The same lab on a GKE Standard cluster (Substrate Siege skipped by default) | `cd gke && ./setup.sh` |
 | `boot/` | Brings the cluster, every game, the tunnel, Vault and Homepage back after a reboot (systemd user unit) | `cd boot && ./install.sh` |
 
 Add a row here when you add a new component.
 
 ## Redeploying on GKE
 
-Everything above targets a local kind cluster (`kind-kagent`) on one 8-CPU host. To run the same lab on Google Cloud, keep the components and change the kind-specific parts below. Nothing here has been run on GKE yet: verify each step.
+`gke/setup.sh` runs the lab on a GKE Standard cluster (see [gke/README.md](gke/README.md)); Substrate Siege is skipped by default (`SKIP_GAMES`). It has not been run end to end yet. What differs from kind, and where it's handled:
 
-**Cluster.** A GKE **Standard** cluster (not Autopilot): Agent Substrate runs its own gVisor worker pods (`ateworker-gvisor`), which need node access Autopilot doesn't allow. Sizing from the combined load test (about 80 bots on every game used 6–8 CPUs and 16–20 GB here): 3 × `e2-standard-8` is comfortable for a booth (about $105–125 for 5 days on demand), 2 × `e2-standard-8` is enough for normal traffic. Avoid Spot VMs for an event.
-
-**Versions** (pinned in `kagent/setup.sh`): kagent `1.0.0-alpha17` (Agent Substrate `v0.6.0-alpha3`), agentgateway `v1.7.0`, Gateway API `v1.6.3`, model `gpt-4.1-mini`.
-
-**Install order on GKE:**
-1. `kagent/setup.sh`, minus the kind parts: skip the kind binary and `kind create cluster`, the local registry, MetalLB, the metrics-server `--kubelet-insecure-tls` patch (GKE ships metrics-server) and the `kagent-ui-port` socat container. Keep Gateway API, `kagent install` (it installs kagent and Agent Substrate into the current context) and the two agentgateway Helm charts.
-2. `arcade/deploy.sh`, with these changes:
-   - **Context:** it hard-codes `kubectl --context kind-kagent`. Point `k()` at the GKE context (as `tunnel/setup.sh` does too).
-   - **Image registry:** it builds to `localhost:5001/arcade:<tag>`. Push to Artifact Registry instead (e.g. `us-central1-docker.pkg.dev/<project>/arcade/arcade:<tag>`) and let the nodes pull from it.
-   - **OpenAI key:** it reads `OPENAI_API_KEY` from the local Vault unless the variable is set. On GKE, export it (or use Secret Manager); never commit it.
-   - **Host port 8090:** the `arcade-port` socat container is for the local LAN. Drop it; players come in through the Cloudflare tunnel.
-   - **Cluster facts:** `NODES`, `CPUS` and `MEMGIB` come from this host (`nproc`, `free`); set them to the GKE node values (they only feed Agent Flow's hints).
-3. **In-cluster-only policies.** Four AgentgatewayPolicies allow only kind's pod network, `source.address.startsWith("10.244.")`: `arcade/manifests/flow-policies.yaml`, `gatedef.yaml` (two) and `selfie.yaml`. GKE's pod range differs (see `gcloud container clusters describe <name> --format='value(clusterIpv4Cidr)'`); change the prefix or the LLM routes will refuse every agent.
-4. **Node names.** `arcade/main.go` maps Substrate Siege's city districts to `HEIST_NODES` (default `kagent-worker,kagent-worker2`). Add a `HEIST_NODES` env var (comma-separated GKE node names) to the arcade container in `arcade/manifests/app.yaml`, or the districts fall back to random ones.
-5. `tunnel/setup.sh` (its `k()` is also `kind-kagent`; switch the context). cloudflared runs in the cluster and dials out, so no load balancer or firewall changes are needed, and `kubecon.agentpwned.ai` keeps working. `tunnel/access.sh on|off` is unchanged.
-6. **Not needed on GKE:** `boot/` (GKE restarts nodes and pods itself), `homepage/` (it reads the local Docker and kind cluster) and `vault/` (unless you keep secrets there).
+- **Cluster:** GKE Standard (Substrate's gVisor workers need node access Autopilot doesn't allow), 3 × `e2-standard-8` on demand, Ubuntu nodes, pod range `10.60.0.0/16`.
+- **`arcade/deploy.sh` settings:** `PLATFORM=gke`, `KUBE_CONTEXT`, `IMAGE_REPO` (Artifact Registry), `POD_CIDR_PREFIX` (rewrites the `10.244.` in the four in-cluster-only AgentgatewayPolicies in `flow-policies.yaml`, `gatedef.yaml` and `selfie.yaml`), `SKIP_GAMES`, `HEIST_NODES`. Defaults keep the kind behaviour.
+- **Private Gateway:** on GKE the arcade Gateway uses `gke/manifests/gateway-params.yaml` (ClusterIP Service), because a LoadBalancer Service would get a public IP past the tunnel's `/admin` block.
+- **Disabled games:** the arcade reads `DISABLED_GAMES` (set from `SKIP_GAMES`): a disabled game isn't started, its routes 404, and the front page, TV and leaderboards hide it (`arcade/disabled.go`).
+- **Tunnel:** `tunnel/setup.sh` takes `KUBE_CONTEXT`. Don't run cloudflared for the same tunnel in both kind and GKE (Cloudflare splits traffic between them); see gke/README.md.
+- **Not needed on GKE:** `boot/`, `homepage/`, `vault/`.
 
 **After deploying, check:**
 - `https://kubecon.agentpwned.ai/` and `/tv` return 200 and `/admin` returns 404.
 - `/api/stats` shows `workers` > 0 and the game pools filled (`flappy_pool`, `podPacker_pool`, `selfie_pool`, `duckHunt_pool`). If the arcade started before kagent was ready, restart it (`kubectl -n arcade rollout restart deploy/arcade`); if a small pool stays empty, restart that WorkerPool's deployment in `kagent` and then the arcade (see `boot/up.sh` for the same recovery).
-- `/api/tokens` shows every game's route (the `arcade-gw-metrics` Service in `arcade/manifests/gateway-metrics.yaml`).
-- Rerun the booth load tests (`go test -tags cluster -run TestBoothLoad` in `arcade/games/heist` and `arcade/games/defense`, with `ARCADE_URL` set) to confirm capacity, CPU and token use on the new cluster.
+- `/api/tokens` shows every deployed game's route (the `arcade-gw-metrics` Service in `arcade/manifests/gateway-metrics.yaml`).
+- Rerun the booth load test (`go test -tags cluster -run TestBoothLoad` in `arcade/games/defense`, with `ARCADE_URL` set) to confirm capacity, CPU and token use on the new cluster.
 
 ## Conventions
 

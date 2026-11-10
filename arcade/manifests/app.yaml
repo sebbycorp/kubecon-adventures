@@ -26,13 +26,17 @@ spec:
       - name: arcade
         image: IMAGE   # set by deploy.sh
         args: ["-idle", "20"]
-        env: # measured by deploy.sh; the kind nodes all share one host
+        env: # set by deploy.sh
         - name: CLUSTER_NODES
           value: "NODES"
         - name: HOST_CPUS
           value: "CPUS"
         - name: HOST_MEM_GIB
           value: "MEMGIB"
+        - name: HEIST_NODES      # Substrate Siege's districts: the cluster's nodes
+          value: "HEIST_NODES"
+        - name: DISABLED_GAMES   # games left out of this deploy (SKIP_GAMES)
+          value: "DISABLED_GAMES"
         ports:
         - containerPort: 8080
           name: http

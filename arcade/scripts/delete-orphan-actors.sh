@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-CTX=${CTX:-kind-kagent}
+CTX=${CTX:-${KUBE_CONTEXT:-kind-kagent}}
 ATESPACE=${ATESPACE:-kagent}
 AGENTS=${AGENTS:-escapee escape-probe forky}
 SUBSTRATE_VERSION=${SUBSTRATE_VERSION:-v0.6.0-alpha3}
