@@ -17,7 +17,7 @@ featureGates:
 runtimeConfig:
   "api/alpha": "false"
   "certificates.k8s.io/v1beta1": "true"
-# One control plane and two workers, so agents (ducks) spread across nodes.
+# One control plane and two workers, so agents spread across nodes.
 # All nodes share this host's CPU and RAM; kind sets no per-node limits.
 nodes:
   - role: control-plane

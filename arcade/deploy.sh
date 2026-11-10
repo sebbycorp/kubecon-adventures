@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy the agent arcade (all games) into the kind-kagent cluster (run ../kagent/setup.sh first).
-# Safe to rerun. DUCK_WORKERS sets the gVisor worker count (default 12). The OpenAI key is read from Vault (secret/kubecon/api-keys) unless OPENAI_API_KEY is set.
+# Safe to rerun. The OpenAI key is read from Vault (secret/kubecon/api-keys) unless OPENAI_API_KEY is set.
 set -euo pipefail
 cd "$(dirname "$0")"
 export PATH=$HOME/.local/bin:$PATH
@@ -18,12 +18,8 @@ k -n agentgateway-system create secret generic openai --from-literal=OPENAI_API_
 k apply -f manifests/gateway.yaml -f manifests/llm.yaml
 k -n agentgateway-system wait gateway/arcade --for=condition=Programmed --timeout 3m
 
-echo "==> duck WorkerPool (${DUCK_WORKERS:=12} gVisor workers)"
-sed "s|replicas: REPLICAS|replicas: $DUCK_WORKERS|" manifests/workerpool.yaml | k apply -f -
-
-echo "==> duck Agent"
-k apply -f manifests/duck-agent.yaml
-k -n kagent wait agent/duck --for=condition=Ready --timeout 5m
+echo "==> shared model (duck-model ModelConfig)"
+k apply -f manifests/model.yaml
 
 echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
 k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
@@ -77,11 +73,9 @@ fi
 
 echo
 echo "Arcade:     http://localhost:8090/"
-echo "Duck Hunt:  http://localhost:8090/duck-hunt (big screen: /duck-hunt/screen)"
 echo "Flappy:     http://localhost:8090/flappy (big screen: /flappy/screen)"
 echo "Pod Packer: http://localhost:8090/pod-packer (big screen: /pod-packer/screen)"
 echo "Selfie:     http://localhost:8090/selfie (big screen: /selfie/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
 echo "Defense:    http://localhost:8090/cluster-defense (big screen: /cluster-defense/screen)"
 echo "Gateway:    http://localhost:8090/gateway-defense (big screen: /gateway-defense/screen)"
-echo "Admin:      http://localhost:8090/admin"

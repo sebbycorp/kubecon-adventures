@@ -83,7 +83,7 @@
       `<span class="ab-who"><b>${esc(r.nick)}</b>${w.detail && r.detail ? `<small>${esc(r.detail)}</small>` : ""}</span>` +
       `<span class="ab-score">${Number(r.score).toLocaleString()}${w.unit ? `<small>${esc(b.unit)}</small>` : ""}</span></div>`).join("");
   }
-  // board keeps el showing the top n of the game at path ("/duck-hunt"), live.
+  // board keeps el showing the top n of the game at path ("/flappy"), live.
   function board(el, path, { n = 5, detail = true, unit = true, medals = true, empty = "No scores yet. Be the first." } = {}) {
     if (!el) return;
     el.classList.add("ab-board");
@@ -126,9 +126,6 @@
     "/agent-flow": (o, f) => [
       `My own AI agent just ${f.task || "finished a task"}${has(f.answerMs) ? ` in ${(f.answerMs / 1000).toFixed(1)}s` : ""} 🤖`,
       `I gave an AI agent a job at the booth: it ${f.task || "did it"}${has(f.answerMs) ? ` in ${(f.answerMs / 1000).toFixed(1)}s` : ""}.`],
-    "/duck-hunt": (o, f) => [
-      `${n(o.score)} points in Duck Hunt${has(f.hits) ? `: ${n(f.hits)} agents shot out of the sky` : ""} 🦆`,
-      `I shot ${n(f.hits || o.score)} AI agents out of the sky in Duck Hunt 🦆`],
   };
   // facts is the "why it's amazing" line, most specific first.
   function factLines(o, f) {
@@ -193,7 +190,7 @@
     }));
   }
   window.Arcade = { board, ctas, share, shareText };
-  // Markup can ask for them too: data-ab-board="/duck-hunt" (data-ab-n, data-ab-detail="0",
+  // Markup can ask for them too: data-ab-board="/flappy" (data-ab-n, data-ab-detail="0",
   // data-ab-unit="0", data-ab-empty) and data-ab-cta="sm|md|lg".
   function mount() {
     document.querySelectorAll("[data-ab-board]").forEach((el) => board(el, el.dataset.abBoard, {

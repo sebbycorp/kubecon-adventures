@@ -468,12 +468,12 @@ func (k *Kagent) waitState(ctx context.Context, sessionID string, want apiv1.Run
 	}
 }
 
-// Actor is a duck's Agent Substrate actor: every kagent session runs as exactly one.
+// Actor is an agent's Agent Substrate actor: every kagent session runs as exactly one.
 type Actor struct {
 	Name     string `json:"name"`     // "session-<session id>"
 	State    string `json:"state"`    // RUNNING, SUSPENDED, RESUMING, SUSPENDING, ...
 	Node     string `json:"node"`     // Kubernetes node holding its sandbox or local snapshot
-	Template string `json:"template"` // ActorTemplate (the duck Agent's prepared revision)
+	Template string `json:"template"` // ActorTemplate (the Agent's prepared revision)
 }
 
 // ActorStates returns every session actor in the agent's namespace, keyed by session ID.
@@ -504,7 +504,7 @@ func (k *Kagent) ActorStates(ctx context.Context) (map[string]Actor, error) {
 }
 
 // SubstrateStats is the arcade-wide Agent Substrate picture: every worker pool and
-// every agent (all games), not just ducks.
+// every agent (all games), not just one game's.
 type SubstrateStats struct {
 	Actors      int64            `json:"actors"`
 	Running     int64            `json:"running"`

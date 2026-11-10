@@ -3,7 +3,7 @@
 [Homepage](https://gethomepage.dev/) v2.7.0 dashboard for the lab, at http://localhost:3000. It shows:
 
 - Host CPU, RAM, disk and temperature
-- The kind cluster: per-node CPU and RAM (from metrics-server), plus pod status for kagent, agentgateway and the Agent Substrate components, including the gVisor duck worker pool
+- The kind cluster: per-node CPU and RAM (from metrics-server), plus pod status for kagent, agentgateway and the Agent Substrate components and the games' gVisor worker pools
 - Docker containers: Vault, the kind nodes, the local registry and port forwarders
 - Links to the kagent UI, Vault, the lab Vault, Cloudflare and the release pages
 

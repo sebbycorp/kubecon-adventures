@@ -1,27 +1,25 @@
 # Kubernetes tiles show pod status/CPU/RAM from the kind-kagent cluster (podSelector is a label selector).
 # Docker tiles show container status/CPU/RAM from the local Docker socket.
 - Platform:
-    - Duck Hunt:
-        icon: mdi-duck
-        href: http://172.16.10.135:8090/duck-hunt/screen
-        description: Big screen · /duck-hunt phone · /admin
-        namespace: duck-hunt
-        app: duck-hunt
-        podSelector: app=duck-hunt
+    - Agent Arcade:
+        icon: mdi-gamepad-variant
+        href: http://172.16.10.135:8090/
+        description: Front page · /tv booth screen
+        namespace: arcade
+        app: arcade
+        podSelector: app=arcade
         siteMonitor: http://localhost:8090/
         widget:
           type: customapi
-          url: http://localhost:8090/duck-hunt/api/stats
+          url: http://localhost:8090/api/stats
           refreshInterval: 3000
           mappings:
             - field: players
               label: Players
-            - field: ducksFlying
-              label: Flying
-            - field: ducksDown
-              label: Down
-            - field: duckSandboxesAwake
+            - field: running
               label: Awake
+            - field: tokensPerMin
+              label: Tokens/min
     - kagent UI:
         icon: https://raw.githubusercontent.com/kagent-dev/kagent/main/img/icon-dark.svg
         href: http://172.16.10.135:8080
@@ -81,12 +79,6 @@
               label: Restore p50
               format: number
               suffix: " ms"
-    - Duck pool (gVisor workers):
-        icon: mdi-duck
-        description: WorkerPool ducks; every duck is an actor here
-        namespace: kagent
-        app: duck-pool-gvisor-workers
-        podSelector: ate.dev/worker-pool=ducks
     - Default pool (gVisor workers):
         icon: mdi-server-network
         description: WorkerPool kagent-default; other kagent agents

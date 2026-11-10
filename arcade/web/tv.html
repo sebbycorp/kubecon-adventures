@@ -66,14 +66,15 @@
   #lb .new { display: none; font-size: 13px; font-weight: 800; letter-spacing: .12em; color: #0d0e0f; background: var(--c); border-radius: 999px; padding: 3px 10px; }
   #lb.flash .new { display: inline-block; animation: beat .6s ease-in-out 4; }
   @keyframes in { from { opacity: 0; transform: translateY(8px); } }
-  /* Right: all six games at once, two columns of three, each with a QR code you can scan
-     from a few metres. */
+  /* Right: all six games at once, each with a QR code you can scan from a few metres:
+     four in two columns, then Substrate Selfie and AI agentgateway missions across the
+     full width, missions the biggest. */
   .right { display: grid; grid-template-rows: auto auto 1fr; gap: 12px; min-height: 0; }
   .rhead { display: flex; justify-content: space-between; align-items: baseline; }
   .rhead h2 { margin: 0; font-size: 30px; font-weight: 800; }
   .rhead span { color: var(--mute); font-size: 17px; }
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, 1fr); gap: 12px; min-height: 0; }
-  .tile:last-child:nth-child(odd) { grid-column: span 2; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr 1.6fr; gap: 12px; min-height: 0; }
+  .tile.wide { grid-column: span 2; }
   /* The game's screenshot fills the tile; a fade at the bottom keeps the name and board
      readable, and the QR code sits in a white card on the right. */
   .tile { --c: var(--green); position: relative; display: grid; grid-template-columns: 1fr 124px; gap: 10px; padding: 10px; border-radius: 18px; min-height: 0; overflow: hidden;
@@ -88,6 +89,10 @@
   .tile .qr { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-end; text-align: center; font-size: 13px; color: #e8e8e8; text-shadow: 0 1px 4px #000; }
   .tile .qr .code { background: #fff; border-radius: 10px; padding: 6px; margin-bottom: 4px; aspect-ratio: 1; display: grid; place-items: center; color: #111; font-size: 13px; word-break: break-all; box-shadow: 0 4px 18px #000a; }
   .tile .qr svg { display: block; width: 100%; height: 100%; }
+  .tile.big { grid-template-columns: 1fr 180px; padding: 14px; }
+  .tile.big h3 { font-size: 34px; }
+  .tile.big .top { font-size: 18px; }
+  .tile.big .qr { font-size: 15px; }
 </style>
 </head>
 <body>
@@ -118,7 +123,7 @@
   </section>
 
   <section class="right">
-    <div class="rhead"><h2>Scan a code to play</h2><span>8 games · every character is a real agent</span></div>
+    <div class="rhead"><h2>Scan a code to play</h2><span>7 games · every character is a real agent</span></div>
     <div id="lb" aria-live="polite"><div class="lh"><div><small>LEADERBOARD</small><b id="lbGame">–</b><span class="new">NEW #1</span></div><div class="dots" id="lbDots"></div></div><div class="rows" id="lbRows"></div></div>
     <div class="tiles" id="tiles"></div>
   </section>
@@ -159,16 +164,15 @@ const TILES = [
   { path: "/cluster-defense", name: "Cluster Defense", color: "#fb923c", unit: "Top pilots", pitch: "Subagents fill the cluster's workers. Fly a ship and suspend them before it's full." },
   { path: "/gateway-defense", name: "Gateway Defense", color: "#22d3ee", unit: "Top defenders", pitch: "Tower defense with real controls: prompt guard, rate limit, egress and suspend." },
   { path: "/pod-packer", name: "Pod Packer", color: "#f472b6", unit: "Top packers", pitch: "Tetris where every block is a real agent pod. Clear a row and real agents are snapshotted to free the node." },
-  { path: "/duck-hunt", name: "Duck Hunt", color: "#facc15", unit: "Top hunters", pitch: "Turn your phone sideways and shoot real agents into Snapshot Storage." },
   { path: "/flappy", name: "Flappy Substrate", color: "#4ade80", unit: "Top swimmers", still: true, pitch: "Tap to keep the octopus swimming. Crash and your agent is snapshotted; play again wakes it." },
-  { path: "/selfie", name: "Substrate Selfie", color: "#c084fc", unit: "Selfies", img: "selfie", note: "No leaderboard · snap a selfie and share it",
+  { path: "/selfie", name: "Substrate Selfie", color: "#c084fc", unit: "Selfies", img: "selfie", wide: true, note: "No leaderboard · snap a selfie and share it",
     pitch: "Snap a selfie and land in 10 funny scenes with the Agent Substrate octopus. Captions via agentgateway." },
-  { path: MISSIONS, name: "AI agentgateway missions", color: "#a78bfa", unit: "Top players", ext: true, img: "agentgateway-missions",
+  { path: MISSIONS, name: "AI agentgateway missions", color: "#a78bfa", unit: "Top players", ext: true, wide: true, big: true, img: "agentgateway-missions",
     pitch: "Configure a real agentgateway, take contracts, stack points and dodge the cops." },
 ];
 function tile(g) {
   const url = g.ext ? g.path : SITE + g.path, img = g.img || g.path.slice(1);
-  return `<div class="tile" style="--c:${g.color}">
+  return `<div class="tile${g.wide ? " wide" : ""}${g.big ? " big" : ""}" style="--c:${g.color}">
     ${g.still ? `<img class="shot" src="/static/shots/${img}.webp?v=5" alt="${esc(g.name)}">` : `<video class="shot" autoplay muted loop playsinline preload="auto" poster="/static/shots/${img}.webp?v=5" aria-label="${esc(g.name)} gameplay"><source src="/static/loops/${img}.webm?v=3" type="video/webm"><source src="/static/loops/${img}.mp4?v=3" type="video/mp4"></video>`}
     <div class="info"><h3>${esc(g.name)}</h3>
       ${g.note ? `<div class="top"><div class="ab-empty">${esc(g.note)}</div></div>` : `<div class="top" data-board="${esc(g.path)}" data-empty="${g.ext ? "Leaderboard in game." : "No scores yet. Be the first."}"></div>`}</div>
@@ -176,7 +180,7 @@ function tile(g) {
 }
 // Every game at once; the QR codes are drawn once and the boards refresh every 10 s.
 $("tiles").innerHTML = TILES.map(tile).join("");
-$("tiles").querySelectorAll("[data-url]").forEach((el) => qr(el, el.dataset.url, 5));
+$("tiles").querySelectorAll("[data-url]").forEach((el) => qr(el, el.dataset.url, el.closest(".big") ? 7 : 5));
 $("tiles").querySelectorAll("[data-board]").forEach((el) => Arcade.board(el, el.dataset.board, { n: 1, detail: false, unit: false, empty: el.dataset.empty }));
 
 // ---- the big rotating leaderboard ----

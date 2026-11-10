@@ -10,7 +10,7 @@ A collection of KubeCon demo/lab builds. Each top-level folder is a self-contain
 |--------|------------|----------|
 | `vault/` | HashiCorp Vault 1.21 in Docker, file storage, UI on | `cd vault && ./init.sh` |
 | `kagent/` | kind cluster with kagent 1.0 alpha, Agent Substrate, agentgateway | `cd kagent && ./setup.sh` |
-| `arcade/` | Agent arcade (Duck Hunt, Agent Flow, Cluster Defense, Gateway Defense, Flappy Substrate, Pod Packer, Substrate Selfie): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
+| `arcade/` | Agent arcade (Agent Flow, Cluster Defense, Gateway Defense, Flappy Substrate, Pod Packer, Substrate Selfie): every character is a kagent agent on Agent Substrate (port 8090) | `cd arcade && ./deploy.sh` |
 | `tunnel/` | Cloudflare Tunnel: public `https://kubecon.agentpwned.ai` to the arcade, cloudflared in the kind cluster, `/admin` blocked | `cd tunnel && ./setup.sh` |
 | `homepage/` | Homepage dashboard for the host, cluster, and containers (port 3000) | `cd homepage && ./start.sh` |
 | `boot/` | Brings the cluster, every game, the tunnel, Vault and Homepage back after a reboot (systemd user unit) | `cd boot && ./install.sh` |
@@ -39,7 +39,7 @@ Everything above targets a local kind cluster (`kind-kagent`) on one 8-CPU host.
 
 **After deploying, check:**
 - `https://kubecon.agentpwned.ai/` and `/tv` return 200 and `/admin` returns 404.
-- `/api/stats` shows `workers` > 0 and the game pools filled (`flappy_pool`, `podPacker_pool`, `selfie_pool`, `duckHunt_pool`). If the arcade started before kagent was ready, restart it (`kubectl -n arcade rollout restart deploy/arcade`); if a small pool stays empty, restart that WorkerPool's deployment in `kagent` and then the arcade (see `boot/up.sh` for the same recovery).
+- `/api/stats` shows `workers` > 0 and the game pools filled (`flappy_pool`, `podPacker_pool`, `selfie_pool`). If the arcade started before kagent was ready, restart it (`kubectl -n arcade rollout restart deploy/arcade`); if a small pool stays empty, restart that WorkerPool's deployment in `kagent` and then the arcade (see `boot/up.sh` for the same recovery).
 - `/api/tokens` shows every game's route (the `arcade-gw-metrics` Service in `arcade/manifests/gateway-metrics.yaml`).
 - Rerun the booth load tests (`go test -tags cluster -run TestBoothLoad` in `arcade/games/defense`, with `ARCADE_URL` set) to confirm capacity, CPU and token use on the new cluster.
 

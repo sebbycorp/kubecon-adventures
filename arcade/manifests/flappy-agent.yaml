@@ -34,7 +34,7 @@ spec:
     snapshotPolicy:
       location: s3://ate-snapshots/flappy/
 ---
-# octo uses Duck Hunt's model (duck-model, the shared /v1 route and its budget): it only
+# octo uses the shared model (duck-model in model.yaml, the shared /v1 route and its budget): it only
 # ever runs the one placing turn per pool session.
 apiVersion: api.kagent.dev/v1alpha3
 kind: Agent

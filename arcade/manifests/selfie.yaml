@@ -34,7 +34,7 @@ spec:
     snapshotPolicy:
       location: s3://ate-snapshots/selfie/
 ---
-# selfiebot uses Duck Hunt's model (duck-model and its /v1 budget) for its one placing turn.
+# selfiebot uses the shared model (duck-model in model.yaml and its /v1 budget) for its one placing turn.
 apiVersion: api.kagent.dev/v1alpha3
 kind: Agent
 metadata:

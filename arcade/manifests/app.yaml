@@ -1,5 +1,5 @@
 # The arcade backend (all games, the front page and shared stats), behind the agentgateway
-# "arcade" Gateway. One replica: game state (players, ducks, timers) lives in memory.
+# "arcade" Gateway. One replica: game state (players, scores, timers) lives in memory.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -25,7 +25,6 @@ spec:
       containers:
       - name: arcade
         image: IMAGE   # set by deploy.sh
-        args: ["-idle", "20"]
         env: # measured by deploy.sh; the kind nodes all share one host
         - name: CLUSTER_NODES
           value: "NODES"

@@ -13,12 +13,12 @@ import (
 )
 
 // AteletScraper reads Substrate's own checkpoint (snapshot) and restore timings from
-// every atelet's Prometheus endpoint, for actors of the duck Agent's templates.
+// every atelet's Prometheus endpoint, for actors of every Agent's templates (or one Agent's, by prefix).
 type AteletScraper struct {
 	// Target is "dns:<host>:<port>" (every A record of a headless Service) or a
 	// comma-separated list of base URLs such as "http://localhost:19091".
 	Target         string
-	TemplatePrefix string // e.g. "duck-"; empty counts every agent
+	TemplatePrefix string // e.g. "octo-"; empty counts every agent
 	last           map[string][2]float64 // "<endpoint> <metric>" -> {sum, count}
 }
 

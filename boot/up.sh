@@ -74,7 +74,7 @@ if [ -x homepage/start.sh ]; then homepage/start.sh >/dev/null 2>&1 && log "ok: 
 
 log "==> arcade"
 wait_for 600 "arcade on http://localhost:8090" curl -sf -o /dev/null http://localhost:8090/api/stats || fail=1
-for p in / /agent-flow/screen /cluster-defense /gateway-defense /duck-hunt; do
+for p in / /agent-flow/screen /cluster-defense /gateway-defense /flappy; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8090$p")
   [ "$code" = 200 ] && log "ok: $p" || { log "HTTP $code: $p"; fail=1; }
 done
@@ -90,7 +90,7 @@ fi
 # sessions can time out while their actors keep running with no kagent session, holding
 # the small pools' workers so nothing new starts. If the pools are still empty after 4
 # minutes, restart those worker pools (freeing the orphans) and the arcade, once.
-pools_ok='s=$(curl -s http://localhost:8090/api/stats); [ "$(echo "$s" | jq -r ".flappy_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".podPacker_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".selfie_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".duckHunt_pool // 0")" -gt 0 ]'
+pools_ok='s=$(curl -s http://localhost:8090/api/stats); [ "$(echo "$s" | jq -r ".flappy_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".podPacker_pool // 0")" -gt 0 ] && [ "$(echo "$s" | jq -r ".selfie_pool // 0")" -gt 0 ]'
 if ! wait_for 240 "game agent pools filled" bash -c "$pools_ok"; then
   log "restarting the small worker pools and the arcade (pool sessions timed out after boot)"
   k -n kagent rollout restart deploy/flappy deploy/podpacker deploy/selfie deploy/gatedef >/dev/null 2>&1

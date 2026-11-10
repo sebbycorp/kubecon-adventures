@@ -4,7 +4,6 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 
 | Game | Shows off | Status | Design |
 |------|-----------|--------|--------|
-| Duck Hunt (at `/duck-hunt`) | Suspend and resume in milliseconds, as a landscape phone shooter: every target is a real agent woken for you, every hit a real snapshot | Playable | [below](#duck-hunt) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
 | Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
 | Gateway Defense | The platform's controls (prompt guard, rate limit, egress, suspend) as towers, each kill a real call; solo tower defense | Playable | [below](#gateway-defense) |
@@ -24,17 +23,15 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Page | URL |
 |------|-----|
 | Arcade front page (players join once, then pick a game) | http://localhost:8090/ |
-| Duck Hunt phone (landscape) / big screen | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
 | Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
 | Gateway Defense phone / big screen | http://localhost:8090/gateway-defense, http://localhost:8090/gateway-defense/screen |
 | Flappy Substrate phone / big screen | http://localhost:8090/flappy, http://localhost:8090/flappy/screen |
 | Pod Packer phone / big screen | http://localhost:8090/pod-packer, http://localhost:8090/pod-packer/screen |
 | Substrate Selfie phone / big screen | http://localhost:8090/selfie, http://localhost:8090/selfie/screen |
-| Admin (no sign-in yet, LAN only) | http://localhost:8090/admin |
 | Arcade-wide stats (JSON, for Homepage) | http://localhost:8090/api/stats |
 
-`deploy.sh` can be rerun safely. Game state (players, scores) lives in memory, so a redeploy starts a new round. Agent sessions stay in kagent until a round is reset from admin. It builds the image, pushes it to the local registry (`localhost:5001`) and rolls out a new version. `DUCK_WORKERS` sets the size of the duck worker pool (default 12). To reach the arcade from other machines, run `sudo ufw route allow proto tcp from any to any port 8090`. `./loadtest.sh [players] [seconds]` runs a Duck Hunt load test.
+`deploy.sh` can be rerun safely. Game state (players, scores) lives in memory, so a redeploy starts a new round. It builds the image, pushes it to the local registry (`localhost:5001`) and rolls out a new version. To reach the arcade from other machines, run `sudo ufw route allow proto tcp from any to any port 8090`.
 
 ## Layout
 
@@ -42,10 +39,10 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 - `internal/kagent`: the kagent client (sessions, A2A prompts, suspend and resume, Substrate actors and stats)
 - `internal/platform`: what games share: players, Substrate stats, atelet timings, SSE hubs, HTTP helpers
 - `games/<game>`: one package per game (state, rules, routes)
-- `web/shared`: the NES styles, sprites, sounds and the live Substrate diagram; `web/<game>`: that game's pages
+- `web/shared`: what the pages share (`arcade.js`: leaderboards and share buttons; screenshots, gameplay loops and link previews); `web/<game>`: that game's pages
 - `manifests/`:
   - `gateway.yaml` and `llm.yaml`: agentgateway front door and OpenAI route. The LLM route only matches the in-cluster hostname.
-  - `<game>-agent.yaml` and `workerpool.yaml`: each game's Agent, Harness and WorkerPool
+  - `<game>-agent.yaml`: each game's Agent, Harness and WorkerPool; `model.yaml`: the shared `duck-model` ModelConfig and its `duck-llm` Secret (names kept from Duck Hunt, now removed; `scripts/remove-duck-hunt.sh` deletes its agent, sessions and worker pool from an older cluster)
   - `app.yaml`: the arcade Deployment and its HTTPRoute
   - `atelet-metrics.yaml`: lets the backend read Substrate's own snapshot and restore timings
 
@@ -139,19 +136,6 @@ A solo tower defense on the phone, drawn neon-cyber on a 2D canvas. Rogue agent 
 | Egress Wall | `rogue` runs `wget https://example.com` with its bash tool | atenet-egress refuses it (rogue has no EgressPolicy). It costs an LLM turn, so one shared probe runs at most once a minute; the first kill after a probe shows it as real, later ones as its last real result. |
 
 A kill over the budget shows that tower's last real result, marked as such. Leaks cost lives (two for runaways, obfuscated jailbreaks, smugglers and zombies, ten for the boss) and say what the creep would have done. Scores are checked before the leaderboard: at most the most the wave reached allows, counting splits, summons and endless waves (up to wave 300), and no faster than its creeps can spawn on 2× (`MaxScore`, `MinSeconds`; the countdowns aren't counted, since they can be skipped); a win means all 99 waves were cleared. The leaderboard is today's best run per player (in memory, so a restart clears it): `GET /gateway-defense/api/board` gives the top 10 with the asking player's row and rank, the phone shows it from the start screen and the menu, a live rank ticker during a run ("#4 live · 42 to pass Linus"), and on the end screen the rank, the score to beat for the next place and the top 5. The big screen (`/gateway-defense/screen`) shows a QR code, per-control real call counts and p50 timings, a live feed of the real blocks and an animated top 10 (rows slide on rank changes; new entries and climbs flash). `manifests/gatedef.yaml` holds the WorkerPool, the `rogue` Agent, its guarded LLM route (`/gatedef/v1`, 30k tokens a minute), the guard and limit routes and their policies, all in-cluster only.
-
-## Duck Hunt
-
-A landscape phone shooter at `/duck-hunt` (it replaced Duck Hunt, and keeps its URL, its `duck` agent and its `ducks` worker pool). Agent birds with the kagent face fly over a night city of server racks; tap one to shoot it and it drops into Snapshot Storage. Runs are 75 seconds; a wave every 15 s flies faster and puts more targets in the air (one, then two, then three).
-
-What is real:
-
-- **The targets.** The game keeps a pool of `duck` sessions asleep as Substrate snapshots (it adopts the agent's existing sessions and creates more up to 24). Launching a target is a real `Resume`: Substrate wakes the actor on a worker, and the phone shows "woke in N ms".
-- **A hit.** The server scores it (100, 150 for swift, 500 for golden, times the combo: hits within 2.2 s build ×2 up to ×5) and suspends the session: a real snapshot, shown as "snapshotted in N ms" when the agent lands in the bin. A target that escapes is suspended too.
-- **Lines.** About one launch in five (at most one every 4 s across the arcade) the agent gets one real LLM turn and its line shows in a speech bubble. A reply that fails the agent's output schema gets a fixed line; replies are never logged. A say turn and the suspend that ends its flight are serialized, so a late turn can't wake a shot agent again.
-- **Capacity.** At most 10 targets are awake across the arcade (the `ducks` pool has 12 workers) and 40 runs at once; a launch over the cap is retried by the phone. A target flying longer than `-idle` seconds (default 20) is put back to sleep.
-
-Scores are the server's, so the leaderboard needs no plausibility check: a hit counts only on the run's own target, at least 250 ms after it woke, 110 ms after the previous hit, and before the run ends. The board keeps each player's best run (in memory, like the other games). The big screen shows a QR code, the animated top 10, a live feed of hits with their real suspend times and lines, and the pool's awake and asleep counts with the snapshot and wake-up p50. Admin: `/admin/duck-hunt` (reset the board).
 
 ## Flappy Substrate
 
