@@ -7,7 +7,7 @@
 #      escape and forks (namespace kagent)
 # Both games used the shared duck-model ModelConfig and the shared openai route, so no
 # ModelConfig, EgressPolicy, HTTPRoute or AgentgatewayPolicy is theirs alone; nothing of
-# duck, flow, heist, defense or kagent-default is touched.
+# duck, flow, defense or kagent-default is touched.
 #
 #   ./scripts/remove-escape-forks.sh        dry run: prints what it would delete
 #   ./scripts/remove-escape-forks.sh --yes  deletes

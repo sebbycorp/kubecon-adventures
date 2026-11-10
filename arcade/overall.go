@@ -17,7 +17,6 @@ import (
 
 // arcadePar is the score that is worth 1000 arcade points, by game path.
 var arcadePar = map[string]float64{
-	"/substrate-siege": 40,    // freezes +1, bookings +2, player freezes +2 in a 3-minute run
 	"/cluster-defense": 300,   // a round's suspends with combos
 	"/gateway-defense": 4000,  // a run's points, about wave 20
 	"/agent-flow":      5,     // tasks finished (and jailbreaks the guard blocked)

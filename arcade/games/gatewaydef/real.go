@@ -398,7 +398,7 @@ func (a *AgentProber) runProbe() {
 
 // settle runs call, retrying with backoff (100 ms up to 500 ms) while kagent is still
 // settling the session's last turn ("not yet settled", "active task or checkpoint"),
-// until ctx ends, as heist and defense do.
+// until ctx ends, as defense does.
 func settle(ctx context.Context, call func() error) error {
 	wait := 100 * time.Millisecond
 	for {

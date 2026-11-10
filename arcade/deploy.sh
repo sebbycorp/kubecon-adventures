@@ -29,10 +29,6 @@ echo "==> Agent Flow: flow WorkerPool and flowbot Agent"
 k apply -f manifests/flow-egress.yaml -f manifests/flow-agent.yaml -f manifests/flow-policies.yaml
 k -n kagent wait agent/flowbot --for=condition=Ready --timeout 5m
 
-echo "==> Substrate Siege: heist and siegeplayers WorkerPools, heister, sidekick and siegeplayer Agents"
-k apply -f manifests/heist-agent.yaml -f manifests/heist-policies.yaml
-k -n kagent wait agent/heister agent/sidekick agent/siegeplayer --for=condition=Ready --timeout 5m
-
 echo "==> Cluster Defense: defense WorkerPool and subagent Agent"
 k apply -f manifests/defense-agent.yaml -f manifests/defense-policies.yaml
 k -n kagent wait agent/subagent --for=condition=Ready --timeout 5m
@@ -86,7 +82,6 @@ echo "Flappy:     http://localhost:8090/flappy (big screen: /flappy/screen)"
 echo "Pod Packer: http://localhost:8090/pod-packer (big screen: /pod-packer/screen)"
 echo "Selfie:     http://localhost:8090/selfie (big screen: /selfie/screen)"
 echo "Flow:       http://localhost:8090/agent-flow (big screen: /agent-flow/screen)"
-echo "Siege:      http://localhost:8090/substrate-siege (big screen: /substrate-siege/screen)"
 echo "Defense:    http://localhost:8090/cluster-defense (big screen: /cluster-defense/screen)"
 echo "Gateway:    http://localhost:8090/gateway-defense (big screen: /gateway-defense/screen)"
 echo "Admin:      http://localhost:8090/admin"

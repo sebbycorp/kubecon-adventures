@@ -24,7 +24,7 @@
 <style>
   /* The Agent Flow screen's look: kagent dark, Inter, one green accent. */
   :root { --bg: #0d0e0f; --grid: #17191b; --fg: #e8e8e8; --mute: #8a8f94; --green: #5fd068; --greenDim: #3d7a45; --line: #24272a;
-    --duck: #facc15; --flow: #5fd068; --siege: #38bdf8; --defense: #fb923c; --gateway: #22d3ee; }
+    --duck: #facc15; --flow: #5fd068; --defense: #fb923c; --gateway: #22d3ee; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 Inter, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
   body { min-height: 100vh; background:
@@ -145,16 +145,6 @@
   </section>
   <div class="label">Pick a game</div>
   <section class="grid" id="games">
-    <a class="card" href="/substrate-siege" style="--c: var(--siege)">
-      <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/substrate-siege.webp" aria-label="Substrate Siege: a phone in the night city, freezing an agent named Fast Freddie" width="720" height="450"><source src="/static/loops/substrate-siege.webm" type="video/webm"><source src="/static/loops/substrate-siege.mp4" type="video/mp4"></video>
-      <div class="head"><div class="ico">🌃</div><div><h2>SUBSTRATE SIEGE</h2><div class="tag">3-minute run · night city</div></div></div>
-      <div class="body"><p>Agents roam a night city doing jobs. Two hits freezes one, tap BOOK to snapshot it. Beat the big screen in three minutes.</p>
-        <div class="real"><span>Suspend</span><span>Checkpoint</span><span>Delete</span></div></div>
-      <div class="meta"><div><div class="ab-h">Top runs</div><div data-ab-board="/substrate-siege" data-ab-n="5" data-ab-detail="0" data-ab-empty="No scores yet. Be the first."></div></div>
-        <div class="qr"><div class="code" data-qr="https://kubecon.agentpwned.ai/substrate-siege"></div>scan to play</div></div>
-      <div class="foot"><span class="play">PLAY ▶</span><span class="now" data-k="siege"><i></i><span>–</span></span></div>
-      <object><a class="screen" href="/substrate-siege/screen" target="_blank">big screen ↗</a></object>
-    </a>
     <a class="card" href="/cluster-defense" style="--c: var(--defense)">
       <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/cluster-defense.webp" aria-label="Cluster Defense: a rocket ship in space during a x2 combo" width="720" height="450"><source src="/static/loops/cluster-defense.webm" type="video/webm"><source src="/static/loops/cluster-defense.mp4" type="video/mp4"></video>
       <div class="head"><div class="ico">🚀</div><div><h2>CLUSTER DEFENSE</h2><div class="tag">co-op space shooter</div></div></div>
@@ -226,7 +216,7 @@
     </a>
   </section>
 
-  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/substrate-siege/screen">Siege</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a> · <a href="/pod-packer/screen">Pod Packer</a> · <a href="/selfie/screen">Substrate Selfie</a><br>Give your own agent a task: <a href="/agent-flow">Agent Flow</a></footer>
+  <footer><a href="/tv">📺 TV view</a> · Big screens: <a href="/agent-flow/screen">Agent Substrate</a> · <a href="/cluster-defense/screen">Cluster Defense</a> · <a href="/gateway-defense/screen">Gateway Defense</a> · <a href="/duck-hunt/screen">Duck Hunt</a> · <a href="/flappy/screen">Flappy Substrate</a> · <a href="/pod-packer/screen">Pod Packer</a> · <a href="/selfie/screen">Substrate Selfie</a><br>Give your own agent a task: <a href="/agent-flow">Agent Flow</a></footer>
 </div>
 
 <script>
@@ -263,7 +253,7 @@ document.querySelectorAll(".card:not(.ext)").forEach((c) => c.addEventListener("
 const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString());
 const ms = (n) => (!n ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "s" : n + "ms");
 function players(s) {
-  return { siege: s.heist_online, defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players, packer: s.podPacker_players, selfie: s.selfie_taken };
+  return { defense: s.clusterDefense_online, gateway: s.gatewayDefense_players, flow: s.agentFlow_agents, duck: s.duckHunt_players, flappy: s.flappy_players, packer: s.podPacker_players, selfie: s.selfie_taken };
 }
 async function poll() {
   try {

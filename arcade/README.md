@@ -6,7 +6,6 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 |------|-----------|--------|--------|
 | Duck Hunt (at `/duck-hunt`) | Suspend and resume in milliseconds, as a landscape phone shooter: every target is a real agent woken for you, every hit a real snapshot | Playable | [below](#duck-hunt) |
 | Agent Flow | The whole stack, live: every component a request passes | Playable | [below](#agent-flow) |
-| Substrate Siege | Lifecycle: suspend, snapshot, resume, delete, as a 3-minute multiplayer city shooter | Playable | [below](#substrate-siege), [docs/substrate-siege.md](docs/substrate-siege.md) |
 | Cluster Defense | Scale and density: more agents than workers, by suspending the idle ones, as a co-op space shooter | Playable | [below](#cluster-defense) |
 | Gateway Defense | The platform's controls (prompt guard, rate limit, egress, suspend) as towers, each kill a real call; solo tower defense | Playable | [below](#gateway-defense) |
 | Flappy Substrate (at `/flappy`) | Resume and suspend of your own agent: you are the Agent Substrate octopus, woken to swim and snapshotted when you crash | Playable | [below](#flappy-substrate) |
@@ -27,7 +26,6 @@ NES-style arcade games where every character is a real AI agent: a kagent sessio
 | Arcade front page (players join once, then pick a game) | http://localhost:8090/ |
 | Duck Hunt phone (landscape) / big screen | http://localhost:8090/duck-hunt, http://localhost:8090/duck-hunt/screen |
 | Agent Flow phone / big screen (QR code on screen; `?join=<url>` sets its target) | http://localhost:8090/agent-flow, http://localhost:8090/agent-flow/screen |
-| Substrate Siege phone / big screen (`?debug=1` on the phone shows frame and network timing) | http://localhost:8090/substrate-siege, http://localhost:8090/substrate-siege/screen |
 | Cluster Defense phone / big screen | http://localhost:8090/cluster-defense, http://localhost:8090/cluster-defense/screen |
 | Gateway Defense phone / big screen | http://localhost:8090/gateway-defense, http://localhost:8090/gateway-defense/screen |
 | Flappy Substrate phone / big screen | http://localhost:8090/flappy, http://localhost:8090/flappy/screen |
@@ -128,29 +126,6 @@ A co-op space shooter (`games/defense`, 2D canvas, no build step) about density:
 - 48 pilots at most, 8 public big screens; the startup sweep deletes every `subagent` session left by a previous process. `curl -XPOST localhost:8090/admin/cluster-defense/api/end` ends the live round (and deletes its sessions); `.../api/pause` stops spawns.
 
 Load (`go test -tags cluster -run TestBoothLoad ./games/defense/`, `ARCADE_URL=http://localhost:8090`, 2026-11-03): one task turn is about 1.1k tokens and 1.2 s; a suspend mid-turn waits for the turn to end, then the Substrate call is about 25 ms. 16 bots for 8 minutes: 633 real suspends, none stuck, second hit to confirmed suspend p50 66 ms p95 1.3 s, Substrate suspend call p50 25 ms p95 40 ms, 86–89k tokens a minute on agentgateway with no 429s. Those bots fire nonstop with aim assist and held the cluster to wave 13 (peak 13 of 16 workers, 641 sessions hosted on 16 workers); 2 low-skill bots lost it at 58–66 s (CLUSTER FULL, every session deleted, next round started on its own). How long a real phone crowd lasts is untested.
-
-## Substrate Siege
-
-A 3-minute multiplayer shooter in a stylised night city (`games/heist`, design in [docs/substrate-siege.md](docs/substrate-siege.md)). Every agent on the streets is a real `heister` agent session on its own 40-worker `heist` pool (`manifests/heist-agent.yaml`). A player taps PLAY and has 3 minutes to freeze as many agents as they can; a red arrow on the screen edge points to the nearest one. Players play solo or as a team of up to 4 on one clock (a 4-letter code), with an on-screen joystick, FIRE and BOOK; there is no keyboard. The server runs the world at 15 Hz over one WebSocket per phone (`/substrate-siege/ws`), and every game action is the real Substrate call:
-
-| In the game | Real call |
-|-------------|-----------|
-| An agent spawns 6–14 tiles from you and works a 4-step job, one turn every 12–16 s | `CreateSession`, then one A2A turn per step (its line is the speech bubble) |
-| Two hits freeze it: +1 | `SuspendSession`, which lands when the agent's current turn ends; the agent shows FREEZING at once. A freeze that races the final step wins. |
-| Tap BOOK next to a frozen agent: +2 | `ResumeSession`, one "you got booked" turn, `Checkpoint` of that turn, then `DeleteSession` |
-| A frozen agent nobody books for 8 s | `DeleteSession` |
-| It finishes its 4th step | It escapes; its session is deleted and a new agent takes its place |
-| Pick up a board, a CPU, RAM and a drive (DDR1–5) | A real `sidekick` ally session that follows you and shoots agents |
-
-A run keeps 1 + its online players agents on the streets (at most 4), 32 in the whole city; a freed slot goes to the run with the fewest. Agents shoot back; a downed player drops the parts they carry. The leaderboard ranks players by their best run (points; total freezes break ties). Old `/grand-theft-agent` links redirect here.
-
-- A turn whose reply fails the agent's output validation falls back to a fixed line, so a target never stalls on a bad reply.
-- Game state lives in memory, so at startup the game deletes every `heister` and `sidekick` session left over from a previous process (with their checkpoints), and refuses new runs and rigs until that list is in. Booked targets' checkpoints are deleted by the admin reset and on shutdown.
-- `manifests/heist-policies.yaml` gives the heist agents their own LLM route (`/heist/v1`) with a prompt guard and a budget of 300k tokens and 400 requests a minute; a policy stop shows on the screen.
-- The phone switches to low quality (lower pixel ratio, no shadows) by itself on a slow first few seconds; MENU has a switch for it.
-- The big screen (`/substrate-siege/screen`) shows the whole city, a QR code, the best-run leaderboard, a live feed and live suspend and booking times.
-
-Booth load (24 bots playing back-to-back 3-minute runs for 5 minutes, `TestBoothLoad`, 2026-11-03): 403 freezes, 240 bookings, no stuck runs and no booking conflicts, but the LLM budget is the limit. All 24 runs starting together burst to 584k tokens a minute in the first minute, then held at 295–325k against the 300k budget, so agentgateway rate-limited about 14% of LLM calls (211 of 1564). A turn caught by that waits out its 45 s timeout, and a freeze has to wait for the agent's turn to end: freeze p95 33 s (p50 3.5 s; the suspend call alone p95 0.3 s), booking p95 10.7 s, 70 steps and bookings timed out. The phone shows FREEZING the moment the hit lands either way. Real players start at different times and book less than bots; raising the budget or spacing steps further is the lever. Reset the round with `curl -XPOST localhost:8090/admin/substrate-siege/api/reset`.
 
 ## Gateway Defense
 

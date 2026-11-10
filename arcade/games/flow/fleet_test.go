@@ -31,15 +31,15 @@ func TestFleetDiff(t *testing.T) {
 		"k/d1": a("duck", "RUNNING"),    // woke
 		"k/d2": a("duck", "RUNNING"),    // new
 		"k/d3": a("duck", "RUNNING"),    // new
-		"k/h1": a("heister", "RUNNING"), // new
+		"k/h1": a("subagent", "RUNNING"), // new
 		"k/f1": a(flowAgent, "RUNNING"), // Agent Flow's own: skipped
 	}, 2) {
 		t.Fatal("second poll reported no changes")
 	}
-	same("second", g.amoves, []ActorMove{{"duck", "new", 2, "n1", 2}, {"duck", "wake", 1, "n1", 2}, {"heister", "new", 1, "n1", 2}})
+	same("second", g.amoves, []ActorMove{{"duck", "new", 2, "n1", 2}, {"duck", "wake", 1, "n1", 2}, {"subagent", "new", 1, "n1", 2}})
 
 	g.fleetDiff(map[string]kagent.ActorInfo{"k/d1": a("duck", "SUSPENDING"), "k/f1": a(flowAgent, "RUNNING")}, 3)
-	same("third", g.amoves[3:], []ActorMove{{"duck", "gone", 2, "n1", 3}, {"duck", "sleep", 1, "n1", 3}, {"heister", "gone", 1, "n1", 3}})
+	same("third", g.amoves[3:], []ActorMove{{"duck", "gone", 2, "n1", 3}, {"duck", "sleep", 1, "n1", 3}, {"subagent", "gone", 1, "n1", 3}})
 
 	if g.fleetDiff(map[string]kagent.ActorInfo{"k/d1": a("duck", "SUSPENDED"), "k/f1": a(flowAgent, "RUNNING")}, 4) {
 		t.Fatal("SUSPENDING to SUSPENDED counted as a change")
@@ -83,9 +83,9 @@ func TestOnOpCountsEveryGame(t *testing.T) {
 	for _, op := range []kagent.Op{
 		{Agent: "duck", Kind: "suspend", Phase: "end"},
 		{Agent: flowAgent, Kind: "suspend", Phase: "end"}, // Agent Flow's own calls count too
-		{Agent: "heister", Kind: "suspend", Phase: "end", Err: true},
-		{Agent: "heister", Kind: "delete", Phase: "end"},
-		{Agent: "heister", Kind: "turn", Phase: "start"},
+		{Agent: "subagent", Kind: "suspend", Phase: "end", Err: true},
+		{Agent: "subagent", Kind: "delete", Phase: "end"},
+		{Agent: "subagent", Kind: "turn", Phase: "start"},
 	} {
 		g.OnOp(op)
 	}

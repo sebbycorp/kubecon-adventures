@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"strings"
 	"syscall"
 	"time"
 
@@ -26,7 +25,6 @@ import (
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/flappy"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/flow"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/gatewaydef"
-	"github.com/sebbycorp/kubecon-adventures/arcade/games/heist"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/podpacker"
 	"github.com/sebbycorp/kubecon-adventures/arcade/games/selfie"
 	"github.com/sebbycorp/kubecon-adventures/arcade/internal/kagent"
@@ -57,8 +55,6 @@ func main() {
 	duck := duckhunt.New(p, agentClient("duck"), *idle)
 	flw := flow.New(p, agentClient("flowbot"))
 	kagent.Observe(flw.OnOp) // every game's kagent calls show on the Agent Flow screen
-	gta := heist.New(p, heist.NewKagentOps(agentClient("heister"), agentClient("sidekick"), agentClient("siegeplayer"), envOr("HEIST_EXTRACT", "resume-first")),
-		strings.Split(envOr("HEIST_NODES", "kagent-worker,kagent-worker2"), ","))
 	cd := defense.New(p, defense.NewKagentOps(agentClient(defense.AgentName)))
 	gw := envOr("GATEDEF_GATEWAY", "http://arcade.agentgateway-system.svc.cluster.local")
 	gd := gatewaydef.New(p, &gatewaydef.HTTPProber{GuardURL: gw + "/gatedef/guard/v1/chat/completions", LimitURL: gw + "/gatedef/limit",
@@ -73,7 +69,6 @@ func main() {
 	go p.RunAteletScraper(ctx, &platform.AteletScraper{Target: *atelet})
 	duck.Run(ctx)
 	flw.Run(ctx)
-	gta.Run(ctx)
 	cd.Run(ctx)
 	gd.Run(ctx)
 	fl.Run(ctx)
@@ -98,11 +93,10 @@ func main() {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web("shared"))))
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/duck-hunt", http.StatusFound))
 	moreStats["selfie_"] = sf.Stats
-	arcadeAPI(mux, p, duck, flw, gta, cd, gd, fl, pp, missions, tokens)
+	arcadeAPI(mux, p, duck, flw, cd, gd, fl, pp, missions, tokens)
 	mux.HandleFunc("GET /selfie/api/stats", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, sf.Stats()) })
 	duck.Routes(mux, web("duck-hunt"))
 	flw.Routes(mux, web("agent-flow"))
-	gta.Routes(mux, web("substrate-siege"))
 	cd.Routes(mux, web("cluster-defense"))
 	gd.Routes(mux, web("gateway-defense"))
 	fl.Routes(mux, web("flappy"))
@@ -121,10 +115,10 @@ func main() {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
-	// Substrate Siege deletes its booked checkpoints, Cluster Defense its round's sessions and
-	// Flappy Substrate its octopus pool on the way out (bounded).
+	// Cluster Defense deletes its round's sessions and Flappy Substrate its octopus pool on
+	// the way out (bounded).
 	deadline := time.After(20 * time.Second)
-	for _, stopped := range []<-chan struct{}{gta.Stopped(), cd.Stopped(), fl.Stopped(), pp.Stopped(), sf.Stopped()} {
+	for _, stopped := range []<-chan struct{}{cd.Stopped(), fl.Stopped(), pp.Stopped(), sf.Stopped()} {
 		select {
 		case <-stopped:
 		case <-deadline:
@@ -143,7 +137,7 @@ func envOr(key, def string) string {
 // moreStats adds games' numbers to /api/stats under a prefix, without growing arcadeAPI.
 var moreStats = map[string]func() map[string]any{}
 
-func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, gta *heist.Game, cd *defense.Game, gd *gatewaydef.Game, fl *flappy.Game, pp *podpacker.Game, missions topper, tokens *Tokens) {
+func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, flw *flow.Game, cd *defense.Game, gd *gatewaydef.Game, fl *flappy.Game, pp *podpacker.Game, missions topper, tokens *Tokens) {
 	mux.HandleFunc("GET /api/tokens", func(w http.ResponseWriter, r *http.Request) { platform.WriteJSON(w, tokens.View()) })
 	mux.HandleFunc("POST /api/join", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Nick string }
@@ -167,7 +161,7 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 	// Every game's leaderboard, top 5 each, after the arcade-wide one (path "/", top 10):
 	// every player's best score in each of our games, in arcade points (overall.go).
 	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
-		all := arcadeBoards(1000, duck, flw, gta, cd, gd, fl, pp, missions)
+		all := arcadeBoards(1000, duck, flw, cd, gd, fl, pp, missions)
 		out := []GameBoard{{Game: "All games", Path: "/", Unit: "arcade pts", Rows: overallBoard(10, all)}}
 		for _, g := range all {
 			g.Rows = g.Rows[:min(5, len(g.Rows))]
@@ -195,9 +189,6 @@ func arcadeAPI(mux *http.ServeMux, p *platform.Platform, duck *duckhunt.Game, fl
 		}
 		for k, v := range flw.Stats() {
 			out["agentFlow_"+k] = v
-		}
-		for k, v := range gta.Stats() {
-			out["heist_"+k] = v
 		}
 		for k, v := range cd.Stats() {
 			out["clusterDefense_"+k] = v
@@ -238,9 +229,8 @@ type topper interface {
 }
 
 // arcadeBoards is every game's top n, in the home page's order.
-func arcadeBoards(n int, duck, flw, gta, cd, gd, fl, pp, missions topper) []GameBoard {
+func arcadeBoards(n int, duck, flw, cd, gd, fl, pp, missions topper) []GameBoard {
 	return []GameBoard{
-		{"Substrate Siege", "/substrate-siege", "best run", gta.Top(n), false},
 		{"Cluster Defense", "/cluster-defense", "best round", cd.Top(n), false},
 		{"Gateway Defense", "/gateway-defense", "points", gd.Top(n), false},
 		{"Agent Flow", "/agent-flow", "tasks", flw.Top(n), false},

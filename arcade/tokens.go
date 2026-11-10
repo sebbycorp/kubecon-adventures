@@ -23,7 +23,6 @@ import (
 // tokenRoutes names each LLM route's game.
 var tokenRoutes = map[string]string{
 	"openai":         "Duck Hunt & Flappy Substrate",
-	"openai-heist":   "Substrate Siege",
 	"openai-defense": "Cluster Defense",
 	"openai-gatedef": "Gateway Defense",
 	"openai-flow":    "Agent Flow",

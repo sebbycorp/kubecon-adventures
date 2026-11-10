@@ -74,7 +74,7 @@ if [ -x homepage/start.sh ]; then homepage/start.sh >/dev/null 2>&1 && log "ok: 
 
 log "==> arcade"
 wait_for 600 "arcade on http://localhost:8090" curl -sf -o /dev/null http://localhost:8090/api/stats || fail=1
-for p in / /agent-flow/screen /substrate-siege /cluster-defense /gateway-defense /duck-hunt; do
+for p in / /agent-flow/screen /cluster-defense /gateway-defense /duck-hunt; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8090$p")
   [ "$code" = 200 ] && log "ok: $p" || { log "HTTP $code: $p"; fail=1; }
 done

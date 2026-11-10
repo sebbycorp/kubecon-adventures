@@ -107,10 +107,6 @@
   const pl = (v, one, many) => `${n(v)} ${Number(v) === 1 ? one : many}`;
   let density = null; // {actors, workers} from /api/stats, fetched when a share widget is drawn
   const SCORES = {
-    "/substrate-siege": (o, f) => [
-      `I scored ${n(o.score)} in Substrate Siege${has(f.freezes) ? `, freezing ${pl(f.freezes, "AI agent", "AI agents")}` : ""}${has(f.takedowns) ? ` and ${pl(f.takedowns, "player", "players")}` : ""} 🧊`,
-      `${n(o.score)} points in Substrate Siege: ${pl(f.freezes, "agent", "agents")} frozen${has(f.booked) ? `, ${n(f.booked)} booked into snapshots` : ""}${has(f.takedowns) ? `, ${pl(f.takedowns, "player", "players")} iced` : ""}.`,
-      `Just hunted rogue AI agents through a night city in Substrate Siege: ${n(o.score)} points 🏙️`],
     "/cluster-defense": (o, f) => [
       `I kept the cluster alive to wave ${n(f.wave)} in Cluster Defense${has(f.suspends) ? `, suspending ${n(f.suspends)} subagents` : ""} 🚀`,
       `Cluster Defense: ${n(o.score)} points, wave ${n(f.wave)}${has(f.seconds) ? `, ${n(f.seconds)}s before the workers filled up` : ""}.`,
@@ -145,7 +141,7 @@
     if (has(f.snapshotMs) && has(f.wakeMs)) out.push(`My agent was snapshotted in ${n(f.snapshotMs)} ms and woke in ${n(f.wakeMs)} ms on kagent + Agent Substrate.`);
     if (has(f.hosted) && has(f.slots)) out.push(`kagent + Agent Substrate hosted ${n(f.hosted)} agents on ${n(f.slots)} workers by snapshotting the idle ones.`);
     if (has(f.restoreMs)) out.push(`It woke from a snapshot in ${n(f.restoreMs)} ms on kagent + Agent Substrate.`);
-    if (has(f.snapshotMs)) out.push(`Every ${g === "/substrate-siege" ? "freeze" : "hit"} is a real kagent + Agent Substrate snapshot (${n(f.snapshotMs)} ms).`);
+    if (has(f.snapshotMs)) out.push(`Every hit is a real kagent + Agent Substrate snapshot (${n(f.snapshotMs)} ms).`);
     if (density && density.actors && density.workers)
       out.push(`${n(density.actors)} real AI agents on ${n(density.workers)} sandboxes, thanks to kagent + Agent Substrate.`);
     out.push(pick(["Every character is a real AI agent on kagent + Agent Substrate.", "Every character is a real AI agent, running on kagent + Agent Substrate.",

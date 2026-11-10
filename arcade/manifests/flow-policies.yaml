@@ -97,9 +97,6 @@ spec:
     name: openai-flow
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
-    name: openai-heist
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
     name: openai-defense
   traffic:
     authorization:
