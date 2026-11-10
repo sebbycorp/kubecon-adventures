@@ -20,7 +20,7 @@
 <meta name="twitter:description" content="Six arcade games where every character is a real AI agent on kagent + Agent Substrate. Freeze them, snapshot them, fight them. Scan, play, top the leaderboard.">
 <meta name="twitter:image" content="https://kubecon.agentpwned.ai/static/og/arcade.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
   /* The Agent Flow screen's look: kagent dark, Inter, one green accent. */
   :root { --bg: #0d0e0f; --grid: #17191b; --fg: #e8e8e8; --mute: #8a8f94; --green: #5fd068; --greenDim: #3d7a45; --line: #24272a;
@@ -86,6 +86,10 @@
     background: #0d0e0f; border: 1px solid color-mix(in srgb, var(--c) 55%, #2a2d30); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 22%, transparent); }
   .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .card .tag { font-size: 12.5px; color: var(--mute); }
+  /* missions shows its own logo: the agentgateway wordmark over "AI MISSIONS", as in the game */
+  .card .mlogo { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .card .mlogo img { height: 30px; width: auto; margin-left: -8px; }
+  .card .mlogo b { font: 400 19px/1 Anton, "Arial Narrow", Impact, sans-serif; letter-spacing: .42em; color: #ffd23a; text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 2px 0 #000; }
   .card p { margin: 0; color: #c9ccce; font-size: 13.5px; line-height: 1.5; }
   .card .real { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .card .real span { font: 11.5px ui-monospace, monospace; padding: 2px 8px; border-radius: 6px; border: 1px solid #2a2d30; color: var(--c); background: #0d0e0f; }
@@ -197,7 +201,7 @@
     </a>
     <a class="card ext" href="https://gd-frontend-413299367082.us-central1.run.app/" target="_blank" rel="noopener" style="--c: #a78bfa">
       <video class="shot" autoplay muted loop playsinline preload="metadata" poster="/static/shots/agentgateway-missions.webp" aria-label="AI agentgateway missions: a pixel-art city intersection seen from above, a stun-gun blast in the street and the prompt: Lose the cops! Get to a car or out of sight" width="720" height="450"><source src="/static/loops/agentgateway-missions.webm" type="video/webm"><source src="/static/loops/agentgateway-missions.mp4" type="video/mp4"></video>
-      <div class="head"><div class="ico"><img src="/agent-flow/static/agentgateway-icon.svg" alt="" width="24" height="24"></div><div><h2>AI AGENTGATEWAY MISSIONS</h2><div class="tag">community game · by Solo Labs</div></div></div>
+      <div class="head"><div><h2 class="mlogo" aria-label="AI agentgateway missions"><img src="/static/agentgateway-wordmark.svg" alt="" width="127" height="30"><b>AI MISSIONS</b></h2><div class="tag">community game · by Solo Labs</div></div></div>
       <div class="body"><p>Can you configure your AI gateway and climb the leaderboard? Take contracts on a real agentgateway, stack points and dodge the cops.</p>
         <div class="real"><span>agentgateway config</span><span>Contracts</span></div></div>
       <div class="meta"><div><div class="ab-h">Top players</div><div data-ab-board="https://gd-frontend-413299367082.us-central1.run.app/" data-ab-n="5" data-ab-detail="0" data-ab-empty="Leaderboard in game."></div></div>
